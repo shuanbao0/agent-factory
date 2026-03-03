@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create source tarball
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          TARBALL="agent-factory-${VERSION}.tar.gz"
+
+          # Create a clean tarball excluding dev/runtime files
+          tar -czf "/tmp/${TARBALL}" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            --exclude='.openclaw-state' \
+            --exclude='agents/*' \
+            --exclude='workspaces/*' \
+            --exclude='projects/*' \
+            --exclude='templates/custom/*' \
+            --exclude='libs' \
+            --exclude='ui/.next' \
+            --exclude='*.log' \
+            -C "$(pwd)/.." \
+            "$(basename "$(pwd)")"
+
+          mv "/tmp/${TARBALL}" "${TARBALL}"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+        id: tarball
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ steps.tarball.outputs.tarball }}
+            scripts/install.sh

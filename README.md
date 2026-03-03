@@ -63,6 +63,22 @@ Agent Factory gives **one person** the power of an entire company — PM, resear
 
 ## Quick Start
 
+### One-Line Install (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FrankLiBao/agent-factory/main/scripts/install.sh | bash
+```
+
+The install script will automatically:
+- Install Node.js (via nvm) if not present
+- Download the latest release from GitHub
+- Install all dependencies
+- Guide you through API key configuration
+
+> **CI/CD?** Use non-interactive mode: `curl -fsSL ... | bash -s -- --no-prompt --api-key sk-ant-xxx`
+
+### Manual Install
+
 ```bash
 git clone https://github.com/FrankLiBao/agent-factory.git
 cd agent-factory
