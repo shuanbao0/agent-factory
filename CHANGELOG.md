@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/)，本项目遵循[语义化版本](https://semver.org/)。
 
+## [0.2.4] - 2026-03-04
+
+### Fixed / 修复
+
+- Fix release tarball excluding `ui/src/app/agents/` and `ui/src/app/projects/` due to overly broad `--exclude` patterns / 修复发布包误排除 UI 路由文件导致智能体等页面 404 的问题
+
 ## [0.2.3] - 2026-03-04
 
 ### Changed / 变更

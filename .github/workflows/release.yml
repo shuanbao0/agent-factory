@@ -41,10 +41,10 @@ jobs:
             --exclude='node_modules' \
             --exclude='.env' \
             --exclude='.openclaw-state' \
-            --exclude='agents/*' \
-            --exclude='workspaces/*' \
-            --exclude='projects/*' \
-            --exclude='templates/custom/*' \
+            --exclude='agent-factory/agents/*' \
+            --exclude='agent-factory/workspaces/*' \
+            --exclude='agent-factory/projects/*' \
+            --exclude='agent-factory/templates/custom/*' \
             --exclude='libs' \
             --exclude='ui/.next' \
             --exclude='*.log' \
