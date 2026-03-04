@@ -485,7 +485,7 @@ init_config() {
   if [[ -f "config/openclaw.default.json" && ! -f "config/openclaw.json" ]]; then
     cp config/openclaw.default.json config/openclaw.json
     success "Created config/openclaw.json"
-    ((copied++))
+    ((copied++)) || true
   elif [[ -f "config/openclaw.json" ]]; then
     info "config/openclaw.json already exists, skipping."
   fi
@@ -493,7 +493,7 @@ init_config() {
   if [[ -f "config/models.default.json" && ! -f "config/models.json" ]]; then
     cp config/models.default.json config/models.json
     success "Created config/models.json"
-    ((copied++))
+    ((copied++)) || true
   elif [[ -f "config/models.json" ]]; then
     info "config/models.json already exists, skipping."
   fi
@@ -501,7 +501,7 @@ init_config() {
   if [[ -f ".env.example" && ! -f ".env" ]]; then
     cp .env.example .env
     success "Created .env from template"
-    ((copied++))
+    ((copied++)) || true
   elif [[ -f ".env" ]]; then
     info ".env already exists, skipping."
   fi
@@ -615,39 +615,39 @@ verify_installation() {
   local checks_total=0
 
   # Check openclaw CLI
-  ((checks_total++))
+  ((checks_total++)) || true
   if [[ -f "node_modules/.bin/openclaw" ]]; then
     local oc_version
     oc_version="$(node_modules/.bin/openclaw --version 2>/dev/null || echo 'unknown')"
     success "OpenClaw CLI: ${oc_version}"
-    ((checks_passed++))
+    ((checks_passed++)) || true
   else
     warn "OpenClaw CLI not found at node_modules/.bin/openclaw"
   fi
 
   # Check config files
-  ((checks_total++))
+  ((checks_total++)) || true
   if [[ -f "config/openclaw.json" ]]; then
     success "Config: openclaw.json present"
-    ((checks_passed++))
+    ((checks_passed++)) || true
   else
     warn "Config: openclaw.json missing"
   fi
 
-  ((checks_total++))
+  ((checks_total++)) || true
   if [[ -f ".env" ]]; then
     success "Config: .env present"
-    ((checks_passed++))
+    ((checks_passed++)) || true
   else
     warn "Config: .env missing"
   fi
 
   # Check UI build readiness
   if [[ "$SKIP_UI" != true ]]; then
-    ((checks_total++))
+    ((checks_total++)) || true
     if [[ -d "ui/node_modules" ]]; then
       success "UI: dependencies installed"
-      ((checks_passed++))
+      ((checks_passed++)) || true
     else
       warn "UI: node_modules missing"
     fi

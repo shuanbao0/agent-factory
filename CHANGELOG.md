@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/)，本项目遵循[语义化版本](https://semver.org/)。
 
+## [0.2.1] - 2026-03-04
+
+### Fixed / 修复
+
+- Fix install script silently exiting at Step 4/6 due to `((var++))` returning exit code 1 under `set -e` / 修复安装脚本在 Step 4/6 静默退出的问题（`set -e` 下 `((var++))` 初始值为 0 时返回非零退出码）
+
 ## [0.2.0] - 2026-03-02
 
 ### Added / 新增
