@@ -665,6 +665,8 @@ register_cli() {
   step "Registering agent-factory CLI"
 
   cd "$INSTALL_DIR"
+  # Ensure INSTALL_DIR is absolute (cd may have resolved a relative path)
+  INSTALL_DIR="$(pwd)"
 
   local cli_src="$INSTALL_DIR/bin/agent-factory.mjs"
   if [[ ! -f "$cli_src" ]]; then
@@ -810,7 +812,7 @@ find_existing_install() {
   # 4. Common locations
   for candidate in "$HOME/agent-factory" "/opt/agent-factory" "./agent-factory"; do
     if [[ -f "$candidate/package.json" ]] && grep -q '"name": "agent-factory"' "$candidate/package.json" 2>/dev/null; then
-      INSTALL_DIR="$candidate"
+      INSTALL_DIR="$(cd "$candidate" && pwd)"
       return 0
     fi
   done
