@@ -672,7 +672,26 @@ show_completion() {
 start_services() {
   step "Starting Agent Factory"
   cd "$INSTALL_DIR"
-  npm start
+
+  local log_file="$INSTALL_DIR/.openclaw-state/startup.log"
+  mkdir -p "$(dirname "$log_file")"
+
+  nohup npm start > "$log_file" 2>&1 &
+  local pid=$!
+
+  # Wait briefly for services to initialize
+  sleep 3
+
+  if kill -0 "$pid" 2>/dev/null; then
+    success "Agent Factory is running in background (PID: $pid)"
+    echo ""
+    echo -e "  Dashboard:  ${CYAN}http://localhost:3100${RESET}"
+    echo -e "  Logs:       ${DIM}tail -f $log_file${RESET}"
+    echo -e "  Stop:       ${DIM}kill $pid${RESET}"
+    echo ""
+  else
+    warn "Failed to start. Check logs: $log_file"
+  fi
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────

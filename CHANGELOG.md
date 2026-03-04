@@ -8,12 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/)，本项目遵循[语义化版本](https://semver.org/)。
 
-## [0.2.2] - 2026-03-04
+## [0.2.3] - 2026-03-04
 
 ### Changed / 变更
 
 - Remove interactive API key prompts from install script; configure via Dashboard Settings instead / 移除安装脚本中的 API 密钥交互提示，改为通过 Dashboard 设置页面配置
-- Auto-start services after installation completes / 安装完成后自动启动服务
+- Auto-start services in background after installation / 安装完成后后台自动启动服务，不阻塞终端
 
 ### Fixed / 修复
 
