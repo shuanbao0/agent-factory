@@ -5,7 +5,7 @@
 Agent Factory 是一个自包含的多 Agent 协作平台，内置 OpenClaw 引擎，提供 Dashboard UI 进行管理。
 
 - 版本: 0.2.0
-- 仓库: https://github.com/FrankLiBao/agent-factory
+- 仓库: https://github.com/shuanbao0/agent-factory
 - 运行时: Node.js >= 22
 - 许可: GPL-3.0
 
@@ -267,6 +267,12 @@ lsof -ti:3100 | xargs kill -9 2>/dev/null
 
 # 3. 重启开发服务器
 cd ui && npm run dev
+
+# 打包 + 发布一条龙
+tar -czf /tmp/agent-factory-vX.Y.Z.tar.gz --exclude='.git'
+--exclude='node_modules' ...
+gh release create vX.Y.Z /tmp/agent-factory-vX.Y.Z.tar.gz
+scripts/install.sh
 ```
 
 **注意事项：**

@@ -21,9 +21,9 @@ If you discover a security vulnerability, please report it responsibly:
 
 如果你发现安全漏洞，请负责任地报告：
 
-1. **GitHub Private Vulnerability Reporting**: Use [GitHub's security advisory feature](https://github.com/FrankLiBao/agent-factory/security/advisories/new) to privately report the vulnerability.
+1. **GitHub Private Vulnerability Reporting**: Use [GitHub's security advisory feature](https://github.com/shuanbao0/agent-factory/security/advisories/new) to privately report the vulnerability.
 
-   **GitHub 私密漏洞报告**：使用 [GitHub 安全公告功能](https://github.com/FrankLiBao/agent-factory/security/advisories/new) 私密报告漏洞。
+   **GitHub 私密漏洞报告**：使用 [GitHub 安全公告功能](https://github.com/shuanbao0/agent-factory/security/advisories/new) 私密报告漏洞。
 
 2. **Email**: Send details to the maintainer via GitHub profile contact.
 

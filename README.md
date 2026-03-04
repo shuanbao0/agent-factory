@@ -66,7 +66,7 @@ Agent Factory gives **one person** the power of an entire company — PM, resear
 ### One-Line Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FrankLiBao/agent-factory/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/shuanbao0/agent-factory/main/scripts/install.sh | bash
 ```
 
 The install script will automatically:
@@ -80,7 +80,7 @@ The install script will automatically:
 ### Manual Install
 
 ```bash
-git clone https://github.com/FrankLiBao/agent-factory.git
+git clone https://github.com/shuanbao0/agent-factory.git
 cd agent-factory
 npm install          # Install built-in OpenClaw engine + dependencies
 cp .env.example .env # Configure your API key

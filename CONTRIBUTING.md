@@ -57,7 +57,7 @@ This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUC
 ### Setup / 搭建
 
 ```bash
-git clone https://github.com/FrankLiBao/agent-factory.git
+git clone https://github.com/shuanbao0/agent-factory.git
 cd agent-factory
 npm install
 cp .env.example .env

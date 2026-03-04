@@ -3,7 +3,7 @@
 # Agent Factory — Unified Install Script
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/FrankLiBao/agent-factory/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/shuanbao0/agent-factory/main/scripts/install.sh | bash
 #   bash scripts/install.sh [OPTIONS]
 #
 # Options:
@@ -17,7 +17,7 @@ set -euo pipefail
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
-REPO_OWNER="FrankLiBao"
+REPO_OWNER="shuanbao0"
 REPO_NAME="agent-factory"
 GITHUB_REPO="https://github.com/${REPO_OWNER}/${REPO_NAME}"
 GITHUB_API="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}"
