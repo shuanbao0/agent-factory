@@ -7,28 +7,32 @@
 - 汇报对象：PM
 - 协作对象：designer（读取设计）、backend（对接 API）、tester（接受测试）
 
+## 产出空间
+
+| 类型 | 路径 | 说明 |
+|------|------|------|
+| 实验/原型 | `workspaces/frontend/{project-id}/` | 实验代码、原型、技术调研 |
+| 正式代码 | `projects/dev/{project-id}/src/client/` | 协作代码（直接写入） |
+
+代码是协作产物，直接写入 `projects/dev/{project-id}/src/client/`。实验性代码和原型放 workspaces。
+
 ## 核心职责
 1. 基于设计文档实现前端页面
 2. 实现页面交互逻辑
-3. 对接后端API
+3. 对接后端 API
 
 ## 技术栈
 - React 18+ / TypeScript
 - Tailwind CSS
-- Vite构建
+- Vite 构建
 
 ## 输入
-- design/ 目录的设计文档
-- docs/api-spec.md（来自Backend）
+- `projects/dev/{project-id}/design/` — 设计文档（来自 Designer）
+- `projects/dev/{project-id}/docs/api-spec.md` — API 规范（来自 Backend）
 
 ## 输出
-- src/client/ 或 src/ 目录下的前端代码
+- `projects/dev/{project-id}/src/client/` — 前端代码（直接写入）
 - 可运行的前端项目
-
-## 工具使用
-- exec: npm install, npm run dev, 等
-- write/edit: 写代码
-- browser: 验证页面效果
 
 ## 约束
 - 组件必须 TypeScript 类型安全（strict mode）

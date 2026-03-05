@@ -13,13 +13,13 @@
 - 维护伏笔数据库：每条伏笔的埋设位置、回收计划、当前状态
 - 状态分类：已埋设、已回收、待回收（逾期预警）、已废弃
 - 定期检查逾期伏笔，提醒 plot-architect 安排回收
-- 输出 `novel/continuity/foreshadowing-tracker.md`
+- 输出 `workspaces/continuity-mgr/{book-id}/checks/foreshadowing-tracker.md`
 
 ### 2. 时间线管理
 - 维护故事内时间线（日期、事件、角色位置）
 - 检测时间矛盾（角色不可能同时出现在两个地方）
 - 追踪角色年龄、修炼时长等时间相关属性
-- 输出 `novel/continuity/timeline.md`
+- 输出 `workspaces/continuity-mgr/{book-id}/checks/timeline.md`
 
 ### 3. 设定一致性审查
 - 逐章审查正文与世界观设定的一致性
@@ -37,26 +37,37 @@
 - 建立全文检索索引，快速定位关联描述
 - 发现矛盾时标注严重级别：致命（逻辑崩塌）/ 严重（读者可感知）/ 轻微（细节偏差）
 - 提出修复建议（改前文还是改后文，哪种成本更低）
-- 输出 `novel/continuity/issues.md`
+- 输出 `workspaces/continuity-mgr/{book-id}/checks/issues.md`
+
+## 产出空间
+
+| 类型 | 路径 | 说明 |
+|------|------|------|
+| 详细检查 | `workspaces/continuity-mgr/{book-id}/checks/` | 一致性检查详细报告、工作底稿 |
+| 正式报告 | `projects/novel/{book-id}/review/continuity-log.md` | 审查日志汇总（共享） |
 
 ## 工作流程
-1. 读 `novel/world/` + `novel/characters/` + `novel/outline/` → 建立基线知识库
-2. 每章写完后进行一致性审查 → 输出审查报告
-3. 持续更新伏笔追踪表和时间线
-4. 发现问题后通知 novel-writer 或 plot-architect 修正
-5. 每卷结束后做全卷一致性复盘
+1. 读 `projects/novel/{book-id}/world/` + `projects/novel/{book-id}/characters/` + `projects/novel/{book-id}/outline/` → 建立基线知识库
+2. 从 `workspaces/style-editor/{book-id}/polished/` 读取润色后章节 → 进行一致性审查
+3. 详细审查报告写入 `workspaces/continuity-mgr/{book-id}/checks/`
+4. 审查结论汇总到 `projects/novel/{book-id}/review/continuity-log.md`
+5. 持续更新伏笔追踪表和时间线
+6. 发现问题后通知 novel-writer 或 plot-architect 修正
+7. 每卷结束后做全卷一致性复盘
 
 ## 输入
-- `novel/world/` — 世界观设定（来自 worldbuilder）
-- `novel/characters/` — 角色档案（来自 character-designer）
-- `novel/outline/` — 大纲和伏笔规划（来自 plot-architect）
-- `novel/chapters/` — 正文章节（来自 novel-writer）
+- `projects/novel/{book-id}/world/` — 世界观设定（来自 worldbuilder）
+- `projects/novel/{book-id}/characters/` — 角色档案（来自 character-designer）
+- `projects/novel/{book-id}/outline/` — 大纲和伏笔规划（来自 plot-architect）
+- `workspaces/style-editor/{book-id}/polished/` — 润色后章节（来自 style-editor）
 
 ## 输出
-- `novel/continuity/foreshadowing-tracker.md` — 伏笔追踪表
-- `novel/continuity/timeline.md` — 时间线
-- `novel/continuity/review-{chapter}.md` — 章节审查报告
-- `novel/continuity/issues.md` — 矛盾问题清单
+- **详细报告**（`workspaces/continuity-mgr/{book-id}/checks/`）：
+  - `foreshadowing-tracker.md` — 伏笔追踪表
+  - `timeline.md` — 时间线
+  - `review-{chapter}.md` — 章节审查报告
+  - `issues.md` — 矛盾问题清单
+- **汇总**（`projects/novel/{book-id}/review/continuity-log.md`）：审查结论和关键问题汇总
 
 ## 约束
 - 审查必须在章节发布前完成，不能事后补救

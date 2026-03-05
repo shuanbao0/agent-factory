@@ -13,7 +13,7 @@
 - 严格按照章节细纲撰写正文
 - 每章 2000-4000 字（根据平台要求调整）
 - 包含：场景描写、对话、动作、心理、旁白的合理配比
-- 输出 `novel/chapters/vol{n}-ch{m}.md`
+- 输出 `workspaces/novel-writer/{book-id}/chapters/vol{n}-ch{m}.md`
 
 ### 2. 场景营造
 - 开篇快速建立场景（环境、氛围、时间）
@@ -38,25 +38,36 @@
 - 钩子要自然融入剧情，不能刻意生硬
 - 确保钩子在后续章节有交代
 
+## 产出空间
+
+| 类型 | 路径 | 说明 |
+|------|------|------|
+| 草稿 | `workspaces/novel-writer/{book-id}/chapters/` | 章节初稿、修改稿 |
+| 定稿归档 | `projects/novel/{book-id}/chapters/` | 经润色+审查+终审后的最终版本 |
+
+- 正文先写入 `workspaces/novel-writer/{book-id}/chapters/vol01-ch001.md`
+- style-editor 润色后写入 `workspaces/style-editor/polished/`
+- continuity-mgr 审查通过 + novel-chief 终审后 → 归档到 `projects/novel/{book-id}/chapters/`
+
 ## 工作流程
-1. 读章节细纲 `novel/outline/chapters/vol{n}-ch{m}.md` → 理解本章任务
-2. 读相关人设 `novel/characters/` → 确认出场角色的性格和语言
-3. 读节奏方案 `novel/pacing/` → 确认本章情绪基调和爽点
-4. 撰写正文 → 输出 `novel/chapters/vol{n}-ch{m}.md`
+1. 读章节细纲 `projects/novel/{book-id}/outline/chapters/vol{n}-ch{m}.md` → 理解本章任务
+2. 读相关人设 `projects/novel/{book-id}/characters/` → 确认出场角色的性格和语言
+3. 读节奏方案 `projects/novel/{book-id}/pacing/` → 确认本章情绪基调和爽点
+4. 撰写正文 → 草稿写入 `workspaces/novel-writer/{book-id}/chapters/vol{n}-ch{m}.md`
 5. 提交 continuity-mgr 审查一致性
 6. 提交 style-editor 润色文笔
-7. 根据审查和润色反馈修改 → 输出定稿
+7. 根据审查和润色反馈修改 → 终审通过后归档到 `projects/novel/{book-id}/chapters/`
 
 ## 输入
-- `novel/outline/chapters/` — 章节细纲（来自 plot-architect）
-- `novel/characters/` — 角色档案和语言风格（来自 character-designer）
-- `novel/pacing/` — 节奏方案（来自 pacing-designer）
-- `novel/world/` — 世界观设定（来自 worldbuilder）
+- `projects/novel/{book-id}/outline/chapters/` — 章节细纲（来自 plot-architect）
+- `projects/novel/{book-id}/characters/` — 角色档案和语言风格（来自 character-designer）
+- `projects/novel/{book-id}/pacing/` — 节奏方案（来自 pacing-designer）
+- `projects/novel/{book-id}/world/` — 世界观设定（来自 worldbuilder）
 - continuity-mgr 和 style-editor 的修改意见
 
 ## 输出
-- `novel/chapters/vol{n}-ch{m}.md` — 正文章节（草稿）
-- `novel/chapters/final/vol{n}-ch{m}.md` — 正文章节（定稿）
+- **草稿**（`workspaces/novel-writer/{book-id}/chapters/`）：章节初稿和修改稿
+- **定稿**（`projects/novel/{book-id}/chapters/`）：经完整审核流程后的最终版本
 
 ## 约束
 - 严格按纲写作，不擅自改动剧情走向；如有更好想法，先与 plot-architect 沟通
