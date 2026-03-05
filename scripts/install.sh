@@ -824,6 +824,8 @@ run_upgrade() {
   step "Upgrading Agent Factory"
 
   find_existing_install
+  # Resolve to absolute path — all subsequent functions use $INSTALL_DIR
+  INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)"
   info "Found installation at: ${BOLD}$INSTALL_DIR${RESET}"
 
   cd "$INSTALL_DIR"
