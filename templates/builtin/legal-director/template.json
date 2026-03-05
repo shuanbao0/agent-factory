@@ -7,7 +7,17 @@
   "group": "legal",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["summarize", "session-logs", "document-pro"],
-    "peers": ["ceo", "cfo", "contract-specialist", "compliance-officer"]
+    "skills": [
+      "summarize",
+      "session-logs",
+      "document-pro",
+      "peer-status"
+    ],
+    "peers": [
+      "ceo",
+      "cfo",
+      "contract-specialist",
+      "compliance-officer"
+    ]
   }
 }

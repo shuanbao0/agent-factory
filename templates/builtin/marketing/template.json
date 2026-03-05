@@ -7,7 +7,21 @@
   "group": "dev",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["summarize", "nano-pdf"],
-    "peers": ["ceo", "product", "writer", "analyst", "designer", "brand-director", "content-ops", "pr-specialist", "growth-ops"]
+    "skills": [
+      "summarize",
+      "nano-pdf",
+      "peer-status"
+    ],
+    "peers": [
+      "ceo",
+      "product",
+      "writer",
+      "analyst",
+      "designer",
+      "brand-director",
+      "content-ops",
+      "pr-specialist",
+      "growth-ops"
+    ]
   }
 }

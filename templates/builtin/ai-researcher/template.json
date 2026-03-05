@@ -7,7 +7,17 @@
   "group": "research",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["summarize", "session-logs", "nano-pdf", "github"],
-    "peers": ["chief-scientist", "innovation-analyst", "backend"]
+    "skills": [
+      "summarize",
+      "session-logs",
+      "nano-pdf",
+      "github",
+      "peer-status"
+    ],
+    "peers": [
+      "chief-scientist",
+      "innovation-analyst",
+      "backend"
+    ]
   }
 }

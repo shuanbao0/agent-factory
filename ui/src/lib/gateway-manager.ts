@@ -3,8 +3,8 @@
  * Singleton: only one gateway process at a time.
  */
 import { spawn, ChildProcess } from 'child_process'
-import { resolve } from 'path'
-import { existsSync, readFileSync, copyFileSync } from 'fs'
+import { resolve, join } from 'path'
+import { existsSync, readFileSync, copyFileSync, readdirSync, writeFileSync } from 'fs'
 import net from 'net'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
@@ -116,6 +116,29 @@ export async function getStatus(): Promise<{ status: GatewayStatus; port: number
   return { status: currentStatus === 'error' ? 'error' : 'stopped', port: GW_PORT, error: lastError ?? undefined, hasKeys }
 }
 
+/** Ensure all existing agents have peer-status in their skills list */
+function ensureAgentsPeerStatus() {
+  const agentsDir = join(PROJECT_ROOT, 'agents')
+  if (!existsSync(agentsDir)) return
+  try {
+    const dirs = readdirSync(agentsDir).filter(d =>
+      existsSync(join(agentsDir, d, 'agent.json'))
+    )
+    for (const d of dirs) {
+      const fp = join(agentsDir, d, 'agent.json')
+      try {
+        const data = JSON.parse(readFileSync(fp, 'utf-8'))
+        const skills: string[] = data.skills || []
+        if (!skills.includes('peer-status')) {
+          data.skills = [...skills, 'peer-status']
+          data.updatedAt = new Date().toISOString()
+          writeFileSync(fp, JSON.stringify(data, null, 2) + '\n')
+        }
+      } catch { /* skip malformed agent.json */ }
+    }
+  } catch { /* skip if agents dir unreadable */ }
+}
+
 export async function startGateway(): Promise<{ ok: boolean; error?: string }> {
   if (await isPortOpen(GW_PORT)) {
     currentStatus = 'running'
@@ -134,6 +157,7 @@ export async function startGateway(): Promise<{ ok: boolean; error?: string }> {
   currentStatus = 'starting'
   lastError = null
   ensureConfig()
+  ensureAgentsPeerStatus()
 
   const envVars = loadEnv()
 

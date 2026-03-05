@@ -7,7 +7,17 @@
   "group": "finance",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["summarize", "session-logs", "document-pro"],
-    "peers": ["cfo", "accountant", "analyst", "growth-ops"]
+    "skills": [
+      "summarize",
+      "session-logs",
+      "document-pro",
+      "peer-status"
+    ],
+    "peers": [
+      "cfo",
+      "accountant",
+      "analyst",
+      "growth-ops"
+    ]
   }
 }

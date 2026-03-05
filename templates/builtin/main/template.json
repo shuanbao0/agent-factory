@@ -8,7 +8,9 @@
   "group": "dev",
   "defaults": {
     "model": "minimax/MiniMax-M2.5-highspeed",
-    "skills": [],
+    "skills": [
+      "peer-status"
+    ],
     "peers": []
   }
 }

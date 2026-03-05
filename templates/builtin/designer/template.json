@@ -7,7 +7,16 @@
   "group": "dev",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["peekaboo"],
-    "peers": ["product", "frontend", "marketing", "brand-director", "content-creator"]
+    "skills": [
+      "peekaboo",
+      "peer-status"
+    ],
+    "peers": [
+      "product",
+      "frontend",
+      "marketing",
+      "brand-director",
+      "content-creator"
+    ]
   }
 }

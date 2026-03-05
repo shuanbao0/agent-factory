@@ -265,7 +265,11 @@ export async function POST(req: NextRequest) {
 
     // Merge: user overrides take precedence over template defaults
     const finalModel = model || tmplDefaults.model || ''
-    const finalSkills = skills || tmplDefaults.skills || []
+    const mergedSkills = skills || tmplDefaults.skills || []
+    // Ensure peer-status is always included (required for cross-agent messaging)
+    const finalSkills = mergedSkills.includes('peer-status')
+      ? mergedSkills
+      : [...mergedSkills, 'peer-status']
     const finalPeers = peers || tmplDefaults.peers || []
     const finalDescription = description || ''
     const finalRole = templateId || id

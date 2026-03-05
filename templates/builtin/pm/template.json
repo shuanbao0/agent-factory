@@ -7,7 +7,23 @@
   "group": "dev",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["tmux", "github", "session-logs"],
-    "peers": ["ceo", "researcher", "product", "designer", "frontend", "backend", "tester", "writer", "presales", "csm"]
+    "skills": [
+      "tmux",
+      "github",
+      "session-logs",
+      "peer-status"
+    ],
+    "peers": [
+      "ceo",
+      "researcher",
+      "product",
+      "designer",
+      "frontend",
+      "backend",
+      "tester",
+      "writer",
+      "presales",
+      "csm"
+    ]
   }
 }

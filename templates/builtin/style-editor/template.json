@@ -7,7 +7,15 @@
   "group": "novel",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": ["summarize", "session-logs"],
-    "peers": ["novel-chief", "novel-writer", "character-designer"]
+    "skills": [
+      "summarize",
+      "session-logs",
+      "peer-status"
+    ],
+    "peers": [
+      "novel-chief",
+      "novel-writer",
+      "character-designer"
+    ]
   }
 }

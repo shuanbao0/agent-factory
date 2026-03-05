@@ -8,7 +8,9 @@
   "group": "dev",
   "defaults": {
     "model": "minimax-portal/MiniMax-M2.5",
-    "skills": [],
+    "skills": [
+      "peer-status"
+    ],
     "peers": []
   }
 }
