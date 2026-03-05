@@ -3,17 +3,23 @@
  * migrate-workspaces.mjs
  *
  * Migrates existing agents to the new workspace layout:
- * 1. Creates symlinks in workspaces/{id}/ → agents/{id}/ for definition files
+ * 1. Ensures workspaces/{id}/ exists for each agent (output directory)
  * 2. Moves output directories (e.g. agents/novel-chief/novel/) to workspaces/{id}/
- * 3. Updates config/openclaw.json workspace paths to workspaces/{id}
- * 4. Creates projects/novel/ and assigns all novel-department agents
+ * 3. Ensures config/openclaw.json workspace paths point to agents/{id}/ (definition dir)
+ * 4. Creates projects/{department}/ and assigns department agents
+ *
+ * Architecture:
+ *   agents/{id}/     = agent core (AGENTS.md, SOUL.md, memory, skills, agent.json)
+ *   workspaces/{id}/ = agent output (documents, code, etc.)
+ *   openclaw.json workspace → agents/{id}/ (gateway reads definitions from here)
+ *   base-rules.md instructs agents to write output to workspaces/{id}/
  *
  * Usage:
  *   node scripts/migrate-workspaces.mjs           # execute migration
  *   node scripts/migrate-workspaces.mjs --dry-run  # preview only
  */
 
-import { existsSync, readdirSync, mkdirSync, symlinkSync, renameSync, readFileSync, writeFileSync, lstatSync, statSync } from 'fs'
+import { existsSync, readdirSync, mkdirSync, renameSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -32,15 +38,12 @@ function log(msg) {
   console.log(DRY_RUN ? `[DRY-RUN] ${msg}` : msg)
 }
 
-// Definition files/dirs that should be symlinked (not moved)
-const SYMLINK_FILES = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'MEMORY.md', 'USER.md', 'HEARTBEAT.md', 'agent.json']
-const SYMLINK_DIRS = ['memory', 'skills']
-
-// Known definition entries (should NOT be moved as output)
-const DEFINITION_ENTRIES = new Set([
-  ...SYMLINK_FILES,
-  ...SYMLINK_DIRS,
-  'agents',  // agents subdir created by openclaw runtime
+// Agent core files/dirs — should NOT be moved to workspaces
+const CORE_ENTRIES = new Set([
+  'AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'MEMORY.md',
+  'USER.md', 'HEARTBEAT.md', 'agent.json',
+  'memory', 'skills',
+  'agents',  // openclaw runtime subdir
 ])
 
 function getAgentIds() {
@@ -56,50 +59,23 @@ function migrateAgent(agentId) {
 
   log(`\n── Migrating: ${agentId} ──`)
 
-  // 1. Ensure workspace dir exists
+  // 1. Ensure workspace output dir exists
   if (!existsSync(workspaceDir)) {
-    log(`  mkdir ${workspaceDir}`)
+    log(`  mkdir workspaces/${agentId}/`)
     if (!DRY_RUN) mkdirSync(workspaceDir, { recursive: true })
   }
 
-  // 2. Create symlinks for definition files
-  for (const f of SYMLINK_FILES) {
-    const target = join(agentDir, f)
-    const link = join(workspaceDir, f)
-    if (!existsSync(target)) continue
-    if (existsSync(link) || (lstatExistsSafe(link))) {
-      log(`  skip symlink ${f} (already exists)`)
-      continue
-    }
-    log(`  symlink ${f} → agents/${agentId}/${f}`)
-    if (!DRY_RUN) symlinkSync(target, link)
-  }
-
-  // 3. Create symlinks for definition directories
-  for (const d of SYMLINK_DIRS) {
-    const target = join(agentDir, d)
-    const link = join(workspaceDir, d)
-    if (!existsSync(target)) continue
-    if (existsSync(link) || lstatExistsSafe(link)) {
-      log(`  skip symlink ${d}/ (already exists)`)
-      continue
-    }
-    log(`  symlink ${d}/ → agents/${agentId}/${d}/`)
-    if (!DRY_RUN) symlinkSync(target, link)
-  }
-
-  // 4. Move output directories to workspace
+  // 2. Move non-core entries from agents/{id}/ to workspaces/{id}/
   const entries = readdirSync(agentDir, { withFileTypes: true })
   for (const entry of entries) {
-    if (DEFINITION_ENTRIES.has(entry.name)) continue
+    if (CORE_ENTRIES.has(entry.name)) continue
     if (entry.name.startsWith('.')) continue
 
-    // This is an output directory/file — move it
     const src = join(agentDir, entry.name)
     const dest = join(workspaceDir, entry.name)
 
     if (existsSync(dest)) {
-      log(`  skip move ${entry.name} (already exists in workspace)`)
+      log(`  skip ${entry.name} (already in workspaces/)`)
       continue
     }
 
@@ -108,138 +84,116 @@ function migrateAgent(agentId) {
   }
 }
 
-/** lstat that returns false instead of throwing for broken symlinks */
-function lstatExistsSafe(path) {
-  try {
-    lstatSync(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function updateOpenclawConfig(agentIds) {
+function ensureOpenclawConfig() {
   if (!existsSync(OPENCLAW_CONFIG)) {
-    log('\nNo openclaw.json found — skipping config update')
+    log('\nNo openclaw.json found — skipping')
     return
   }
 
-  log('\n── Updating config/openclaw.json ──')
+  log('\n── Checking config/openclaw.json ──')
   const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'))
   const list = config.agents?.list || []
   let changed = 0
 
   for (const entry of list) {
     if (!entry.id || !entry.workspace) continue
-    const expectedWorkspace = join(WORKSPACES_DIR, entry.id)
+    const expectedWorkspace = join(AGENTS_DIR, entry.id)
 
     if (entry.workspace !== expectedWorkspace) {
-      log(`  ${entry.id}: ${entry.workspace} → ${expectedWorkspace}`)
+      log(`  ${entry.id}: ${entry.workspace.split('agent-factory/')[1] || entry.workspace} → agents/${entry.id}`)
       entry.workspace = expectedWorkspace
       changed++
     } else {
-      log(`  ${entry.id}: already correct`)
+      log(`  ${entry.id}: OK`)
     }
   }
 
   if (changed > 0) {
-    log(`  Updated ${changed} workspace path(s)`)
+    log(`  Fixed ${changed} workspace path(s)`)
     if (!DRY_RUN) {
       writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n')
     }
   } else {
-    log(`  All workspace paths already correct`)
+    log(`  All paths correct`)
   }
 }
 
-function createNovelProject(agentIds) {
-  const novelAgents = agentIds.filter(id => {
+function ensureDepartmentProjects(agentIds) {
+  // Group agents by department
+  const departments = {}
+  for (const id of agentIds) {
     try {
       const agentJson = JSON.parse(readFileSync(join(AGENTS_DIR, id, 'agent.json'), 'utf-8'))
-      return agentJson.department === 'novel'
-    } catch {
-      return false
-    }
-  })
-
-  if (novelAgents.length === 0) {
-    log('\nNo novel-department agents found — skipping project creation')
-    return
+      const dept = agentJson.department
+      if (dept) {
+        if (!departments[dept]) departments[dept] = []
+        departments[dept].push(id)
+      }
+    } catch { /* skip */ }
   }
 
-  const projectDir = join(PROJECTS_DIR, 'novel')
-  log(`\n── Creating projects/novel/ (${novelAgents.length} agents) ──`)
+  for (const [dept, agents] of Object.entries(departments)) {
+    const projectDir = join(PROJECTS_DIR, dept)
+    log(`\n── Project: ${dept} (${agents.length} agents) ──`)
 
-  if (existsSync(projectDir)) {
-    // Update assignedAgents in existing meta
-    const metaPath = join(projectDir, '.project-meta.json')
-    if (existsSync(metaPath)) {
-      const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-      const existing = new Set(meta.assignedAgents || [])
-      let added = 0
-      for (const id of novelAgents) {
-        if (!existing.has(id)) {
-          existing.add(id)
-          added++
+    if (existsSync(projectDir)) {
+      const metaPath = join(projectDir, '.project-meta.json')
+      if (existsSync(metaPath)) {
+        const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+        const existing = new Set(meta.assignedAgents || [])
+        let added = 0
+        for (const id of agents) {
+          if (!existing.has(id)) { existing.add(id); added++ }
+        }
+        if (added > 0) {
+          meta.assignedAgents = [...existing]
+          log(`  Added ${added} agent(s)`)
+          if (!DRY_RUN) writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
+        } else {
+          log(`  All agents already assigned`)
         }
       }
-      if (added > 0) {
-        meta.assignedAgents = [...existing]
-        log(`  Added ${added} agents to existing project`)
-        if (!DRY_RUN) writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
-      } else {
-        log(`  All agents already assigned`)
+      continue
+    }
+
+    log(`  Creating project directory`)
+    if (!DRY_RUN) {
+      for (const sub of ['docs', 'design', 'src', 'tests']) {
+        mkdirSync(join(projectDir, sub), { recursive: true })
       }
-    }
-    return
-  }
 
-  log(`  Creating directory structure`)
-  if (!DRY_RUN) {
-    for (const sub of ['docs', 'design', 'src', 'tests']) {
-      mkdirSync(join(projectDir, sub), { recursive: true })
-    }
-  }
+      const now = new Date().toISOString()
+      writeFileSync(join(projectDir, '.project-meta.json'), JSON.stringify({
+        name: dept,
+        description: `Project for ${dept} department`,
+        status: 'planning',
+        currentPhase: 1,
+        totalPhases: 5,
+        createdAt: now,
+        tokensUsed: 0,
+        tasks: [],
+        assignedAgents: agents,
+      }, null, 2) + '\n')
 
-  const now = new Date().toISOString()
-  const meta = {
-    name: 'novel',
-    description: 'Novel writing project — all novel-department agents',
-    status: 'planning',
-    currentPhase: 1,
-    totalPhases: 5,
-    createdAt: now,
-    tokensUsed: 0,
-    tasks: [],
-    assignedAgents: novelAgents,
-  }
+      writeFileSync(join(projectDir, 'BRIEF.md'), `# Project Brief: ${dept}
 
-  log(`  Writing .project-meta.json with agents: ${novelAgents.join(', ')}`)
-  if (!DRY_RUN) {
-    writeFileSync(join(projectDir, '.project-meta.json'), JSON.stringify(meta, null, 2) + '\n')
-  }
-
-  const brief = `# Project Brief: Novel
-
-**Project ID:** novel
+**Project ID:** ${dept}
 **Created:** ${now}
-**Description:** Novel writing project — all novel-department agents
+**Description:** Project for ${dept} department
 
 ## Shared Workspace
 
-This project's shared workspace is at:
 \`${projectDir}\`
 
 ## Directory Conventions
 
-- \`docs/\` — All written documents: outlines, character bibles, world-building notes
-- \`design/\` — Story structure designs, chapter plans
-- \`src/\` — Manuscript chapters and drafts
-- \`tests/\` — Continuity checks, style reviews, reader feedback
-`
-  log(`  Writing BRIEF.md`)
-  if (!DRY_RUN) {
-    writeFileSync(join(projectDir, 'BRIEF.md'), brief)
+- \`docs/\` — Documents, outlines, research
+- \`design/\` — Designs, plans, structure
+- \`src/\` — Source content and drafts
+- \`tests/\` — Reviews, checks, feedback
+`)
+    }
+    log(`  Assigned: ${agents.join(', ')}`)
   }
 }
 
@@ -247,27 +201,19 @@ This project's shared workspace is at:
 
 console.log(`\n${'='.repeat(60)}`)
 console.log(`  Agent Factory — Workspace Migration`)
-console.log(`  ${DRY_RUN ? '🔍 DRY RUN MODE (no changes will be made)' : '🚀 EXECUTING MIGRATION'}`)
+console.log(`  ${DRY_RUN ? '🔍 DRY RUN (no changes)' : '🚀 EXECUTING'}`)
 console.log(`${'='.repeat(60)}`)
 
 const agentIds = getAgentIds()
 console.log(`\nFound ${agentIds.length} agent(s): ${agentIds.join(', ')}`)
 
-// Step 1: Migrate each agent
 for (const id of agentIds) {
   migrateAgent(id)
 }
 
-// Step 2: Update openclaw.json
-updateOpenclawConfig(agentIds)
-
-// Step 3: Create novel project
-createNovelProject(agentIds)
+ensureOpenclawConfig()
+ensureDepartmentProjects(agentIds)
 
 console.log(`\n${'='.repeat(60)}`)
-if (DRY_RUN) {
-  console.log(`  Dry run complete. Run without --dry-run to execute.`)
-} else {
-  console.log(`  Migration complete! Restart Gateway to apply changes.`)
-}
+console.log(DRY_RUN ? `  Dry run complete. Run without --dry-run to execute.` : `  Done! Restart Gateway to apply.`)
 console.log(`${'='.repeat(60)}\n`)

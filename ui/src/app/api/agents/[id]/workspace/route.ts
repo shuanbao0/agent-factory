@@ -36,10 +36,10 @@ function stripBaseRulesFromContent(fileName: string, content: string): string {
 export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
+const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 function getWorkspaceDir(id: string) {
-  return join(WORKSPACES_DIR, id)
+  return join(AGENTS_DIR, id)
 }
 
 /** Ensure resolved path is inside workspace dir (prevent path traversal) */

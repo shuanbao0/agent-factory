@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readTemplate, getTemplateDir } from '@/lib/template-meta'
 import { fetchAgentsData } from '@/lib/data-fetchers'
 import { injectBaseRulesForAgent } from '@/lib/base-rules'
-import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, renameSync, symlinkSync, lstatSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, renameSync } from 'fs'
 import { join, resolve } from 'path'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
 
@@ -442,30 +442,11 @@ export async function POST(req: NextRequest) {
     // 5. Inject global base rules into AGENTS.md and SOUL.md
     injectBaseRulesForAgent(agentDir)
 
-    // 6. Create workspaces/{id}/ directory with symlinks to agents/{id}/
-    const workspaceDir = join(PROJECT_ROOT, 'workspaces', id)
-    mkdirSync(workspaceDir, { recursive: true })
+    // 6. Create workspaces/{id}/ directory (for agent output)
+    mkdirSync(join(PROJECT_ROOT, 'workspaces', id), { recursive: true })
 
-    // Create symlinks: workspace files → agent definition files
-    const symlinkFiles = ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'MEMORY.md', 'USER.md', 'HEARTBEAT.md', 'agent.json']
-    const symlinkDirs = ['memory', 'skills']
-    for (const f of symlinkFiles) {
-      const target = join(agentDir, f)
-      const link = join(workspaceDir, f)
-      if (existsSync(target) && !existsSync(link)) {
-        symlinkSync(target, link)
-      }
-    }
-    for (const d of symlinkDirs) {
-      const target = join(agentDir, d)
-      const link = join(workspaceDir, d)
-      if (existsSync(target) && !existsSync(link)) {
-        symlinkSync(target, link)
-      }
-    }
-
-    // 7. Add to openclaw.json (workspace = workspaces/{id})
-    addToOpenclawConfig(id, workspaceDir, finalModel)
+    // 7. Add to openclaw.json (workspace = agents/{id})
+    addToOpenclawConfig(id, agentDir, finalModel)
 
     // 8. Auto-create project for department
     if (finalDepartment) {
@@ -539,7 +520,7 @@ export async function PUT(req: NextRequest) {
 
     // Update openclaw.json and restart if model changed
     if (model !== undefined) {
-      addToOpenclawConfig(id, join(PROJECT_ROOT, 'workspaces', id), (agentJson.model as string) || '')
+      addToOpenclawConfig(id, agentDir, (agentJson.model as string) || '')
       await tryRestartGateway()
     }
 

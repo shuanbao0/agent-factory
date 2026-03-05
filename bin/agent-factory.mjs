@@ -309,7 +309,14 @@ async function cmdUpdate() {
     console.log(c.yellow('Migration check skipped: ' + e.message));
   }
 
-  // 6. Done
+  // 6. Re-inject base-rules into all agents
+  const injectScript = resolve(ROOT, 'scripts/inject-base-rules.mjs');
+  if (existsSync(injectScript)) {
+    console.log('Re-injecting base-rules...');
+    execSync(`node "${injectScript}"`, { cwd: ROOT, stdio: 'inherit' });
+  }
+
+  // 7. Done
   const newVersion = readVersion();
   console.log('');
   console.log(c.green(`Updated to v${newVersion} successfully!`));
