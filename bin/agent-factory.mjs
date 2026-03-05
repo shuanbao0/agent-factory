@@ -272,9 +272,11 @@ async function cmdUpdate() {
     process.exit(1);
   }
 
-  // Preserve user data directories
-  const preserveDirs = ['agents', 'workspaces', 'projects', 'config', 'templates/custom', '.openclaw-state'];
-  const preserveFiles = ['.env'];
+  // Preserve user data directories (config/ is partially preserved — see mergeConfig below)
+  const preserveDirs = ['agents', 'workspaces', 'projects', 'templates/custom', '.openclaw-state'];
+  const preserveFiles = ['.env', 'config/openclaw.json', 'config/models.json', 'config/autopilot-state.json'];
+  // Note: config/departments.json and config/base-rules.md are intentionally NOT preserved
+  // — they get overwritten with new versions, then departments.json is merged below
 
   // Copy new files over, skipping preserved dirs/files
   console.log('Applying update...');
@@ -296,6 +298,46 @@ async function cmdUpdate() {
     for (const entry of entries) {
       if (skipSet.has(entry)) continue;
       execSync(`cp -R "${resolve(tmpDir, entry)}" "${ROOT}/"`, { stdio: 'inherit' });
+    }
+  }
+
+  // Merge departments.json: keep user-added departments, add new builtin ones
+  try {
+    const deptFile = resolve(ROOT, 'config/departments.json');
+    if (existsSync(deptFile)) {
+      const currentDepts = JSON.parse(readFileSync(deptFile, 'utf-8'));
+      const newDeptFile = resolve(tmpDir, 'config/departments.json');
+      if (existsSync(newDeptFile)) {
+        const newDepts = JSON.parse(readFileSync(newDeptFile, 'utf-8'));
+        const currentIds = new Set(currentDepts.departments.map(d => d.id));
+        let added = 0;
+        for (const dept of newDepts.departments) {
+          if (!currentIds.has(dept.id)) {
+            currentDepts.departments.push(dept);
+            added++;
+            console.log(c.green(`  + department: ${dept.name} (${dept.id})`));
+          }
+        }
+        if (added > 0) {
+          writeFileSync(deptFile, JSON.stringify(currentDepts, null, 2) + '\n');
+          console.log(`Merged ${added} new department(s) into departments.json`);
+        }
+      }
+    }
+  } catch (e) {
+    console.log(c.yellow('Department merge skipped: ' + e.message));
+  }
+
+  // Preserve config/departments/ subdirectories (autopilot state)
+  const deptConfigSrc = resolve(tmpDir, 'config/departments');
+  const deptConfigDst = resolve(ROOT, 'config/departments');
+  if (existsSync(deptConfigSrc)) {
+    mkdirSync(deptConfigDst, { recursive: true });
+    // Only copy new department configs, don't overwrite existing
+    for (const entry of readdirSync(deptConfigSrc, { withFileTypes: true })) {
+      if (entry.isDirectory() && !existsSync(resolve(deptConfigDst, entry.name))) {
+        execSync(`cp -R "${resolve(deptConfigSrc, entry.name)}" "${deptConfigDst}/"`, { stdio: 'inherit' });
+      }
     }
   }
 
