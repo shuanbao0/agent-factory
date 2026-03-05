@@ -89,12 +89,24 @@ function checkPort(port) {
 }
 
 function findPidOnPort(port) {
+  // Try lsof first (macOS + some Linux)
   try {
     const output = execSync(`lsof -ti:${port}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
-    return output.trim().split('\n').filter(Boolean);
-  } catch {
-    return [];
-  }
+    const pids = output.trim().split('\n').filter(Boolean);
+    if (pids.length > 0) return pids;
+  } catch { /* lsof not available or no results */ }
+
+  // Fallback: ss (Linux)
+  try {
+    const output = execSync(`ss -tlnp sport = :${port}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const pids = [];
+    for (const match of output.matchAll(/pid=(\d+)/g)) {
+      pids.push(match[1]);
+    }
+    return pids;
+  } catch { /* ss not available */ }
+
+  return [];
 }
 
 function killPort(port) {

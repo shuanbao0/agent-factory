@@ -83,9 +83,19 @@ function isPortInUse(port) {
 }
 
 function killPort(port) {
+  // Try lsof (macOS + some Linux)
   try {
     execSync(`lsof -ti:${port} | xargs kill 2>/dev/null`, { stdio: 'ignore' });
-  } catch { /* no process on port */ }
+    return;
+  } catch { /* lsof not available */ }
+
+  // Fallback: ss (Linux)
+  try {
+    const output = execSync(`ss -tlnp sport = :${port}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    for (const match of output.matchAll(/pid=(\d+)/g)) {
+      try { process.kill(Number(match[1]), 'SIGTERM'); } catch { /* already dead */ }
+    }
+  } catch { /* ss not available */ }
 }
 
 function waitForPort(host, port, timeoutMs = 30000) {
