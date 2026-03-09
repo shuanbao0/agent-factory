@@ -8,6 +8,32 @@
     "cost-analyst",
     "accountant"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Finance",
+  "emoji": "💰",
+  "order": 2,
+  "floorColor": {
+    "h": 45,
+    "s": 35,
+    "b": 12,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "bookshelf",
+      "count": 1
+    },
+    {
+      "type": "plant",
+      "count": 1
+    }
+  ]
 }

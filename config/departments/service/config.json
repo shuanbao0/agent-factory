@@ -9,6 +9,32 @@
     "support-agent",
     "csm"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Customer Service",
+  "emoji": "🎧",
+  "order": 4,
+  "floorColor": {
+    "h": 170,
+    "s": 25,
+    "b": 12,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "plant",
+      "count": 2
+    },
+    {
+      "type": "cooler",
+      "count": 1
+    }
+  ]
 }

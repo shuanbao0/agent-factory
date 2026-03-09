@@ -9,6 +9,32 @@
     "legal-director",
     "compliance-officer"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Legal & Compliance",
+  "emoji": "⚖️",
+  "order": 6,
+  "floorColor": {
+    "h": 260,
+    "s": 20,
+    "b": 12,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "bookshelf",
+      "count": 2
+    },
+    {
+      "type": "lamp",
+      "count": 1
+    }
+  ]
 }

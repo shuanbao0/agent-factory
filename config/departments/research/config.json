@@ -9,6 +9,36 @@
     "chief-scientist",
     "innovation-analyst"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Research Lab",
+  "emoji": "🔬",
+  "order": 7,
+  "floorColor": {
+    "h": 190,
+    "s": 35,
+    "b": 10,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "bookshelf",
+      "count": 2
+    },
+    {
+      "type": "whiteboard",
+      "count": 1
+    },
+    {
+      "type": "plant",
+      "count": 1
+    }
+  ]
 }

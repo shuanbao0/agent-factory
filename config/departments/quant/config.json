@@ -14,6 +14,40 @@
     "quant-researcher",
     "quant-developer"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Crypto Quant Trading",
+  "emoji": "📈",
+  "order": 10,
+  "floorColor": {
+    "h": 140,
+    "s": 35,
+    "b": 12,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 4
+    },
+    {
+      "type": "whiteboard",
+      "count": 2
+    },
+    {
+      "type": "bookshelf",
+      "count": 1
+    },
+    {
+      "type": "lamp",
+      "count": 3
+    },
+    {
+      "type": "plant",
+      "count": 1
+    }
+  ]
 }

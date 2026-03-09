@@ -30,6 +30,7 @@ agent-factory/
 │   ├── autopilot.cjs      # Autopilot 循环脚本
 │   ├── inject-base-rules.mjs # 重新注入 base-rules 到所有 Agent
 │   ├── migrate-sync-builtin.mjs # 统一同步内置模板到已有 Agent（peers/skills/AGENTS.md/SOUL.md/IDENTITY.md）
+│   ├── migrate-sync-config.mjs # 智能同步 config/ 下的部门配置和预算文件
 │   ├── migrate-workspaces.mjs # 工作空间迁移（产出从 agents/ 移到 workspaces/）
 │   └── migrate-to-templates.mjs
 ├── skills/                # 共享技能（project-init、wechat-mp-cn）
@@ -341,6 +342,11 @@ node scripts/inject-base-rules.mjs
 # 工作空间迁移（将 agents/ 中的产出移到 workspaces/，修正 openclaw.json 路径）
 node scripts/migrate-workspaces.mjs --dry-run   # 预览
 node scripts/migrate-workspaces.mjs             # 执行
+
+# 同步部门配置（update 后自动执行，也可手动运行）
+node scripts/migrate-sync-config.mjs --dry-run   # 预览
+node scripts/migrate-sync-config.mjs             # 同步所有部门
+node scripts/migrate-sync-config.mjs novel        # 同步单个部门
 
 # 升级（用户端）
 agent-factory update

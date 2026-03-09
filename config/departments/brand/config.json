@@ -9,6 +9,32 @@
     "content-creator",
     "pr-specialist"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Brand & PR",
+  "emoji": "📢",
+  "order": 8,
+  "floorColor": {
+    "h": 330,
+    "s": 25,
+    "b": 14,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "plant",
+      "count": 1
+    },
+    {
+      "type": "lamp",
+      "count": 2
+    }
+  ]
 }

@@ -9,6 +9,36 @@
     "sales-director",
     "presales"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Sales",
+  "emoji": "💼",
+  "order": 3,
+  "floorColor": {
+    "h": 210,
+    "s": 30,
+    "b": 15,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "whiteboard",
+      "count": 1
+    },
+    {
+      "type": "plant",
+      "count": 1
+    },
+    {
+      "type": "cooler",
+      "count": 1
+    }
+  ]
 }

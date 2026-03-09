@@ -21,8 +21,48 @@
     "alertThreshold": 0.8
   },
   "kpis": {
-    "chapters_per_day": { "target": 5, "unit": "chapters" },
-    "quality_score": { "target": 75, "unit": "score/100" },
-    "completion_rate": { "target": 80, "unit": "%" }
-  }
+    "chapters_per_day": {
+      "target": 5,
+      "unit": "chapters"
+    },
+    "quality_score": {
+      "target": 75,
+      "unit": "score/100"
+    },
+    "completion_rate": {
+      "target": 80,
+      "unit": "%"
+    }
+  },
+  "nameEn": "Novel Writing",
+  "emoji": "📚",
+  "order": 1,
+  "floorColor": {
+    "h": 68,
+    "s": 45,
+    "b": 5,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 4
+    },
+    {
+      "type": "bookshelf",
+      "count": 2
+    },
+    {
+      "type": "plant",
+      "count": 1
+    },
+    {
+      "type": "lamp",
+      "count": 2
+    },
+    {
+      "type": "meeting_table",
+      "count": 1
+    }
+  ]
 }

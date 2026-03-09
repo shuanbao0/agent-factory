@@ -14,6 +14,40 @@
     "storyboard-artist",
     "anime-char-designer"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Anime Production",
+  "emoji": "🎬",
+  "order": 9,
+  "floorColor": {
+    "h": 280,
+    "s": 30,
+    "b": 14,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 4
+    },
+    {
+      "type": "whiteboard",
+      "count": 1
+    },
+    {
+      "type": "bookshelf",
+      "count": 1
+    },
+    {
+      "type": "lamp",
+      "count": 2
+    },
+    {
+      "type": "plant",
+      "count": 1
+    }
+  ]
 }

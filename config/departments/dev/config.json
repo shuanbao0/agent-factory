@@ -17,6 +17,40 @@
     "backend",
     "writer"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Software Development",
+  "emoji": "💻",
+  "order": 0,
+  "floorColor": {
+    "h": 35,
+    "s": 30,
+    "b": 15,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 4
+    },
+    {
+      "type": "bookshelf",
+      "count": 1
+    },
+    {
+      "type": "plant",
+      "count": 2
+    },
+    {
+      "type": "whiteboard",
+      "count": 1
+    },
+    {
+      "type": "cooler",
+      "count": 1
+    }
+  ]
 }

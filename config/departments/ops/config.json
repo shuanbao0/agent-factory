@@ -8,6 +8,36 @@
     "content-ops",
     "growth-ops"
   ],
-  "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
-  "kpis": {}
+  "budget": {
+    "dailyTokenLimit": 500000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {},
+  "nameEn": "Operations",
+  "emoji": "🔧",
+  "order": 5,
+  "floorColor": {
+    "h": 15,
+    "s": 30,
+    "b": 14,
+    "c": 0
+  },
+  "furniture": [
+    {
+      "type": "desk",
+      "count": 3
+    },
+    {
+      "type": "whiteboard",
+      "count": 1
+    },
+    {
+      "type": "plant",
+      "count": 1
+    },
+    {
+      "type": "lamp",
+      "count": 1
+    }
+  ]
 }
