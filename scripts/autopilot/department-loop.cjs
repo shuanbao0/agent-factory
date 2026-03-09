@@ -165,7 +165,7 @@ if (require.main === module) {
     // Store PID
     const state = loadDeptState(deptId)
     state.pid = process.pid
-    state.status = isLoop ? 'running' : 'cycling'
+    state.status = isLoop ? 'running' : 'idle'
     saveDeptState(deptId, state)
 
     console.log(`🏭 Department ${deptId} ${isLoop ? 'loop' : 'single cycle'} mode (PID: ${process.pid})`)
