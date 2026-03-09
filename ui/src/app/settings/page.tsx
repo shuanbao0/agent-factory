@@ -789,6 +789,145 @@ function OpenClawUpdateCard() {
   )
 }
 
+// Platform (Agent Factory) Update Card
+function PlatformUpdateCard() {
+  const { t } = useTranslation()
+  const [current, setCurrent] = useState<string>('—')
+  const [latest, setLatest] = useState<string>('—')
+  const [hasUpdate, setHasUpdate] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [checkedAt, setCheckedAt] = useState<string | null>(null)
+  const [updateResult, setUpdateResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const checkUpdate = useCallback(async () => {
+    setChecking(true)
+    setUpdateResult(null)
+    try {
+      const res = await fetch('/api/platform/update')
+      const data = await res.json()
+      setCurrent(data.current)
+      setLatest(data.latest)
+      setHasUpdate(data.hasUpdate)
+      setCheckedAt(data.checkedAt)
+    } catch {
+      setUpdateResult({ ok: false, message: t('settings.updateFailed') })
+    } finally {
+      setChecking(false)
+    }
+  }, [t])
+
+  useEffect(() => { checkUpdate() }, [checkUpdate])
+
+  const doUpdate = async () => {
+    setUpdating(true)
+    setUpdateResult(null)
+    try {
+      const res = await fetch('/api/platform/update', { method: 'POST' })
+      const data = await res.json()
+      if (data.ok) {
+        setUpdateResult({
+          ok: true,
+          message: data.updated
+            ? `${t('settings.updateSuccess')}: v${data.previousVersion} → v${data.currentVersion}`
+            : t('settings.upToDate'),
+        })
+        if (data.updated) {
+          setCurrent(data.currentVersion)
+          setHasUpdate(false)
+        }
+      } else {
+        setUpdateResult({ ok: false, message: data.error || t('settings.updateFailed') })
+      }
+    } catch (e: any) {
+      setUpdateResult({ ok: false, message: e.message || t('settings.updateFailed') })
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ArrowUpCircle className="w-4 h-4" /> {t('settings.platformUpdate')}
+            </CardTitle>
+            <CardDescription>{t('settings.platformUpdateDesc')}</CardDescription>
+          </div>
+          {hasUpdate ? (
+            <Badge variant="default" className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+              <ArrowUpCircle className="w-3 h-3 mr-1" /> {t('settings.updateAvailable')}
+            </Badge>
+          ) : current !== '—' && (
+            <Badge variant="success">
+              <CheckCircle2 className="w-3 h-3 mr-1" /> {t('settings.upToDate')}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Version info */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="px-4 py-3 rounded-lg bg-muted/50">
+            <p className="text-xs text-muted-foreground mb-1">{t('settings.currentVersion')}</p>
+            <p className="text-sm font-mono font-semibold">v{current}</p>
+          </div>
+          <div className="px-4 py-3 rounded-lg bg-muted/50">
+            <p className="text-xs text-muted-foreground mb-1">{t('settings.latestVersion')}</p>
+            <p className="text-sm font-mono font-semibold">v{latest}</p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={checkUpdate}
+            disabled={checking || updating}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted disabled:opacity-50"
+          >
+            {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            {checking ? t('settings.checking') : t('settings.checkUpdate')}
+          </button>
+          {hasUpdate && (
+            <button
+              onClick={doUpdate}
+              disabled={updating}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+            >
+              {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {updating ? t('settings.updating') : t('settings.doUpdate')}
+            </button>
+          )}
+        </div>
+
+        {/* Result message */}
+        {updateResult && (
+          <div className={`flex items-start gap-2 p-3 rounded-lg border ${
+            updateResult.ok
+              ? 'bg-emerald-500/10 border-emerald-500/30'
+              : 'bg-destructive/10 border-destructive/30'
+          }`}>
+            {updateResult.ok
+              ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              : <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            }
+            <p className="text-sm">{updateResult.message}</p>
+          </div>
+        )}
+
+        {/* Last checked */}
+        {checkedAt && (
+          <p className="text-xs text-muted-foreground">
+            Last checked: {new Date(checkedAt).toLocaleString()}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── OpenClaw Tools Tab ──────────────────────────────────────────────
 type SettingsTab = 'general' | 'providers' | 'tools'
 
@@ -1669,6 +1808,7 @@ export default function SettingsPage() {
       {tab === 'general' && (
         <>
           <GatewayControl />
+          <PlatformUpdateCard />
           <OpenClawUpdateCard />
 
           {/* Language */}

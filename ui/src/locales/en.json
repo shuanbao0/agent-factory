@@ -282,6 +282,8 @@
     "comingSoon": "Coming soon — use API Key for now",
     "language": "Language",
     "languageDesc": "Select interface language",
+    "platformUpdate": "Agent Factory Update",
+    "platformUpdateDesc": "Check and update the Agent Factory platform (code, config, migrations)",
     "openclawUpdate": "OpenClaw Update",
     "openclawUpdateDesc": "Check and update the built-in OpenClaw engine",
     "currentVersion": "Current Version",

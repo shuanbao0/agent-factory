@@ -282,6 +282,8 @@
     "comingSoon": "即将支持 — 请先使用 API Key",
     "language": "语言",
     "languageDesc": "选择界面显示语言",
+    "platformUpdate": "Agent Factory 更新",
+    "platformUpdateDesc": "检查并更新 Agent Factory 平台（含代码、配置、迁移脚本）",
     "openclawUpdate": "OpenClaw 更新",
     "openclawUpdateDesc": "检查并更新内置 OpenClaw 引擎",
     "currentVersion": "当前版本",
