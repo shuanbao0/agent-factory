@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react'
 export interface DeptInfo {
   id: string
   name: string
+  emoji?: string
   head: string
   enabled: boolean
   interval: number

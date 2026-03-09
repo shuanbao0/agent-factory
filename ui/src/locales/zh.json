@@ -424,6 +424,7 @@
       "cycleTip": "手动触发一次部门循环，部门主管（{head}）执行一轮任务调度后停止",
       "report": "报告",
       "reportTip": "查看部门主管最近提交的工作报告",
+      "detailTip": "查看部门详情",
       "head": "负责人",
       "ceoDirectives": "CEO 指令",
       "clearAll": "清除所有指令",

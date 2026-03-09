@@ -58,8 +58,8 @@ function atomicWriteSync(filePath: string, data: string) {
   renameSync(tmpPath, filePath)
 }
 
-function loadDepartments(): Array<{ id: string; name: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> {
-  const results: Array<{ id: string; name: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> = []
+function loadDepartments(): Array<{ id: string; name: string; emoji?: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> {
+  const results: Array<{ id: string; name: string; emoji?: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> = []
   if (!existsSync(DEPARTMENTS_DIR)) return results
   try {
     const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
@@ -95,6 +95,7 @@ function loadDepartments(): Array<{ id: string; name: string; head: string; enab
         results.push({
           id: config.id || dir.name,
           name: config.name || dir.name,
+          emoji: config.emoji || '',
           head: config.head || '',
           enabled: config.enabled || false,
           interval: config.interval || 600,

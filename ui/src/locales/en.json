@@ -424,6 +424,7 @@
       "cycleTip": "Manually trigger one department cycle. The head ({head}) runs one round of task scheduling then stops",
       "report": "Report",
       "reportTip": "View the latest work report submitted by the department head",
+      "detailTip": "View department details",
       "head": "head",
       "ceoDirectives": "CEO Directives",
       "clearAll": "Clear all directives",
