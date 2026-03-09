@@ -229,7 +229,7 @@ function main() {
     // Chat events (sync mode only)
     if (f.type === 'event' && f.event === 'chat') {
       const p = f.payload
-      if (!p || p.runId !== idempotencyKey) return
+      if (!p || (p.runId !== idempotencyKey && p.sessionKey !== sessionKey)) return
 
       if (p.state === 'delta') {
         const text = p.message?.content

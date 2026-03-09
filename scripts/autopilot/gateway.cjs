@@ -114,7 +114,7 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
 
       if (f.type === 'event' && f.event === 'chat') {
         const p = f.payload
-        if (!p || p.runId !== runId) return
+        if (!p || (p.runId !== runId && p.sessionKey !== sessionKey)) return
 
         if (p.state === 'delta') {
           const text = p.message?.content

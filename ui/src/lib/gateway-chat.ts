@@ -133,6 +133,7 @@ export async function sendChatMessage(
     let fullText = ''
     let timer: NodeJS.Timeout | null = null
     let resolved = false
+    let runId = idempotencyKey
 
     // 超时处理
     timer = setTimeout(() => {
@@ -231,6 +232,13 @@ export async function sendChatMessage(
             })
             return
           }
+
+          // chat.send ack — adopt server-assigned runId
+          if (res.ok && connected) {
+            const ackRunId = (res.payload as Record<string, unknown>)?.runId
+            if (ackRunId && typeof ackRunId === 'string') runId = ackRunId
+            return
+          }
         }
 
         // ── 处理 connect.challenge event ───────────────────
@@ -242,7 +250,7 @@ export async function sendChatMessage(
         // ── 处理 chat event（核心：delta/final/error）──────
         if (frame.type === 'event' && frame.event === 'chat') {
           const payload = frame.payload as ChatEventPayload
-          if (!payload || payload.runId !== idempotencyKey) return
+          if (!payload || (payload.runId !== runId && payload.sessionKey !== sessionKey)) return
 
           switch (payload.state) {
             case 'delta': {

@@ -106,6 +106,7 @@ ws.on('message', (data) => {
   }
 
   if (f.type === 'res' && f.id === 's' && f.ok) {
+    console.error('[chat-debug] chat.send ack:', JSON.stringify(f.payload))
     if (f.payload?.runId) runId = f.payload.runId
     return
   }
@@ -118,7 +119,20 @@ ws.on('message', (data) => {
 
   if (f.type === 'event' && f.event === 'chat') {
     const p = f.payload
-    if (!p || p.runId !== runId) return
+    if (p) {
+      console.error('[chat-debug]', JSON.stringify({
+        runId: p.runId,
+        expectedRunId: runId,
+        sessionKey: p.sessionKey,
+        expectedSessionKey: sessionKey,
+        state: p.state,
+        hasMessage: !!p.message,
+        hasContent: !!p.message?.content,
+        contentLength: p.message?.content?.length,
+        text: p.message?.content?.[0]?.text?.slice(0, 80),
+      }))
+    }
+    if (!p || (p.runId !== runId && p.sessionKey !== sessionKey)) return
 
     if (p.state === 'delta') {
       const text = p.message?.content
