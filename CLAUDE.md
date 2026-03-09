@@ -272,7 +272,7 @@ Gateway 核心配置，包含：模型定义、Agent 列表、端口、认证 To
 
 模型别名映射，定义各 Provider 下的模型 ID。当前配置：
 - Anthropic：opus (claude-opus-4-6)、sonnet (claude-sonnet-4-6)、haiku
-- MiniMax：M2.5、M2.1（通过 minimax-portal）
+- MiniMax：M2.5、M2.1（通过 minimax）
 
 ### Agent 模板（`templates/builtin/{id}/template.json`）
 
@@ -284,7 +284,7 @@ Gateway 核心配置，包含：模型定义、Agent 列表、端口、认证 To
   "emoji": "📋",
   "category": "builtin",
   "defaults": {
-    "model": "minimax-portal/MiniMax-M2.5",
+    "model": "minimax/MiniMax-M2.5",
     "skills": ["tmux", "github", "session-logs"],
     "peers": ["ceo", "researcher", "..."]
   }
