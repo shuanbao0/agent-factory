@@ -1,0 +1,21 @@
+{
+  "id": "code-instructor",
+  "name": "Code Instructor",
+  "description": "代码讲师，负责编写可运行代码示例、练习题和 Demo",
+  "emoji": "💻",
+  "category": "builtin",
+  "group": "tutorial",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "summarize",
+      "session-logs",
+      "peer-status"
+    ],
+    "peers": [
+      "tutorial-chief",
+      "tutorial-writer",
+      "tutorial-reviewer"
+    ]
+  }
+}

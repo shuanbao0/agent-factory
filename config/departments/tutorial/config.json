@@ -1,0 +1,155 @@
+{
+  "id": "tutorial",
+  "name": "教程创作部",
+  "head": "tutorial-chief",
+  "interval": 600,
+  "enabled": true,
+  "agents": [
+    "tutorial-chief",
+    "tutorial-writer",
+    "tutorial-researcher",
+    "tutorial-reviewer",
+    "code-instructor",
+    "visual-editor"
+  ],
+  "budget": {
+    "dailyTokenLimit": 600000,
+    "alertThreshold": 0.8
+  },
+  "kpis": {
+    "tutorials_per_week": {
+      "target": 3,
+      "unit": "tutorials"
+    },
+    "quality_score": {
+      "target": 80,
+      "unit": "score/100"
+    },
+    "completion_rate": {
+      "target": 85,
+      "unit": "%"
+    }
+  },
+  "nameEn": "Tutorial Production",
+  "emoji": "🎓",
+  "order": 11,
+  "floorColor": { "h": 200, "s": 35, "b": 14, "c": 0 },
+  "furniture": [
+    { "type": "desk", "count": 3 },
+    { "type": "bookshelf", "count": 2 },
+    { "type": "whiteboard", "count": 1 },
+    { "type": "plant", "count": 1 },
+    { "type": "lamp", "count": 2 }
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "topic",
+        "labelZh": "选题规划",
+        "labelEn": "Topic Planning"
+      },
+      {
+        "key": "research",
+        "labelZh": "调研",
+        "labelEn": "Research"
+      },
+      {
+        "key": "outline",
+        "labelZh": "大纲",
+        "labelEn": "Outline"
+      },
+      {
+        "key": "writing",
+        "labelZh": "写作",
+        "labelEn": "Writing"
+      },
+      {
+        "key": "visual",
+        "labelZh": "视觉",
+        "labelEn": "Visual"
+      },
+      {
+        "key": "review",
+        "labelZh": "审校",
+        "labelEn": "Review"
+      },
+      {
+        "key": "publishing",
+        "labelZh": "发布",
+        "labelEn": "Publishing"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "writing",
+        "labelZh": "写作",
+        "labelEn": "Writing",
+        "color": "emerald"
+      },
+      {
+        "value": "research",
+        "labelZh": "调研",
+        "labelEn": "Research",
+        "color": "blue"
+      },
+      {
+        "value": "code",
+        "labelZh": "代码",
+        "labelEn": "Code",
+        "color": "cyan"
+      },
+      {
+        "value": "visual",
+        "labelZh": "视觉",
+        "labelEn": "Visual",
+        "color": "violet"
+      },
+      {
+        "value": "review",
+        "labelZh": "审校",
+        "labelEn": "Review",
+        "color": "pink"
+      },
+      {
+        "value": "planning",
+        "labelZh": "规划",
+        "labelEn": "Planning",
+        "color": "orange"
+      }
+    ],
+    "directories": [
+      "research",
+      "outline",
+      "content",
+      "code",
+      "assets",
+      "review"
+    ],
+    "pipeline": [
+      {
+        "from": "writing",
+        "to": "review",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3,
+          "validators": ["wordCount", "similarity"],
+          "validatorConfig": {
+            "wordCount": { "min": 1500 },
+            "similarity": { "maxRepeatRatio": 0.25, "minBlockSize": 100 }
+          }
+        }
+      },
+      {
+        "from": "review",
+        "to": "publishing",
+        "qualityGate": {
+          "minScore": 80,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
+      }
+    ]
+  }
+}

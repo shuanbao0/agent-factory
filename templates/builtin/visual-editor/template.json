@@ -1,0 +1,20 @@
+{
+  "id": "visual-editor",
+  "name": "Visual Editor",
+  "description": "视觉编辑，负责制作图表、截图标注、排版建议",
+  "emoji": "🎨",
+  "category": "builtin",
+  "group": "tutorial",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "summarize",
+      "session-logs",
+      "peer-status"
+    ],
+    "peers": [
+      "tutorial-chief",
+      "tutorial-writer"
+    ]
+  }
+}

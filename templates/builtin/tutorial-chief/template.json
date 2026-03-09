@@ -1,0 +1,23 @@
+{
+  "id": "tutorial-chief",
+  "name": "Tutorial Chief",
+  "description": "教程总监，负责选题规划、团队协调、质量把控",
+  "emoji": "🎓",
+  "category": "builtin",
+  "group": "tutorial",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "summarize",
+      "session-logs",
+      "peer-status"
+    ],
+    "peers": [
+      "tutorial-writer",
+      "tutorial-researcher",
+      "tutorial-reviewer",
+      "code-instructor",
+      "visual-editor"
+    ]
+  }
+}

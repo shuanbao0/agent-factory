@@ -207,6 +207,21 @@
         { "type": "lamp", "count": 3 },
         { "type": "plant", "count": 1 }
       ]
+    },
+    {
+      "id": "tutorial",
+      "name": "教程创作部",
+      "nameEn": "Tutorial Production",
+      "emoji": "🎓",
+      "order": 11,
+      "floorColor": { "h": 200, "s": 35, "b": 14, "c": 0 },
+      "furniture": [
+        { "type": "desk", "count": 3 },
+        { "type": "bookshelf", "count": 2 },
+        { "type": "whiteboard", "count": 1 },
+        { "type": "plant", "count": 1 },
+        { "type": "lamp", "count": 2 }
+      ]
     }
   ]
 }

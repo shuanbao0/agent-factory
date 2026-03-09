@@ -1,0 +1,21 @@
+{
+  "id": "tutorial-reviewer",
+  "name": "Tutorial Reviewer",
+  "description": "教程审校员，从初学者视角走查教程、检测跳步和歧义",
+  "emoji": "👁️",
+  "category": "builtin",
+  "group": "tutorial",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "summarize",
+      "session-logs",
+      "peer-status"
+    ],
+    "peers": [
+      "tutorial-chief",
+      "tutorial-writer",
+      "code-instructor"
+    ]
+  }
+}
