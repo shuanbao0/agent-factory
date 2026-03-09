@@ -30,7 +30,8 @@ agent-factory/
 │   ├── autopilot.cjs      # Autopilot 循环脚本
 │   ├── inject-base-rules.mjs # 重新注入 base-rules 到所有 Agent
 │   ├── migrate-sync-builtin.mjs # 统一同步内置模板到已有 Agent（peers/skills/AGENTS.md/SOUL.md/IDENTITY.md）
-│   ├── migrate-sync-config.mjs # 智能同步 config/ 下的部门配置和预算文件
+│   ├── migrate-sync-config.mjs # 智能同步 config/ 下的部门配置和预算文件（AF_UPDATE_DIR 支持）
+│   ├── migrate-sync-gateway.mjs # 智能同步 openclaw.json 和 models.json（AF_UPDATE_DIR 支持）
 │   ├── migrate-workspaces.mjs # 工作空间迁移（产出从 agents/ 移到 workspaces/）
 │   └── migrate-to-templates.mjs
 ├── skills/                # 共享技能（project-init、wechat-mp-cn）
@@ -56,13 +57,14 @@ ui/src/
 │   │   ├── skills/        # 技能安装管理
 │   │   ├── models/        # 模型配置
 │   │   ├── autopilot/     # Autopilot 控制
+│   │   ├── platform/      # 平台更新（check/update Agent Factory）
 │   │   └── ...            # health, logs, usage, env, templates, auth-profiles, messages, sessions
 │   ├── agents/            # Agent 管理页
 │   ├── projects/          # 项目页
 │   ├── skills/            # 技能商店页
 │   ├── messages/          # 消息中心
 │   ├── logs/              # 日志监控页
-│   ├── settings/          # 设置页（Provider、Gateway、模型）
+│   ├── settings/          # 设置页（Provider、Gateway、模型、平台更新）
 │   ├── setup/             # 初始配置向导（可选入口）
 │   ├── layout.tsx         # 根布局
 │   └── page.tsx           # Dashboard 首页
@@ -122,7 +124,14 @@ agent-factory version          # 显示版本号
 agent-factory doctor           # 检查环境（Node、依赖、配置）
 ```
 
-`agent-factory update` 流程：查询最新 release → 停止服务 → 下载覆盖（保留用户数据） → npm install → 跑 migrate-\*.mjs 迁移 → 重新注入 base-rules → 提示重启。
+`agent-factory update` 流程（下载与合并完全分离）：
+1. 查询最新 release → 停止服务
+2. 下载 tarball → rsync 覆盖代码（跳过用户数据目录/文件）
+3. npm install
+4. 运行 migrate-\*.mjs 迁移脚本（通过 `AF_UPDATE_DIR` 环境变量传入 tmpDir 路径，脚本从中读取新版 config 做智能合并）
+5. 清理 tmpDir → 重新注入 base-rules → 提示重启
+
+也可通过 Dashboard Settings 页面的「Agent Factory 更新」卡片触发（`/api/platform/update`）。
 
 ## 构建与运行命令
 
@@ -167,6 +176,7 @@ npm run lint                   # ESLint 检查
 | `OPENCLAW_GATEWAY_PORT` | 否 | 自定义 Gateway 端口（默认 19100） |
 | `AGENT_FACTORY_DIR` | 否 | 项目根目录（自动检测） |
 | `AGENT_FACTORY_TOKEN` | 否 | 内部通信 Token（默认 `agent-factory-internal-token-2026`） |
+| `AF_UPDATE_DIR` | 否 | update 时自动设置，指向新版 tmpDir，migrate 脚本用来读取 incoming config |
 
 ## 架构核心概念
 
@@ -347,6 +357,10 @@ node scripts/migrate-workspaces.mjs             # 执行
 node scripts/migrate-sync-config.mjs --dry-run   # 预览
 node scripts/migrate-sync-config.mjs             # 同步所有部门
 node scripts/migrate-sync-config.mjs novel        # 同步单个部门
+
+# 同步 Gateway 配置（openclaw.json + models.json，update 后自动执行）
+node scripts/migrate-sync-gateway.mjs --dry-run   # 预览
+node scripts/migrate-sync-gateway.mjs             # 同步
 
 # 升级（用户端）
 agent-factory update
