@@ -21,6 +21,7 @@ const KANBAN_COLS = [
   { key: 'todo', statuses: ['pending', 'assigned'], labelKey: 'tasks.colPending' },
   { key: 'in_progress', statuses: ['in_progress'], labelKey: 'tasks.colInProgress' },
   { key: 'review', statuses: ['review'], labelKey: 'tasks.colReview' },
+  { key: 'rework', statuses: ['rework'], labelKey: 'tasks.colRework' },
   { key: 'completed', statuses: ['completed'], labelKey: 'tasks.colCompleted' },
   { key: 'failed', statuses: ['failed'], labelKey: 'tasks.colFailed' },
 ] as const
@@ -30,6 +31,7 @@ const statusDot: Record<string, string> = {
   assigned: 'bg-indigo-400',
   in_progress: 'bg-sky-400',
   review: 'bg-purple-400',
+  rework: 'bg-amber-400',
   completed: 'bg-emerald-400',
   failed: 'bg-red-400',
 }
@@ -144,14 +146,20 @@ export default function TasksPage() {
 
   const handleStatusChange = useCallback(async (task: Task, newStatus: Task['status']) => {
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: task.id, status: newStatus }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.qualityGate) {
+          alert(`${t('tasks.qualityGateBlocked')}: ${data.qualityGate.errors?.join(', ') || ''}`)
+        }
+      }
       fetchTasks()
     } catch { /* ignore */ }
-  }, [fetchTasks])
+  }, [fetchTasks, t])
 
   // Unique project names for filter
   const projectOptions = useMemo(() => {
@@ -248,9 +256,9 @@ export default function TasksPage() {
           onChange={e => setFilterStatus(e.target.value)}
         >
           <option value="">{t('tasks.allStatuses')}</option>
-          {(['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed'] as const).map(s => (
+          {(['pending', 'assigned', 'in_progress', 'review', 'rework', 'completed', 'failed'] as const).map(s => (
             <option key={s} value={s}>
-              {t(`tasks.col${s === 'pending' || s === 'assigned' ? 'Pending' : s === 'in_progress' ? 'InProgress' : s === 'review' ? 'Review' : s === 'completed' ? 'Completed' : 'Failed'}`)}
+              {t(`tasks.col${s === 'pending' || s === 'assigned' ? 'Pending' : s === 'in_progress' ? 'InProgress' : s === 'review' ? 'Review' : s === 'rework' ? 'Rework' : s === 'completed' ? 'Completed' : 'Failed'}`)}
             </option>
           ))}
         </select>
@@ -407,7 +415,7 @@ function TaskDetailPanel({
   const { projects } = useAppStore()
   const project = projects.find(p => p.id === task.projectId)
 
-  const statusFlow: Task['status'][] = ['pending', 'assigned', 'in_progress', 'review', 'completed']
+  const statusFlow: Task['status'][] = ['pending', 'assigned', 'in_progress', 'review', 'rework', 'completed']
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
@@ -445,7 +453,7 @@ function TaskDetailPanel({
                       : 'bg-muted text-muted-foreground border-border hover:border-primary/30'
                   )}
                 >
-                  {t(`tasks.col${s === 'pending' || s === 'assigned' ? 'Pending' : s === 'in_progress' ? 'InProgress' : s === 'review' ? 'Review' : s === 'completed' ? 'Completed' : 'Failed'}`)}
+                  {t(`tasks.col${s === 'pending' || s === 'assigned' ? 'Pending' : s === 'in_progress' ? 'InProgress' : s === 'review' ? 'Review' : s === 'rework' ? 'Rework' : s === 'completed' ? 'Completed' : 'Failed'}`)}
                 </button>
               ))}
               <button
@@ -538,7 +546,25 @@ function TaskDetailPanel({
           {task.quality && (
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-2 block">{t('tasks.quality')}</label>
-              <TaskQuality quality={task.quality} />
+              <TaskQuality quality={task.quality} validationErrors={task.validationErrors} />
+            </div>
+          )}
+
+          {/* Rework count */}
+          {task.reworkCount != null && task.reworkCount > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.reworkCount')}</label>
+              <span className="text-xs text-amber-400">{task.reworkCount} / 3</span>
+            </div>
+          )}
+
+          {/* Validation errors */}
+          {task.validationErrors && task.validationErrors.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.validationErrors')}</label>
+              <ul className="text-xs text-red-400 space-y-0.5">
+                {task.validationErrors.map((e, i) => <li key={i}>- {e}</li>)}
+              </ul>
             </div>
           )}
 

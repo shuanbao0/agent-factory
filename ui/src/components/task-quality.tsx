@@ -6,9 +6,10 @@ import type { TaskQuality as TQ } from '@/lib/types'
 
 interface TaskQualityProps {
   quality: TQ
+  validationErrors?: string[]
 }
 
-export function TaskQuality({ quality }: TaskQualityProps) {
+export function TaskQuality({ quality, validationErrors }: TaskQualityProps) {
   const { t } = useTranslation()
 
   const stages = [
@@ -80,6 +81,14 @@ export function TaskQuality({ quality }: TaskQualityProps) {
           </div>
         )
       })}
+      {validationErrors && validationErrors.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-border">
+          <p className="text-[10px] font-medium text-red-400 mb-1">{t('tasks.validationErrors')}</p>
+          <ul className="text-[10px] text-red-400/80 space-y-0.5">
+            {validationErrors.map((e, i) => <li key={i}>- {e}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

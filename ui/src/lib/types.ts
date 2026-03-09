@@ -78,7 +78,7 @@ export interface Task {
   description?: string
   projectId?: string | null      // null = standalone task
   phase?: number
-  status: 'pending' | 'assigned' | 'in_progress' | 'review' | 'completed' | 'failed'
+  status: 'pending' | 'assigned' | 'in_progress' | 'review' | 'completed' | 'failed' | 'rework'
   priority: 'P0' | 'P1' | 'P2'
   assignees: string[]            // supports multi-agent assignment
   assignedAgent?: string         // legacy compat
@@ -90,6 +90,9 @@ export interface Task {
   type?: string                  // structured task type from workflow
   parentTaskId?: string          // sub-task relationship
   quality?: TaskQuality
+  reworkCount?: number
+  reworkFromId?: string
+  validationErrors?: string[]
   createdAt: string
   updatedAt: string
   completedAt?: string
@@ -125,9 +128,19 @@ export interface TaskTypeDefinition {
   color: string
 }
 
+export interface QualityGateConfig {
+  minScore?: number
+  requireSelfCheck?: boolean
+  requirePeerReview?: boolean
+  maxReworks?: number
+  validators?: string[]
+  validatorConfig?: Record<string, unknown>
+}
+
 export interface PipelineStep {
   from: string
   to: string
+  qualityGate?: QualityGateConfig
 }
 
 export interface DepartmentWorkflow {

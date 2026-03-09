@@ -510,7 +510,13 @@
     "failed": "未通过",
     "pipeline": "流水线",
     "nextStep": "下一步",
-    "autoCreated": "自动创建"
+    "autoCreated": "自动创建",
+    "colRework": "返工",
+    "reworkCount": "返工次数",
+    "validationErrors": "验证错误",
+    "qualityGateBlocked": "质量门禁未通过",
+    "qualityGatePassed": "质量门禁通过",
+    "maxReworksExceeded": "超过最大返工次数"
   },
   "messages": {
     "title": "消息中心",

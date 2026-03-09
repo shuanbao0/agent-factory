@@ -3,56 +3,25 @@ import { existsSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
 import type { Task } from '@/lib/types'
 import {
-  normalizeTask,
   readStandaloneTasks,
   writeStandaloneTasks,
   readProjectTasks,
-  readProjectMeta,
   writeProjectMeta,
   updateProjectTask,
   deleteProjectTask,
 } from '@/lib/task-storage'
-import { getDepartmentWorkflow } from '@/lib/department-workflow'
+import {
+  checkQualityGate,
+  createPipelineTask,
+  createReworkTask,
+  persistNewTask,
+  getWorkflowForTask,
+} from '@/lib/quality-gate'
 
 export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
-
-/** Create pipeline follow-up task when a task completes */
-function createPipelineTask(completedTask: Task): Task | null {
-  if (!completedTask.type || !completedTask.projectId) return null
-
-  // Get project's department to find workflow
-  const meta = readProjectMeta(completedTask.projectId)
-  if (!meta) return null
-  const dept = (meta.department as string) || undefined
-  const workflow = getDepartmentWorkflow(dept)
-
-  const step = workflow.pipeline.find(p => p.from === completedTask.type)
-  if (!step) return null
-
-  const toType = workflow.taskTypes.find(tt => tt.value === step.to)
-  const label = toType ? toType.labelEn : step.to
-
-  const now = new Date().toISOString()
-  return {
-    id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    name: `${label}: ${completedTask.name}`,
-    description: `Auto-created from pipeline: ${completedTask.type} -> ${step.to}`,
-    projectId: completedTask.projectId,
-    status: 'pending',
-    priority: completedTask.priority,
-    assignees: [],
-    creator: 'pipeline',
-    progress: 0,
-    dependencies: [completedTask.id],
-    type: step.to,
-    parentTaskId: completedTask.parentTaskId,
-    createdAt: now,
-    updatedAt: now,
-  }
-}
 
 // ── GET /api/tasks ──────────────────────────────────────────────
 
@@ -162,49 +131,107 @@ export async function PUT(req: NextRequest) {
     const standalone = readStandaloneTasks()
     const sIdx = standalone.findIndex(t => t.id === id)
     if (sIdx !== -1) {
-      const merged = { ...standalone[sIdx], ...updates }
+      const currentTask = standalone[sIdx]
+
+      if (updates.status === 'completed') {
+        const mergedTask = { ...currentTask, ...updates } as Task
+        const workflow = getWorkflowForTask(mergedTask)
+        const gate = checkQualityGate(mergedTask, workflow)
+
+        if (!gate.passed) {
+          if (gate.escalate) {
+            updates.status = 'failed'
+            updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
+            const merged = { ...currentTask, ...updates }
+            if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
+            standalone[sIdx] = merged
+            writeStandaloneTasks(standalone)
+            return NextResponse.json({ task: merged, qualityGate: gate, ok: true })
+          }
+          if (gate.shouldRework) {
+            updates.status = 'rework'
+            updates.validationErrors = gate.errors
+            delete updates.completedAt
+            const merged = { ...currentTask, ...updates }
+            if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
+            standalone[sIdx] = merged
+            writeStandaloneTasks(standalone)
+            const reworkTask = createReworkTask(merged as Task, gate.errors)
+            persistNewTask(reworkTask)
+            return NextResponse.json({ task: merged, reworkTask, qualityGate: gate, ok: true })
+          }
+          return NextResponse.json({ error: 'Quality gate failed', qualityGate: gate }, { status: 422 })
+        }
+
+        // Quality passed
+        const merged = { ...currentTask, ...updates }
+        if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
+        standalone[sIdx] = merged
+        writeStandaloneTasks(standalone)
+
+        const pipelineTask = createPipelineTask(merged as Task, workflow)
+        if (pipelineTask) {
+          persistNewTask(pipelineTask)
+        }
+
+        return NextResponse.json({ task: merged, pipelineTask, ok: true })
+      }
+
+      // Non-completion update
+      const merged = { ...currentTask, ...updates }
       if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
       standalone[sIdx] = merged
       writeStandaloneTasks(standalone)
-
-      // Pipeline: auto-create follow-up task
-      let pipelineTask: Task | null = null
-      if (updates.status === 'completed') {
-        pipelineTask = createPipelineTask(merged)
-        if (pipelineTask) {
-          standalone.push(pipelineTask)
-          writeStandaloneTasks(standalone)
-        }
-      }
-
-      return NextResponse.json({ task: merged, pipelineTask, ok: true })
+      return NextResponse.json({ task: merged, ok: true })
     }
 
     // Try project tasks
     const projectTasks = readProjectTasks()
     const pt = projectTasks.find(t => t.id === id)
     if (pt && pt.projectId) {
-      const success = updateProjectTask(pt.projectId, id, updates)
-      if (success) {
-        const merged = { ...pt, ...updates }
+      if (updates.status === 'completed') {
+        const mergedTask = { ...pt, ...updates } as Task
+        const workflow = getWorkflowForTask(mergedTask)
+        const gate = checkQualityGate(mergedTask, workflow)
 
-        // Pipeline: auto-create follow-up task
-        let pipelineTask: Task | null = null
-        if (updates.status === 'completed') {
-          pipelineTask = createPipelineTask(merged as Task)
-          if (pipelineTask && pt.projectId) {
-            const meta = readProjectMeta(pt.projectId)
-            if (meta) {
-              if (!meta.tasks) meta.tasks = []
-              const stored = { ...pipelineTask }
-              if (stored.status === 'in_progress') (stored as Record<string, unknown>).status = 'running';
-              (meta.tasks as Record<string, unknown>[]).push(stored)
-              writeProjectMeta(pt.projectId, meta)
-            }
+        if (!gate.passed) {
+          if (gate.escalate) {
+            updates.status = 'failed'
+            updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
+            updateProjectTask(pt.projectId, id, updates)
+            const merged = { ...pt, ...updates }
+            return NextResponse.json({ task: merged, qualityGate: gate, ok: true })
           }
+          if (gate.shouldRework) {
+            updates.status = 'rework'
+            updates.validationErrors = gate.errors
+            delete updates.completedAt
+            updateProjectTask(pt.projectId, id, updates)
+            const merged = { ...pt, ...updates }
+            const reworkTask = createReworkTask(merged as Task, gate.errors)
+            persistNewTask(reworkTask)
+            return NextResponse.json({ task: merged, reworkTask, qualityGate: gate, ok: true })
+          }
+          return NextResponse.json({ error: 'Quality gate failed', qualityGate: gate }, { status: 422 })
         }
 
-        return NextResponse.json({ task: merged, pipelineTask, ok: true })
+        // Quality passed
+        const success = updateProjectTask(pt.projectId, id, updates)
+        if (success) {
+          const merged = { ...pt, ...updates }
+          const pipelineTask = createPipelineTask(merged as Task, workflow)
+          if (pipelineTask) {
+            persistNewTask(pipelineTask)
+          }
+          return NextResponse.json({ task: merged, pipelineTask, ok: true })
+        }
+      } else {
+        // Non-completion update
+        const success = updateProjectTask(pt.projectId, id, updates)
+        if (success) {
+          const merged = { ...pt, ...updates }
+          return NextResponse.json({ task: merged, ok: true })
+        }
       }
     }
 

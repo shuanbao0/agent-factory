@@ -20,6 +20,7 @@ const statusColors: Record<string, string> = {
   assigned: 'bg-indigo-500/20 text-indigo-400',
   in_progress: 'bg-sky-500/20 text-sky-400',
   review: 'bg-purple-500/20 text-purple-400',
+  rework: 'bg-amber-500/20 text-amber-400',
   completed: 'bg-emerald-500/20 text-emerald-400',
   failed: 'bg-red-500/20 text-red-400',
 }
@@ -53,7 +54,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           {task.priority}
         </span>
         <span className={cn('text-[10px] px-1.5 py-0.5 rounded', statusColors[task.status] || statusColors.pending)}>
-          {t(`tasks.col${task.status === 'pending' || task.status === 'assigned' ? 'Pending' : task.status === 'in_progress' ? 'InProgress' : task.status === 'review' ? 'Review' : task.status === 'completed' ? 'Completed' : 'Failed'}`)}
+          {t(`tasks.col${task.status === 'pending' || task.status === 'assigned' ? 'Pending' : task.status === 'in_progress' ? 'InProgress' : task.status === 'review' ? 'Review' : task.status === 'rework' ? 'Rework' : task.status === 'completed' ? 'Completed' : 'Failed'}`)}
         </span>
       </div>
 
@@ -72,6 +73,11 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
               task.quality.headApproval?.passed ? 'text-emerald-400' :
               task.quality.selfCheck ? 'text-amber-400' : 'text-muted-foreground'
             )} />
+          )}
+          {task.reworkCount != null && task.reworkCount > 0 && (
+            <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-400">
+              R{task.reworkCount}
+            </span>
           )}
         </div>
       </div>

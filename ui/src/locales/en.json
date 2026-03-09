@@ -510,7 +510,13 @@
     "failed": "Failed",
     "pipeline": "Pipeline",
     "nextStep": "Next Step",
-    "autoCreated": "Auto-created"
+    "autoCreated": "Auto-created",
+    "colRework": "Rework",
+    "reworkCount": "Rework Count",
+    "validationErrors": "Validation Errors",
+    "qualityGateBlocked": "Quality gate blocked",
+    "qualityGatePassed": "Quality gate passed",
+    "maxReworksExceeded": "Max reworks exceeded"
   },
   "messages": {
     "title": "Message Center",

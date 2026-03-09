@@ -9,7 +9,13 @@ import {
   readProjectMeta,
   writeProjectMeta,
 } from '@/lib/task-storage'
-import { getDepartmentWorkflow } from '@/lib/department-workflow'
+import {
+  checkQualityGate,
+  createPipelineTask,
+  createReworkTask,
+  persistNewTask,
+  getWorkflowForTask,
+} from '@/lib/quality-gate'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,35 +25,6 @@ function checkAuth(req: NextRequest): boolean {
   const auth = req.headers.get('authorization') || ''
   const token = auth.replace(/^Bearer\s+/i, '')
   return token === INTERNAL_TOKEN
-}
-
-/** Create pipeline follow-up task when a task completes */
-function createPipelineTask(completedTask: Task): Task | null {
-  if (!completedTask.type || !completedTask.projectId) return null
-  const meta = readProjectMeta(completedTask.projectId)
-  if (!meta) return null
-  const dept = (meta.department as string) || undefined
-  const workflow = getDepartmentWorkflow(dept)
-  const step = workflow.pipeline.find(p => p.from === completedTask.type)
-  if (!step) return null
-  const toType = workflow.taskTypes.find(tt => tt.value === step.to)
-  const label = toType ? toType.labelEn : step.to
-  const now = new Date().toISOString()
-  return {
-    id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    name: `${label}: ${completedTask.name}`,
-    description: `Auto-created from pipeline: ${completedTask.type} -> ${step.to}`,
-    projectId: completedTask.projectId,
-    status: 'pending',
-    priority: completedTask.priority,
-    assignees: [],
-    creator: 'pipeline',
-    progress: 0,
-    dependencies: [completedTask.id],
-    type: step.to,
-    createdAt: now,
-    updatedAt: now,
-  }
 }
 
 // ── GET /api/agent-tasks ────────────────────────────────────────
@@ -110,22 +87,7 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
     }
 
-    if (task.projectId) {
-      const meta = readProjectMeta(task.projectId)
-      if (!meta) {
-        return NextResponse.json({ error: `Project ${task.projectId} not found` }, { status: 404 })
-      }
-      if (!meta.tasks) meta.tasks = []
-      const stored = { ...task }
-      if (stored.status === 'in_progress') (stored as Record<string, unknown>).status = 'running';
-      (meta.tasks as Record<string, unknown>[]).push(stored)
-      writeProjectMeta(task.projectId, meta)
-    } else {
-      const tasks = readStandaloneTasks()
-      tasks.push(task)
-      writeStandaloneTasks(tasks)
-    }
-
+    persistNewTask(task)
     return NextResponse.json({ task, ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 400 })
@@ -180,8 +142,35 @@ export async function PUT(req: NextRequest) {
       updates.quality = { ...(found.task.quality || {}), ...quality }
     }
 
+    // Quality gate check on completion
     if (status === 'completed') {
+      const mergedTask = { ...found.task, ...updates } as Task
+      const workflow = getWorkflowForTask(mergedTask)
+      const gate = checkQualityGate(mergedTask, workflow)
+
+      if (!gate.passed) {
+        if (gate.escalate) {
+          updates.status = 'failed'
+          updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
+          const updated = updateTaskInPlace(taskId, updates)
+          return NextResponse.json({ task: updated, qualityGate: gate, ok: true })
+        }
+        if (gate.shouldRework) {
+          updates.status = 'rework'
+          updates.validationErrors = gate.errors
+          const updated = updateTaskInPlace(taskId, updates)
+          const reworkTask = createReworkTask(updated!, gate.errors)
+          persistNewTask(reworkTask)
+          return NextResponse.json({ task: updated, reworkTask, qualityGate: gate, ok: true })
+        }
+        return NextResponse.json({ error: 'Quality gate failed', qualityGate: gate }, { status: 422 })
+      }
+
       updates.completedAt = new Date().toISOString()
+      const updated = updateTaskInPlace(taskId, updates)
+      const pipelineTask = createPipelineTask(updated!, workflow)
+      if (pipelineTask) persistNewTask(pipelineTask)
+      return NextResponse.json({ task: updated, pipelineTask, ok: true })
     }
 
     const updated = updateTaskInPlace(taskId, updates)
@@ -189,29 +178,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
     }
 
-    // Pipeline auto-creation
-    let pipelineTask: Task | null = null
-    if (status === 'completed') {
-      pipelineTask = createPipelineTask(updated)
-      if (pipelineTask) {
-        if (updated.projectId) {
-          const meta = readProjectMeta(updated.projectId)
-          if (meta) {
-            if (!meta.tasks) meta.tasks = []
-            const stored = { ...pipelineTask }
-            if (stored.status === 'in_progress') (stored as Record<string, unknown>).status = 'running';
-            (meta.tasks as Record<string, unknown>[]).push(stored)
-            writeProjectMeta(updated.projectId, meta)
-          }
-        } else {
-          const tasks = readStandaloneTasks()
-          tasks.push(pipelineTask)
-          writeStandaloneTasks(tasks)
-        }
-      }
-    }
-
-    return NextResponse.json({ task: updated, pipelineTask, ok: true })
+    return NextResponse.json({ task: updated, ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 400 })
   }
