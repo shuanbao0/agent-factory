@@ -58,8 +58,8 @@ function atomicWriteSync(filePath: string, data: string) {
   renameSync(tmpPath, filePath)
 }
 
-function loadDepartments(): Array<{ id: string; name: string; head: string; enabled: boolean; interval: number; directives?: string[]; report?: string; state: Record<string, unknown> }> {
-  const results: Array<{ id: string; name: string; head: string; enabled: boolean; interval: number; directives?: string[]; report?: string; state: Record<string, unknown> }> = []
+function loadDepartments(): Array<{ id: string; name: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> {
+  const results: Array<{ id: string; name: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> = []
   if (!existsSync(DEPARTMENTS_DIR)) return results
   try {
     const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
@@ -68,12 +68,14 @@ function loadDepartments(): Array<{ id: string; name: string; head: string; enab
       const statePath = join(DEPARTMENTS_DIR, dir.name, 'state.json')
       const reportPath = join(DEPARTMENTS_DIR, dir.name, 'report.md')
       const directivesPath = join(DEPARTMENTS_DIR, dir.name, 'ceo-directives.json')
+      const missionPath = join(DEPARTMENTS_DIR, dir.name, 'mission.md')
       if (!existsSync(configPath)) continue
       try {
         const config = JSON.parse(readFileSync(configPath, 'utf-8'))
         let state = { status: 'stopped', cycleCount: 0 }
         let report = ''
         let directives: string[] = []
+        let mission = ''
         if (existsSync(statePath)) {
           try { state = JSON.parse(readFileSync(statePath, 'utf-8')) } catch {}
         }
@@ -86,6 +88,10 @@ function loadDepartments(): Array<{ id: string; name: string; head: string; enab
             directives = data.directives || []
           } catch {}
         }
+        if (existsSync(missionPath)) {
+          try { mission = readFileSync(missionPath, 'utf-8').slice(0, 3000) } catch {}
+        }
+        const headExists = config.head ? existsSync(join(AGENTS_DIR, config.head)) : false
         results.push({
           id: config.id || dir.name,
           name: config.name || dir.name,
@@ -93,7 +99,9 @@ function loadDepartments(): Array<{ id: string; name: string; head: string; enab
           enabled: config.enabled || false,
           interval: config.interval || 600,
           directives,
+          mission,
           report,
+          headExists,
           state,
         })
       } catch {}
