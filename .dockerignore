@@ -1,0 +1,14 @@
+node_modules/
+ui/node_modules/
+ui/.next/
+.openclaw-state/
+agents/
+workspaces/
+projects/
+templates/custom/
+.env
+.git/
+.claude/
+*.log
+docs/
+libs/

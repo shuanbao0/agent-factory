@@ -137,7 +137,8 @@ async function startDashboard() {
     await new Promise(r => setTimeout(r, 1000));
   }
 
-  dashboardProcess = spawn('npm', ['run', 'dev'], {
+  const uiScript = process.env.NODE_ENV === 'production' ? 'start' : 'dev';
+  dashboardProcess = spawn('npm', ['run', uiScript], {
     cwd: resolve(ROOT, 'ui'),
     env: {
       ...process.env,
