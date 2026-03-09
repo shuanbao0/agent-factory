@@ -274,9 +274,9 @@ async function cmdUpdate() {
 
   // Preserve user data directories (config/ is partially preserved — see mergeConfig below)
   const preserveDirs = ['agents', 'workspaces', 'projects', 'templates/custom', '.openclaw-state', 'config/departments'];
-  const preserveFiles = ['.env', 'config/openclaw.json', 'config/models.json', 'config/autopilot-state.json'];
-  // Note: config/departments.json and config/base-rules.md are intentionally NOT preserved
-  // — they get overwritten with new versions, then departments.json is merged below
+  const preserveFiles = ['.env', 'config/openclaw.json', 'config/models.json', 'config/autopilot-state.json', 'config/departments.json'];
+  // Note: config/base-rules.md is intentionally NOT preserved — always updated from new version
+  // config/departments.json is preserved, then smart-merged below
   // config/departments/ is preserved, then smart-merged from tmpDir below
 
   // Copy new files over, skipping preserved dirs/files
@@ -294,34 +294,62 @@ async function cmdUpdate() {
   } catch {
     // Fallback: manual copy without rsync
     console.log(c.dim('rsync not available, using cp...'));
+    const skipTopLevel = new Set(['node_modules']);
+    for (const d of preserveDirs) skipTopLevel.add(d.split('/')[0]);
+    // Copy top-level entries, skip preserved top-level dirs
     const entries = readdirSync(tmpDir);
-    const skipSet = new Set([...preserveDirs.map(d => d.split('/')[0]), ...preserveFiles, 'node_modules']);
     for (const entry of entries) {
-      if (skipSet.has(entry)) continue;
-      execSync(`cp -R "${resolve(tmpDir, entry)}" "${ROOT}/"`, { stdio: 'inherit' });
+      if (skipTopLevel.has(entry)) continue;
+      if (entry === 'config') {
+        // For config/, copy selectively — skip preserved files and subdirs
+        const configSrc = resolve(tmpDir, 'config');
+        const configDst = resolve(ROOT, 'config');
+        mkdirSync(configDst, { recursive: true });
+        const preservedConfigFiles = new Set(preserveFiles.filter(f => f.startsWith('config/')).map(f => f.replace('config/', '')));
+        const preservedConfigDirs = new Set(preserveDirs.filter(d => d.startsWith('config/')).map(d => d.replace('config/', '')));
+        for (const cf of readdirSync(configSrc)) {
+          if (preservedConfigFiles.has(cf) || preservedConfigDirs.has(cf)) continue;
+          execSync(`cp -R "${resolve(configSrc, cf)}" "${configDst}/"`, { stdio: 'inherit' });
+        }
+      } else {
+        execSync(`cp -R "${resolve(tmpDir, entry)}" "${ROOT}/"`, { stdio: 'inherit' });
+      }
     }
   }
 
-  // Merge departments.json: keep user-added departments, add new builtin ones
+  // Smart-merge departments.json: add new departments, add new fields to existing ones, keep user values
   try {
     const deptFile = resolve(ROOT, 'config/departments.json');
-    if (existsSync(deptFile)) {
-      const currentDepts = JSON.parse(readFileSync(deptFile, 'utf-8'));
-      const newDeptFile = resolve(tmpDir, 'config/departments.json');
-      if (existsSync(newDeptFile)) {
-        const newDepts = JSON.parse(readFileSync(newDeptFile, 'utf-8'));
-        const currentIds = new Set(currentDepts.departments.map(d => d.id));
-        let added = 0;
+    const newDeptFile = resolve(tmpDir, 'config/departments.json');
+    if (existsSync(newDeptFile)) {
+      const newDepts = JSON.parse(readFileSync(newDeptFile, 'utf-8'));
+      if (!existsSync(deptFile)) {
+        // No existing file — just copy
+        writeFileSync(deptFile, JSON.stringify(newDepts, null, 2) + '\n');
+      } else {
+        const currentDepts = JSON.parse(readFileSync(deptFile, 'utf-8'));
+        const currentMap = new Map(currentDepts.departments.map(d => [d.id, d]));
+        let changed = false;
         for (const dept of newDepts.departments) {
-          if (!currentIds.has(dept.id)) {
+          if (!currentMap.has(dept.id)) {
+            // New department — add it
             currentDepts.departments.push(dept);
-            added++;
             console.log(c.green(`  + department: ${dept.name} (${dept.id})`));
+            changed = true;
+          } else {
+            // Existing department — add new fields only, keep user values
+            const existing = currentMap.get(dept.id);
+            for (const key of Object.keys(dept)) {
+              if (!(key in existing)) {
+                existing[key] = dept[key];
+                console.log(c.green(`  ${dept.id}: + ${key}`));
+                changed = true;
+              }
+            }
           }
         }
-        if (added > 0) {
+        if (changed) {
           writeFileSync(deptFile, JSON.stringify(currentDepts, null, 2) + '\n');
-          console.log(`Merged ${added} new department(s) into departments.json`);
         }
       }
     }
