@@ -4,7 +4,7 @@
 
 Agent Factory 是一个自包含的多 Agent 协作平台，内置 OpenClaw 引擎，提供 Dashboard UI 进行管理。
 
-- 版本: 0.4.4
+- 版本: 0.4.5
 - 仓库: https://github.com/shuanbao0/agent-factory
 - 运行时: Node.js >= 22
 - 许可: GPL-3.0
@@ -331,9 +331,12 @@ lsof -ti:3100 | xargs kill -9 2>/dev/null
 cd ui && npm run dev
 
 # 发布新版本（CI 自动打包，无需手动操作）
-# 1. bump package.json version
-# 2. git tag vX.Y.Z && git push && git push origin vX.Y.Z
-# 3. GitHub Actions (.github/workflows/release.yml) 自动创建 Release + tarball
+# ⚠️ 打 tag 前必须先更新版本号！
+# 1. bump package.json version 字段
+# 2. bump CLAUDE.md 顶部的 "版本: X.Y.Z"
+# 3. git commit + push 版本号变更
+# 4. git tag vX.Y.Z && git push origin vX.Y.Z
+# 5. GitHub Actions (.github/workflows/release.yml) 自动创建 Release + tarball
 # 其他机器即可通过 agent-factory update 更新
 ```
 
