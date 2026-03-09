@@ -136,6 +136,35 @@ function removeFromOpenclawConfig(agentId: string) {
   writeOpenclawConfig(config)
 }
 
+const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config/departments')
+
+function syncAutopilotDeptAgents(department: string, agentId: string, action: 'add' | 'remove') {
+  const configPath = join(DEPARTMENTS_DIR, department, 'config.json')
+  if (!existsSync(configPath)) return
+  try {
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const agents: string[] = config.agents || []
+    if (action === 'add') {
+      if (!agents.includes(agentId)) {
+        agents.push(agentId)
+        config.agents = agents
+        // Auto-set head if empty and agent looks like a head
+        if (!config.head && /chief|head|manager|director/.test(agentId)) {
+          config.head = agentId
+        }
+        writeFileSync(configPath, JSON.stringify(config, null, 2))
+      }
+    } else {
+      const idx = agents.indexOf(agentId)
+      if (idx >= 0) {
+        agents.splice(idx, 1)
+        config.agents = agents
+        writeFileSync(configPath, JSON.stringify(config, null, 2))
+      }
+    }
+  } catch { /* skip */ }
+}
+
 function ensureProjectForDepartment(department: string, agentId: string) {
   const projectDir = join(PROJECT_ROOT, 'projects', department)
 
@@ -452,9 +481,10 @@ export async function POST(req: NextRequest) {
     // 7. Add to openclaw.json (workspace = agents/{id})
     addToOpenclawConfig(id, agentDir, finalModel)
 
-    // 8. Auto-create project for department
+    // 8. Auto-create project for department + sync autopilot agents
     if (finalDepartment) {
       ensureProjectForDepartment(finalDepartment, id)
+      syncAutopilotDeptAgents(finalDepartment, id, 'add')
     }
 
     // 9. Restart gateway
@@ -496,6 +526,7 @@ export async function PUT(req: NextRequest) {
     if (existsSync(agentJsonPath)) {
       try { agentJson = JSON.parse(readFileSync(agentJsonPath, 'utf-8')) } catch {}
     }
+    const oldDepartment = (agentJson.department as string) || undefined
 
     // Update fields
     if (name !== undefined) agentJson.name = name
@@ -528,10 +559,22 @@ export async function PUT(req: NextRequest) {
       await tryRestartGateway()
     }
 
-    // Auto-create project for department
-    const currentDept = (agentJson.department as string) || undefined
-    if (currentDept) {
-      ensureProjectForDepartment(currentDept, id)
+    // Auto-create project for department + sync autopilot agents
+    if (department !== undefined && department !== oldDepartment) {
+      // Remove from old department's autopilot agents
+      if (oldDepartment) {
+        syncAutopilotDeptAgents(oldDepartment, id, 'remove')
+      }
+      // Add to new department
+      if (department) {
+        ensureProjectForDepartment(department, id)
+        syncAutopilotDeptAgents(department, id, 'add')
+      }
+    } else {
+      const currentDept = (agentJson.department as string) || undefined
+      if (currentDept) {
+        ensureProjectForDepartment(currentDept, id)
+      }
     }
 
     return NextResponse.json({ ok: true })
@@ -605,14 +648,14 @@ function generateAgentsMd({ id, role, name, description, peers }: {
 
 ## 身份
 - 角色：${role}
-- 汇报对象：Orchestrator (main agent)
+- 汇报对象：CEO
 
 ## 核心职责
 ${description || '（待补充）'}
 
 ## 约束
 - 所有输出记录在 docs/ 目录
-- 遇到阻塞立即上报 Orchestrator
+- 遇到阻塞立即上报 CEO
 `
 
   // Inject peer communication directory if peers exist

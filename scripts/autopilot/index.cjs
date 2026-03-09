@@ -7,22 +7,31 @@
  *   node scripts/autopilot/index.cjs --loop                  # 持续循环模式
  *   node scripts/autopilot/index.cjs --loop --interval 1800  # 每 30 分钟循环
  *   node scripts/autopilot/index.cjs --stop                  # 停止运行中的循环
- *   node scripts/autopilot/index.cjs --orchestrator          # 启动编排器（CEO + 部门循环）
+ *   node scripts/autopilot/index.cjs --all                   # 启动全部循环（CEO + 部门循环）
  */
-const { DEFAULT_INTERVAL_SEC, MAX_HISTORY_ENTRIES, MAX_CYCLE_RESULT_LENGTH, MAX_HISTORY_RESULT_LENGTH } = require('./constants.cjs')
+const { existsSync, readdirSync, readFileSync } = require('fs')
+const { join } = require('path')
+const {
+  DEFAULT_INTERVAL_SEC, MAX_HISTORY_ENTRIES, MAX_CYCLE_RESULT_LENGTH, MAX_HISTORY_RESULT_LENGTH,
+  DEPARTMENTS_DIR, AGENTS_DIR,
+  CEO_COORDINATION_INTERVAL_SEC, CEO_STRATEGY_INTERVAL_SEC, DEFAULT_DEPT_INTERVAL_SEC,
+} = require('./constants.cjs')
 const { loadState, saveState } = require('./state.cjs')
 const { sendToCeo } = require('./gateway.cjs')
 const { fetchSessionTokens } = require('./readers.cjs')
 const { buildDirective } = require('./directive.cjs')
 const { syncProjects } = require('./sync.cjs')
 const { buildMemoryContext, compressMemory } = require('./memory.cjs')
+const { runDepartmentCycle } = require('./department-loop.cjs')
 const logger = require('./logger.cjs')
+
+const MAX_HISTORY = 50
 
 // ── Parse CLI args ──────────────────────────────────────────────
 const args = process.argv.slice(2)
 const isLoop = args.includes('--loop')
 const isStop = args.includes('--stop')
-const isOrchestrator = args.includes('--orchestrator')
+const isAll = args.includes('--all')
 const intervalIdx = args.indexOf('--interval')
 const intervalSec = intervalIdx >= 0 ? parseInt(args[intervalIdx + 1]) || DEFAULT_INTERVAL_SEC : DEFAULT_INTERVAL_SEC
 
@@ -41,11 +50,10 @@ if (isStop) {
   process.exit(0)
 }
 
-// ── Handle --orchestrator ───────────────────────────────────────
-if (isOrchestrator) {
-  const { startOrchestrator } = require('./orchestrator.cjs')
-  startOrchestrator().catch(err => {
-    logger.error('main', 'Orchestrator failed', err)
+// ── Handle --all ────────────────────────────────────────────────
+if (isAll) {
+  startAll().catch(err => {
+    logger.error('main', 'Start-all failed', err)
     process.exit(1)
   })
 } else {
@@ -195,4 +203,169 @@ async function main() {
   }
 }
 
-module.exports = { runCycle, main }
+// ── Discover active departments ─────────────────────────────────
+function discoverActiveDepartments() {
+  const results = []
+  if (!existsSync(DEPARTMENTS_DIR)) return results
+
+  try {
+    const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+
+    for (const dir of dirs) {
+      const configPath = join(DEPARTMENTS_DIR, dir.name, 'config.json')
+      if (!existsSync(configPath)) continue
+
+      try {
+        const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+        if (!config.enabled) continue
+
+        const headDir = join(AGENTS_DIR, config.head)
+        if (!existsSync(headDir)) {
+          logger.warn('main', `Department ${dir.name} head ${config.head} not found, skipping`)
+          continue
+        }
+
+        results.push({
+          id: config.id || dir.name,
+          head: config.head,
+          interval: config.interval || DEFAULT_DEPT_INTERVAL_SEC,
+          config,
+        })
+      } catch (err) {
+        logger.warn('main', `Failed to parse config for dept ${dir.name}`, err)
+      }
+    }
+  } catch (err) {
+    logger.error('main', 'Failed to discover departments', err)
+  }
+
+  return results
+}
+
+// ── Run a CEO coordination/strategy cycle ───────────────────────
+async function runCeoCycleForAll(cycleType = 'coordination') {
+  const state = loadState()
+
+  if (state.status === 'cycling') {
+    logger.warn('main', 'CEO already cycling, skipping')
+    return
+  }
+
+  state.cycleCount++
+  state.status = 'cycling'
+  state.lastCycleAt = new Date().toISOString()
+  saveState(state)
+
+  const cycleNum = state.cycleCount
+  const startTime = Date.now()
+
+  logger.info('main', `CEO ${cycleType} cycle #${cycleNum} started`)
+
+  try {
+    const memoryContext = buildMemoryContext('ceo', cycleType)
+    const directive = buildDirective(cycleNum, cycleType, memoryContext)
+    const result = await sendToCeo(directive)
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+
+    if (result.ok) {
+      logger.info('main', `CEO cycle #${cycleNum} completed in ${elapsed}s`)
+
+      const sessionTokens = fetchSessionTokens()
+
+      state.status = 'running'
+      state.lastCycleResult = result.text.slice(0, 500)
+      state.history = state.history || []
+      state.history.push({
+        cycle: cycleNum,
+        startedAt: state.lastCycleAt,
+        completedAt: new Date().toISOString(),
+        elapsedSec: parseFloat(elapsed),
+        result: result.text.slice(0, 300),
+        tokens: sessionTokens.all,
+        cycleType,
+      })
+      if (state.history.length > MAX_HISTORY) state.history = state.history.slice(-MAX_HISTORY)
+      saveState(state)
+
+      try { syncProjects(result.text) } catch (e) {
+        logger.error('main', 'Project sync failed', e)
+      }
+
+      try { compressMemory('ceo', result.text) } catch (e) {
+        logger.warn('main', 'Memory compression failed', e)
+      }
+    } else {
+      logger.error('main', `CEO cycle #${cycleNum} failed: ${result.error}`)
+      state.status = 'running'
+      state.lastCycleResult = `Error: ${result.error}`
+      saveState(state)
+    }
+  } catch (err) {
+    logger.error('main', `CEO cycle #${cycleNum} error`, err)
+    state.status = 'running'
+    state.lastCycleResult = `Error: ${err.message}`
+    saveState(state)
+  }
+}
+
+// ── Start all: CEO cycles + department cycles ───────────────────
+async function startAll() {
+  const state = loadState()
+  state.pid = process.pid
+  state.status = 'running'
+  state.mode = 'all'
+  saveState(state)
+
+  logger.info('main', `Start-all mode (PID: ${process.pid})`)
+
+  // Graceful shutdown
+  const shutdown = () => {
+    logger.info('main', 'Shutting down...')
+    const s = loadState()
+    s.status = 'stopped'
+    s.pid = null
+    s.mode = null
+    saveState(s)
+    process.exit(0)
+  }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
+
+  // 1. Run initial CEO coordination cycle
+  await runCeoCycleForAll('coordination')
+
+  // 2. Schedule recurring CEO coordination cycles
+  const ceoCoordLoop = async () => {
+    await runCeoCycleForAll('coordination')
+    setTimeout(ceoCoordLoop, CEO_COORDINATION_INTERVAL_SEC * 1000)
+  }
+  setTimeout(ceoCoordLoop, CEO_COORDINATION_INTERVAL_SEC * 1000)
+
+  // 3. Schedule CEO strategy cycle (daily)
+  const ceoStrategyLoop = async () => {
+    await runCeoCycleForAll('strategy')
+    setTimeout(ceoStrategyLoop, CEO_STRATEGY_INTERVAL_SEC * 1000)
+  }
+  setTimeout(ceoStrategyLoop, CEO_STRATEGY_INTERVAL_SEC * 1000)
+
+  // 4. Start department loops
+  const departments = discoverActiveDepartments()
+  logger.info('main', `Found ${departments.length} active departments`)
+
+  for (const dept of departments) {
+    logger.info('main', `Starting department loop: ${dept.id} (interval: ${dept.interval}s)`)
+
+    await runDepartmentCycle(dept.id)
+
+    const deptLoop = async () => {
+      await runDepartmentCycle(dept.id)
+      setTimeout(deptLoop, dept.interval * 1000)
+    }
+    setTimeout(deptLoop, dept.interval * 1000)
+  }
+
+  logger.info('main', 'All loops scheduled. Running...')
+}
+
+module.exports = { runCycle, main, startAll, discoverActiveDepartments }

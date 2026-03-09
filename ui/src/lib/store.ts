@@ -3,6 +3,8 @@ import {
   Agent, AgentTemplate, Project, Skill, LogEntry, Task, Department
 } from './types'
 import type { AgentMessage } from './data-fetchers'
+import type { BudgetSummary } from './types'
+import type { AutopilotState, DeptInfo } from './autopilot-shared'
 
 // === Real data types from Gateway ===
 export interface UsageDaily {
@@ -128,6 +130,17 @@ interface AppState {
   setTasks: (t: Task[]) => void
   fetchTasks: () => Promise<void>
 
+  // Autopilot
+  autopilotState: AutopilotState | null
+  autopilotDepts: DeptInfo[]
+  autopilotError: string
+  autopilotLoading: boolean
+  fetchAutopilot: () => Promise<void>
+  fetchAutopilotDepts: () => Promise<void>
+  sendAutopilotAction: (action: string, extra?: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
+  budgetSummary: BudgetSummary | null
+  fetchBudget: () => Promise<void>
+
   // Tab visibility
   tabVisible: boolean
   setTabVisible: (v: boolean) => void
@@ -208,6 +221,62 @@ export const useAppStore = create<AppState>((set, get) => ({
   agentErrors: {},
   lastActivityTimestamps: {},
 
+  // Autopilot
+  autopilotState: null,
+  autopilotDepts: [],
+  autopilotError: '',
+  autopilotLoading: false,
+  fetchAutopilot: async () => {
+    try {
+      const res = await fetch('/api/autopilot')
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data = await res.json()
+      set({ autopilotState: data, autopilotError: '' })
+    } catch (e) {
+      set({ autopilotError: String(e) })
+    }
+  },
+  fetchAutopilotDepts: async () => {
+    try {
+      const res = await fetch('/api/autopilot?view=departments')
+      if (!res.ok) return
+      const data = await res.json()
+      set({ autopilotDepts: data.departments || [] })
+    } catch { /* ignore */ }
+  },
+  sendAutopilotAction: async (action: string, extra?: Record<string, unknown>) => {
+    set({ autopilotLoading: true })
+    try {
+      const res = await fetch('/api/autopilot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...extra }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        const error = data.error || 'Action failed'
+        set({ autopilotError: error, autopilotLoading: false })
+        return { ok: false, error }
+      }
+      // Immediately refresh state after successful action
+      await get().fetchAutopilot()
+      set({ autopilotLoading: false })
+      return { ok: true }
+    } catch (e) {
+      const error = String(e)
+      set({ autopilotError: error, autopilotLoading: false })
+      return { ok: false, error }
+    }
+  },
+  budgetSummary: null,
+  fetchBudget: async () => {
+    try {
+      const res = await fetch('/api/autopilot?view=budgets')
+      if (!res.ok) return
+      set({ budgetSummary: await res.json() })
+    } catch { /* ignore */ }
+  },
+
   tabVisible: true,
   setTabVisible: (v) => set({ tabVisible: v }),
 
@@ -281,7 +350,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const agents: Agent[] = data.agents.map((a: Record<string, string>) => ({
           id: a.id,
           templateId: a.templateId || null,
-          role: a.role || 'orchestrator',
+          role: a.role || 'pm',
           name: a.name || a.id,
           status: a.status || 'online',
           description: a.description || '',
@@ -415,7 +484,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           const agents: Agent[] = data.agents.map((a: Record<string, string>) => ({
             id: a.id,
             templateId: a.templateId || null,
-            role: a.role || 'orchestrator',
+            role: a.role || 'pm',
             name: a.name || a.id,
             status: a.status || 'online',
             description: a.description || '',

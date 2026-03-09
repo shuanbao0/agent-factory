@@ -7,13 +7,7 @@ const PROJECT_ROOT = resolve(process.cwd(), '..')
 export const dynamic = 'force-dynamic'
 
 function getAgentJsonPath(agentId: string): string {
-  // Check agents/ first, then orchestrator/
-  const agentPath = resolve(PROJECT_ROOT, 'agents', agentId, 'agent.json')
-  if (existsSync(agentPath)) return agentPath
-  const orchPath = resolve(PROJECT_ROOT, 'orchestrator', 'agent.json')
-  if (agentId === 'orchestrator' && existsSync(orchPath)) return orchPath
-  // Default to agents/ path (will create)
-  return agentPath
+  return resolve(PROJECT_ROOT, 'agents', agentId, 'agent.json')
 }
 
 export async function GET(req: NextRequest) {

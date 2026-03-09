@@ -11,7 +11,7 @@ import Link from 'next/link'
 
 const statusColor = { online: 'success', busy: 'warning' } as const
 const roleIcon: Record<string, string> = {
-  orchestrator: '🎯', ceo: '👔', pm: '📋', product: '📦', designer: '🎨',
+  ceo: '👔', pm: '📋', product: '📦', designer: '🎨',
   frontend: '💻', backend: '⚙️', tester: '🧪', researcher: '🔬',
   marketing: '📣', analyst: '📊', writer: '✍️', main: '🏠',
   'novel-chief': '📚', worldbuilder: '🌍', 'character-designer': '👤',

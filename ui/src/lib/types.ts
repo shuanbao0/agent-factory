@@ -3,7 +3,7 @@
  * All data comes from the internal Gateway API — no mock data.
  */
 
-export type AgentRole = 'orchestrator' | 'pm' | 'researcher' | 'product' | 'designer' | 'frontend' | 'backend' | 'tester'
+export type AgentRole = 'pm' | 'researcher' | 'product' | 'designer' | 'frontend' | 'backend' | 'tester'
 
 export interface AgentTemplate {
   id: string

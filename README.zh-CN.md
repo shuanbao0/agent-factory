@@ -103,7 +103,6 @@ npm run ui           # 启动 Dashboard（端口 3100）
 
 | Agent | 职责 |
 |-------|------|
-| Orchestrator | 全局编排、任务分解、进度协调 |
 | PM | 需求拆解、任务分配、进度跟踪 |
 | Researcher | 市场调研、竞品分析 |
 | Product | PRD 编写、功能定义 |
@@ -151,7 +150,6 @@ agent-factory/
 │   ├── builtin/          # 52 个内置模板
 │   └── custom/           # 自定义模板
 ├── agents/               # 运行时 Agent 实例
-├── orchestrator/         # 编排引擎
 ├── skills/               # 共享技能模块
 ├── config/               # 配置文件
 │   ├── mission.md        # 公司使命与运营模式

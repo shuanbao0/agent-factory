@@ -27,7 +27,7 @@ export type CommTemplate = 'pipeline' | 'star' | 'full' | 'none'
 
 const ROLE_EMOJI: Record<string, string> = {
   pm: '📋', product: '📦', designer: '🎨', frontend: '💻',
-  backend: '⚙️', tester: '🧪', researcher: '🔬', orchestrator: '🎯',
+  backend: '⚙️', tester: '🧪', researcher: '🔬',
   ceo: '👔', marketing: '📣', analyst: '📊', writer: '✍️',
 }
 

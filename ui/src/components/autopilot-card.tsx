@@ -1,114 +1,43 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Play, Square, RotateCw, Rocket, Clock, Zap, Building2, Wallet, BarChart3 } from 'lucide-react'
+import { Play, Square, RotateCw, Rocket, Clock, Zap, Building2, Wallet, FileText } from 'lucide-react'
 import { timeAgo } from '@/lib/utils'
+import { useTranslation } from '@/lib/i18n'
+import { useAppStore } from '@/lib/store'
 import { DepartmentLoopCard } from '@/components/department-loop-card'
 import { BudgetDashboard } from '@/components/budget-dashboard'
-
-interface AutopilotState {
-  status: 'running' | 'stopped' | 'cycling' | 'error'
-  pid: number | null
-  cycleCount: number
-  lastCycleAt: string | null
-  lastCycleResult: string | null
-  intervalSeconds: number
-  missionSummary: string
-  mode?: 'orchestrator' | null
-  departments?: Array<{
-    id: string
-    name: string
-    head: string
-    enabled: boolean
-    interval: number
-    directives?: string[]
-    report?: string
-    state: { status: string; cycleCount: number; lastCycleAt?: string; lastCycleResult?: string; tokensUsedToday?: number }
-  }>
-  recentHistory: Array<{
-    cycle: number
-    startedAt: string
-    completedAt: string
-    elapsedSec: number
-    result: string
-    tokens: number
-    cycleType?: string
-  }>
-}
-
-const statusConfig: Record<string, { label: string; color: string }> = {
-  running: { label: '🟢 Running', color: 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20' },
-  stopped: { label: '⏹ Stopped', color: 'bg-gray-400/10 text-gray-400 border-gray-400/20' },
-  cycling: { label: '🔄 Cycling', color: 'bg-blue-400/10 text-blue-400 border-blue-400/20' },
-  error: { label: '❌ Error', color: 'bg-red-400/10 text-red-400 border-red-400/20' },
-}
-
-type TabId = 'overview' | 'departments' | 'budget'
+import { MissionEditor } from '@/components/mission-editor'
+import { getStatusConfig, useCountdown } from '@/lib/autopilot-shared'
+import type { AutopilotState, TabId } from '@/lib/autopilot-shared'
 
 export function AutopilotCard() {
-  const [state, setState] = useState<AutopilotState | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [countdown, setCountdown] = useState('')
+  const { t } = useTranslation()
+  const state = useAppStore(s => s.autopilotState)
+  const depts = useAppStore(s => s.autopilotDepts)
+  const loading = useAppStore(s => s.autopilotLoading)
+  const error = useAppStore(s => s.autopilotError)
+  const sendAutopilotAction = useAppStore(s => s.sendAutopilotAction)
+  const fetchAutopilot = useAppStore(s => s.fetchAutopilot)
+  const fetchAutopilotDepts = useAppStore(s => s.fetchAutopilotDepts)
+  const countdown = useCountdown(state)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/autopilot')
-      if (res.ok) setState(await res.json())
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    fetchStatus()
-    const t = setInterval(fetchStatus, 5000)
-    return () => clearInterval(t)
-  }, [fetchStatus])
-
-  // Countdown to next cycle
-  useEffect(() => {
-    if (!state || state.status !== 'running' || !state.lastCycleAt) {
-      setCountdown('')
-      return
-    }
-    const update = () => {
-      const nextAt = new Date(state.lastCycleAt!).getTime() + state.intervalSeconds * 1000
-      const remaining = Math.max(0, nextAt - Date.now())
-      if (remaining <= 0) {
-        setCountdown('soon...')
-        return
-      }
-      const mins = Math.floor(remaining / 60000)
-      const secs = Math.floor((remaining % 60000) / 1000)
-      setCountdown(`${mins}:${secs.toString().padStart(2, '0')}`)
-    }
-    update()
-    const t = setInterval(update, 1000)
-    return () => clearInterval(t)
-  }, [state?.status, state?.lastCycleAt, state?.intervalSeconds])
-
   const sendAction = async (action: string, extra?: Record<string, unknown>) => {
-    setLoading(true)
-    try {
-      await fetch('/api/autopilot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...extra }),
-      })
-      setTimeout(fetchStatus, 1500)
-    } catch {} finally {
-      setLoading(false)
-    }
+    await sendAutopilotAction(action, extra)
   }
 
   if (!state) return null
 
+  const statusConfig = getStatusConfig(t)
   const sc = statusConfig[state.status] || statusConfig.stopped
 
   const tabs: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
-    { id: 'overview', label: 'Overview', icon: <Rocket className="w-3 h-3" /> },
-    { id: 'departments', label: 'Departments', icon: <Building2 className="w-3 h-3" /> },
-    { id: 'budget', label: 'Budget', icon: <Wallet className="w-3 h-3" /> },
+    { id: 'overview', label: t('autopilot.tabOverview'), icon: <Rocket className="w-3 h-3" /> },
+    { id: 'departments', label: t('autopilot.tabDepartments'), icon: <Building2 className="w-3 h-3" /> },
+    { id: 'budget', label: t('autopilot.tabBudget'), icon: <Wallet className="w-3 h-3" /> },
+    { id: 'mission', label: t('autopilot.tabMission'), icon: <FileText className="w-3 h-3" /> },
   ]
 
   return (
@@ -116,9 +45,9 @@ export function AutopilotCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <Rocket className="w-4 h-4" /> Autopilot
-            {state.mode === 'orchestrator' && (
-              <Badge className="bg-purple-400/10 text-purple-400 border-purple-400/20 text-[10px]">Orchestrator</Badge>
+            <Rocket className="w-4 h-4" /> {t('autopilot.title')}
+            {state.mode === 'all' && (
+              <Badge className="bg-purple-400/10 text-purple-400 border-purple-400/20 text-[10px]">{t('autopilot.startAll')}</Badge>
             )}
           </CardTitle>
           <Badge className={sc.color}>{sc.label}</Badge>
@@ -142,35 +71,46 @@ export function AutopilotCard() {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {error && (
+          <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+            {error}
+          </div>
+        )}
         {activeTab === 'overview' && (
           <OverviewTab
             state={state}
             loading={loading}
             countdown={countdown}
             sendAction={sendAction}
+            t={t}
           />
         )}
         {activeTab === 'departments' && (
           <DepartmentsTab
-            departments={state.departments || []}
+            departments={depts}
             sendAction={sendAction}
             loading={loading}
-            onRefresh={fetchStatus}
+            onRefresh={() => { fetchAutopilot(); fetchAutopilotDepts() }}
+            t={t}
           />
         )}
         {activeTab === 'budget' && (
           <BudgetDashboard />
+        )}
+        {activeTab === 'mission' && (
+          <MissionEditor />
         )}
       </CardContent>
     </Card>
   )
 }
 
-function OverviewTab({ state, loading, countdown, sendAction }: {
+function OverviewTab({ state, loading, countdown, sendAction, t }: {
   state: AutopilotState
   loading: boolean
   countdown: string
   sendAction: (action: string, extra?: Record<string, unknown>) => void
+  t: (key: string) => string
 }) {
   return (
     <>
@@ -182,7 +122,7 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-md text-xs font-medium hover:bg-red-500/20 transition-colors disabled:opacity-50"
           >
-            <Square className="w-3 h-3" /> Stop
+            <Square className="w-3 h-3" /> {t('autopilot.stop')}
           </button>
         ) : (
           <>
@@ -191,14 +131,14 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-xs font-medium hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
             >
-              <Play className="w-3 h-3" /> Start Loop
+              <Play className="w-3 h-3" /> {t('autopilot.startLoop')}
             </button>
             <button
               onClick={() => sendAction('start-all')}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-md text-xs font-medium hover:bg-purple-500/20 transition-colors disabled:opacity-50"
             >
-              <Building2 className="w-3 h-3" /> Orchestrator
+              <Building2 className="w-3 h-3" /> {t('autopilot.startAll')}
             </button>
           </>
         )}
@@ -207,14 +147,14 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
           disabled={loading || state.status === 'cycling'}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-md text-xs font-medium hover:bg-blue-500/20 transition-colors disabled:opacity-50"
         >
-          <RotateCw className={`w-3 h-3 ${state.status === 'cycling' ? 'animate-spin' : ''}`} /> Run Cycle
+          <RotateCw className={`w-3 h-3 ${state.status === 'cycling' ? 'animate-spin' : ''}`} /> {t('autopilot.runCycle')}
         </button>
       </div>
 
       {/* Next cycle countdown */}
       {state.status === 'running' && countdown && (
         <div className="flex items-center justify-between bg-primary/5 border border-primary/10 rounded-lg px-3 py-2">
-          <span className="text-xs text-muted-foreground">Next Cycle</span>
+          <span className="text-xs text-muted-foreground">{t('autopilot.nextCycle')}</span>
           <span className="text-sm font-mono font-bold text-primary">{countdown}</span>
         </div>
       )}
@@ -223,7 +163,7 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
       <div className="grid grid-cols-3 gap-3 text-center">
         <div className="bg-muted/50 rounded-lg p-2">
           <div className="text-lg font-bold">{state.cycleCount}</div>
-          <div className="text-[10px] text-muted-foreground">Cycles</div>
+          <div className="text-[10px] text-muted-foreground">{t('autopilot.cycles')}</div>
         </div>
         <div className="bg-muted/50 rounded-lg p-2">
           <div className="text-lg font-bold flex items-center justify-center gap-1">
@@ -232,7 +172,7 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
               ? `${(state.intervalSeconds / 3600).toFixed(0)}h`
               : `${(state.intervalSeconds / 60).toFixed(0)}m`}
           </div>
-          <div className="text-[10px] text-muted-foreground">Interval</div>
+          <div className="text-[10px] text-muted-foreground">{t('autopilot.interval')}</div>
         </div>
         <div className="bg-muted/50 rounded-lg p-2">
           <div className="text-lg font-bold flex items-center justify-center gap-1">
@@ -241,7 +181,7 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
               ? `${(state.recentHistory.reduce((s, h) => s + h.tokens, 0) / 1000).toFixed(0)}k`
               : state.recentHistory.reduce((s, h) => s + h.tokens, 0)}
           </div>
-          <div className="text-[10px] text-muted-foreground">Tokens</div>
+          <div className="text-[10px] text-muted-foreground">{t('autopilot.tokens')}</div>
         </div>
       </div>
 
@@ -249,7 +189,7 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
       {state.lastCycleResult && (
         <div className="bg-muted/30 rounded-lg p-3 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground font-medium">Last Cycle</span>
+            <span className="text-[10px] text-muted-foreground font-medium">{t('autopilot.lastCycle')}</span>
             {state.lastCycleAt && (
               <span className="text-[10px] text-muted-foreground">{timeAgo(state.lastCycleAt)}</span>
             )}
@@ -261,7 +201,7 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
       {/* Recent history */}
       {state.recentHistory.length > 0 && (
         <div className="space-y-1.5">
-          <span className="text-[10px] text-muted-foreground font-medium">History</span>
+          <span className="text-[10px] text-muted-foreground font-medium">{t('autopilot.history')}</span>
           {state.recentHistory.slice(-5).reverse().map(h => (
             <div key={h.cycle} className="flex items-center gap-2 text-[10px]">
               <span className="text-muted-foreground font-mono w-6">#{h.cycle}</span>
@@ -279,18 +219,19 @@ function OverviewTab({ state, loading, countdown, sendAction }: {
   )
 }
 
-function DepartmentsTab({ departments, sendAction, loading, onRefresh }: {
+function DepartmentsTab({ departments, sendAction, loading, onRefresh, t }: {
   departments: AutopilotState['departments']
   sendAction: (action: string, extra?: Record<string, unknown>) => void
   loading: boolean
   onRefresh: () => void
+  t: (key: string) => string
 }) {
   if (!departments || departments.length === 0) {
     return (
       <div className="text-center text-muted-foreground text-xs py-6">
         <Building2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
-        <p>No department loops configured.</p>
-        <p className="mt-1">Create <code className="text-[10px]">config/departments/&lt;id&gt;/config.json</code> to get started.</p>
+        <p>{t('autopilot.dept.noDepartments')}</p>
+        <p className="mt-1">{t('autopilot.dept.noDepartmentsHint')}</p>
       </div>
     )
   }

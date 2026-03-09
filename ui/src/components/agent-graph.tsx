@@ -31,7 +31,7 @@ interface AgentGraphProps {
 // ── Constants ────────────────────────────────────────────────────
 const ROLE_EMOJI: Record<string, string> = {
   pm: '📋', product: '📦', designer: '🎨', frontend: '💻',
-  backend: '⚙️', tester: '🧪', researcher: '🔬', orchestrator: '🎯',
+  backend: '⚙️', tester: '🧪', researcher: '🔬',
   ceo: '👔', marketing: '📣', analyst: '📊', writer: '✍️',
 }
 

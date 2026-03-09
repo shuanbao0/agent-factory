@@ -25,13 +25,13 @@ Agent Factory gives **one person** the power of an entire company — PM, resear
 - Give a single requirement, get a full team working on it
 - Agents auto-decompose tasks, assign roles, and execute in parallel
 - Produce real artifacts: PRDs, designs, code, tests, marketing copy
-- Built-in orchestration — no manual coordination needed
+- CEO-driven autopilot — no manual coordination needed
 - 52 pre-built role templates covering dev, business, content, and creative teams
 
 ## Features
 
 - **52 Built-in Agent Templates** — CEO, PM, Designer, Frontend, Backend, Tester, Marketing, Legal, CFO, Novel Writer, Anime Director, and more
-- **DAG Orchestration** — Intelligent task decomposition and parallel execution
+- **Autopilot Mode** — CEO-driven autonomous task decomposition and parallel execution
 - **Built-in OpenClaw Engine** — No external runtime needed, fully self-contained
 - **Dashboard UI** — Real-time monitoring with pixel-art office visualization
 - **Multi-Provider LLM Support** — Anthropic, OpenAI, DeepSeek, MiniMax, and 15+ providers
@@ -49,7 +49,7 @@ Agent Factory gives **one person** the power of an entire company — PM, resear
 ├─────────────────────────────────────────────┤
 │              Agent Factory                  │
 │  ├── 52 Agent Role Templates                │
-│  ├── Orchestrator (DAG-based)               │
+│  ├── CEO-driven Autopilot                   │
 │  ├── Skill System                           │
 │  ├── Communication Matrix                   │
 │  └── Shared Project Workspace               │
@@ -103,7 +103,6 @@ No need to install OpenClaw separately — everything is included.
 
 | Agent | Role |
 |-------|------|
-| Orchestrator | Global orchestration, task decomposition, progress coordination |
 | PM | Requirements breakdown, task assignment, progress tracking |
 | Researcher | Market research, competitive analysis |
 | Product | PRD writing, feature definition |
@@ -151,7 +150,6 @@ agent-factory/
 │   ├── builtin/          # 52 built-in templates
 │   └── custom/           # Your custom templates
 ├── agents/               # Runtime agent instances
-├── orchestrator/         # Orchestration engine
 ├── skills/               # Shared skill modules
 ├── config/               # Configuration files
 │   ├── mission.md        # Company mission & operating model

@@ -25,7 +25,6 @@ agent-factory/
 │   └── autopilot-state.json # Autopilot 运行状态
 ├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿等）
 ├── libs/                  # 本地库（openclaw 源码，不提交）
-├── orchestrator/          # 编排 Agent（DAG 流程控制）
 ├── scripts/
 │   ├── start.mjs          # 统一启动脚本（Dashboard + Gateway）
 │   ├── autopilot.cjs      # Autopilot 循环脚本

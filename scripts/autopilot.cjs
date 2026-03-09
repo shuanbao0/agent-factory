@@ -10,6 +10,6 @@
  *   node scripts/autopilot.cjs --loop                  # 持续循环模式
  *   node scripts/autopilot.cjs --loop --interval 1800  # 每 30 分钟循环
  *   node scripts/autopilot.cjs --stop                  # 停止运行中的循环
- *   node scripts/autopilot.cjs --orchestrator          # 启动编排器（CEO + 部门循环）
+ *   node scripts/autopilot.cjs --all                   # 启动全部循环（CEO + 部门循环）
  */
 require('./autopilot/index.cjs')
