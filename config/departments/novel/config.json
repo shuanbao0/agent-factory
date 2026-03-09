@@ -157,8 +157,12 @@
           "minScore": 75,
           "requireSelfCheck": true,
           "maxReworks": 3,
-          "validators": ["wordCount"],
-          "validatorConfig": { "wordCount": { "min": 3000 } }
+          "validators": ["wordCount", "noEndingKeywords", "similarity"],
+          "validatorConfig": {
+            "wordCount": { "min": 3000 },
+            "noEndingKeywords": { "keywords": ["全书完", "大结局", "（完）", "THE END", "完结", "终章"] },
+            "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 }
+          }
         }
       },
       {

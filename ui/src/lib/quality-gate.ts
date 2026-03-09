@@ -118,6 +118,31 @@ function runValidator(name: string, task: Task, config: Record<string, unknown>)
       }
       return []
     }
+    case 'noEndingKeywords': {
+      const keywords = (config.keywords as string[]) ?? ['全书完', '大结局', '（完）', 'THE END', '完结', '终章']
+      if (!task.output) return []
+      const found = keywords.filter(kw => task.output!.includes(kw))
+      if (found.length > 0) {
+        return [`Non-final chapter contains ending keywords: ${found.join(', ')}`]
+      }
+      return []
+    }
+    case 'similarity': {
+      const maxRepeatRatio = (config.maxRepeatRatio as number) ?? 0.3
+      const minBlockSize = (config.minBlockSize as number) ?? 100
+      if (!task.output || task.output.length < minBlockSize * 2) return []
+      // Split into blocks, check for duplicate blocks
+      const blocks: string[] = []
+      for (let i = 0; i <= task.output.length - minBlockSize; i += minBlockSize) {
+        blocks.push(task.output.slice(i, i + minBlockSize))
+      }
+      const unique = new Set(blocks)
+      const repeatRatio = 1 - unique.size / blocks.length
+      if (repeatRatio > maxRepeatRatio) {
+        return [`Content repeat ratio ${(repeatRatio * 100).toFixed(0)}% exceeds max ${(maxRepeatRatio * 100).toFixed(0)}%`]
+      }
+      return []
+    }
     default:
       return []
   }
