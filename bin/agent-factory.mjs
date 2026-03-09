@@ -273,10 +273,11 @@ async function cmdUpdate() {
   }
 
   // Preserve user data directories (config/ is partially preserved — see mergeConfig below)
-  const preserveDirs = ['agents', 'workspaces', 'projects', 'templates/custom', '.openclaw-state'];
+  const preserveDirs = ['agents', 'workspaces', 'projects', 'templates/custom', '.openclaw-state', 'config/departments'];
   const preserveFiles = ['.env', 'config/openclaw.json', 'config/models.json', 'config/autopilot-state.json'];
   // Note: config/departments.json and config/base-rules.md are intentionally NOT preserved
   // — they get overwritten with new versions, then departments.json is merged below
+  // config/departments/ is preserved, then smart-merged from tmpDir below
 
   // Copy new files over, skipping preserved dirs/files
   console.log('Applying update...');
@@ -328,15 +329,79 @@ async function cmdUpdate() {
     console.log(c.yellow('Department merge skipped: ' + e.message));
   }
 
-  // Preserve config/departments/ subdirectories (autopilot state)
+  // Smart-merge config/departments/ from tmpDir into existing
+  // - New department dirs: copy entirely
+  // - Existing department dirs: smart-merge config.json (add new fields, keep user values)
+  // - Runtime files (state.json, report.md, ceo-directives.json): never touch
   const deptConfigSrc = resolve(tmpDir, 'config/departments');
   const deptConfigDst = resolve(ROOT, 'config/departments');
   if (existsSync(deptConfigSrc)) {
     mkdirSync(deptConfigDst, { recursive: true });
-    // Only copy new department configs, don't overwrite existing
     for (const entry of readdirSync(deptConfigSrc, { withFileTypes: true })) {
-      if (entry.isDirectory() && !existsSync(resolve(deptConfigDst, entry.name))) {
-        execSync(`cp -R "${resolve(deptConfigSrc, entry.name)}" "${deptConfigDst}/"`, { stdio: 'inherit' });
+      if (!entry.isDirectory()) continue;
+      const srcDir = resolve(deptConfigSrc, entry.name);
+      const dstDir = resolve(deptConfigDst, entry.name);
+
+      if (!existsSync(dstDir)) {
+        // New department — copy entirely
+        execSync(`cp -R "${srcDir}" "${deptConfigDst}/"`, { stdio: 'inherit' });
+        console.log(c.green(`  + new department: ${entry.name}`));
+      } else {
+        // Existing department — smart-merge config.json
+        const srcConfig = resolve(srcDir, 'config.json');
+        const dstConfig = resolve(dstDir, 'config.json');
+        if (existsSync(srcConfig)) {
+          try {
+            const incoming = JSON.parse(readFileSync(srcConfig, 'utf-8'));
+            if (existsSync(dstConfig)) {
+              const existing = JSON.parse(readFileSync(dstConfig, 'utf-8'));
+              let changed = false;
+              // Add new top-level fields from incoming
+              for (const key of Object.keys(incoming)) {
+                if (!(key in existing)) {
+                  existing[key] = incoming[key];
+                  console.log(c.green(`  ${entry.name}: + ${key}`));
+                  changed = true;
+                } else if (key === 'agents' && Array.isArray(existing[key]) && Array.isArray(incoming[key])) {
+                  // Union merge agents array
+                  const set = new Set(existing[key]);
+                  const added = incoming[key].filter(a => !set.has(a));
+                  if (added.length > 0) {
+                    existing[key] = [...existing[key], ...added];
+                    console.log(c.green(`  ${entry.name}: agents +${added.join(', ')}`));
+                    changed = true;
+                  }
+                } else if (key === 'workflow' && typeof incoming[key] === 'object') {
+                  // Always update workflow from new version (this is code-defined, not user data)
+                  if (JSON.stringify(existing[key]) !== JSON.stringify(incoming[key])) {
+                    existing[key] = incoming[key];
+                    console.log(c.green(`  ${entry.name}: updated workflow`));
+                    changed = true;
+                  }
+                } else if (key === 'kpis' && typeof existing[key] === 'object' && typeof incoming[key] === 'object') {
+                  // Add new KPIs, keep existing targets
+                  for (const k of Object.keys(incoming[key])) {
+                    if (!(k in existing[key])) {
+                      existing[key][k] = incoming[key][k];
+                      console.log(c.green(`  ${entry.name}: kpis +${k}`));
+                      changed = true;
+                    }
+                  }
+                }
+                // Scalars (name, head, interval, enabled, budget): keep existing user values
+              }
+              if (changed) {
+                writeFileSync(dstConfig, JSON.stringify(existing, null, 2) + '\n');
+              }
+            } else {
+              // config.json missing in existing dept — create from incoming
+              writeFileSync(dstConfig, readFileSync(srcConfig, 'utf-8'));
+              console.log(c.green(`  ${entry.name}: created config.json`));
+            }
+          } catch (e) {
+            console.log(c.yellow(`  ${entry.name}: merge failed: ${e.message}`));
+          }
+        }
       }
     }
   }
