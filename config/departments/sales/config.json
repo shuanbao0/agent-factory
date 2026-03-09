@@ -114,7 +114,9 @@
         "qualityGate": {
           "minScore": 75,
           "requireSelfCheck": true,
-          "maxReworks": 3
+          "maxReworks": 3,
+          "validators": ["similarity"],
+          "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } }
         }
       },
       {
@@ -123,7 +125,9 @@
         "qualityGate": {
           "minScore": 80,
           "requireSelfCheck": true,
-          "maxReworks": 2
+          "maxReworks": 2,
+          "validators": ["similarity"],
+          "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } }
         }
       }
     ]
