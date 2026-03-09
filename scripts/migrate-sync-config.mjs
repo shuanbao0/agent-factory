@@ -19,15 +19,17 @@
  *   node scripts/migrate-sync-config.mjs --dry-run     # preview changes
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, cpSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const DEPARTMENTS_DIR = join(ROOT, 'config', 'departments');
 const DEPARTMENTS_JSON = join(ROOT, 'config', 'departments.json');
 const BUDGET_JSON = join(ROOT, 'config', 'budget.json');
+const UPDATE_DIR = process.env.AF_UPDATE_DIR || null;  // tmpDir from agent-factory update
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -122,6 +124,15 @@ function mergeDeptConfig(existing, incoming) {
       continue;
     }
 
+    // workflow: always update from incoming (code-defined config, not user data)
+    if (key === 'workflow' && typeof incoming[key] === 'object') {
+      if (JSON.stringify(existing[key]) !== JSON.stringify(incoming[key])) {
+        result[key] = incoming[key];
+        changes.push('workflow: updated');
+      }
+      continue;
+    }
+
     // kpis object: add new kpis, keep existing targets
     if (key === 'kpis' && typeof existing[key] === 'object' && typeof incoming[key] === 'object') {
       const kpis = { ...existing[key] };
@@ -199,7 +210,13 @@ function mergeBudget(existing, incoming) {
 // ── Get reference configs from departments.json ──
 
 function getReferenceDeptConfig(deptId) {
-  // Use departments.json as the "incoming" reference for department config
+  // Priority 1: AF_UPDATE_DIR (new version config with full fields including workflow)
+  if (UPDATE_DIR) {
+    const incomingPath = join(UPDATE_DIR, 'config', 'departments', deptId, 'config.json');
+    const incoming = readJson(incomingPath);
+    if (incoming) return incoming;
+  }
+  // Priority 2: departments.json (standalone run fallback, display fields only)
   const deptsData = readJson(DEPARTMENTS_JSON);
   if (!deptsData?.departments) return null;
   return deptsData.departments.find(d => d.id === deptId) || null;
@@ -208,10 +225,118 @@ function getReferenceDeptConfig(deptId) {
 // ── Main ──
 
 console.log(`${dryRun ? '[DRY-RUN] ' : ''}=== Sync config/ files ===\n`);
+if (UPDATE_DIR) {
+  console.log(`  Using incoming files from: ${UPDATE_DIR}\n`);
+}
 
 let totalUpdated = 0;
 let totalUnchanged = 0;
 let totalSkipped = 0;
+
+// ── 0. When running during update (AF_UPDATE_DIR set): merge departments.json & copy new dept dirs ──
+
+if (UPDATE_DIR) {
+  // 0a. Smart-merge departments.json
+  const newDeptJsonPath = join(UPDATE_DIR, 'config', 'departments.json');
+  if (existsSync(newDeptJsonPath)) {
+    const newDepts = readJson(newDeptJsonPath);
+    if (newDepts?.departments) {
+      if (!existsSync(DEPARTMENTS_JSON)) {
+        // No existing file — just copy
+        if (!dryRun) {
+          mkdirSync(dirname(DEPARTMENTS_JSON), { recursive: true });
+          writeFileSync(DEPARTMENTS_JSON, JSON.stringify(newDepts, null, 2) + '\n');
+        }
+        console.log('  departments.json: created from incoming');
+        totalUpdated++;
+      } else {
+        const currentDepts = readJson(DEPARTMENTS_JSON);
+        if (currentDepts?.departments) {
+          const currentMap = new Map(currentDepts.departments.map(d => [d.id, d]));
+          let changed = false;
+          for (const dept of newDepts.departments) {
+            if (!currentMap.has(dept.id)) {
+              currentDepts.departments.push(dept);
+              console.log(`  departments.json: + department ${dept.name} (${dept.id})`);
+              changed = true;
+            } else {
+              const existing = currentMap.get(dept.id);
+              for (const key of Object.keys(dept)) {
+                if (!(key in existing)) {
+                  existing[key] = dept[key];
+                  console.log(`  departments.json: ${dept.id} + ${key}`);
+                  changed = true;
+                }
+              }
+            }
+          }
+          if (changed) {
+            if (!dryRun) {
+              writeFileSync(DEPARTMENTS_JSON, JSON.stringify(currentDepts, null, 2) + '\n');
+            }
+            totalUpdated++;
+          } else {
+            totalUnchanged++;
+          }
+        }
+      }
+    }
+  }
+
+  // 0b. Copy new department directories from UPDATE_DIR
+  const incomingDeptsDir = join(UPDATE_DIR, 'config', 'departments');
+  if (existsSync(incomingDeptsDir)) {
+    mkdirSync(DEPARTMENTS_DIR, { recursive: true });
+    for (const entry of readdirSync(incomingDeptsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dstDir = join(DEPARTMENTS_DIR, entry.name);
+      if (!existsSync(dstDir)) {
+        const srcDir = join(incomingDeptsDir, entry.name);
+        if (!dryRun) {
+          try {
+            cpSync(srcDir, dstDir, { recursive: true });
+          } catch {
+            execSync(`cp -R "${srcDir}" "${DEPARTMENTS_DIR}/"`, { stdio: 'inherit' });
+          }
+        }
+        console.log(`  + new department dir: ${entry.name}`);
+        totalUpdated++;
+      }
+    }
+  }
+
+  // 0c. Smart-merge budget.json from UPDATE_DIR
+  const incomingBudgetPath = join(UPDATE_DIR, 'config', 'budget.json');
+  if (existsSync(incomingBudgetPath)) {
+    const incomingBudget = readJson(incomingBudgetPath);
+    const existingBudget = readJson(BUDGET_JSON);
+    if (incomingBudget) {
+      if (!existingBudget) {
+        if (!dryRun) {
+          writeFileSync(BUDGET_JSON, JSON.stringify(incomingBudget, null, 2) + '\n');
+        }
+        console.log('  budget.json: created from incoming');
+        totalUpdated++;
+      } else {
+        const { result, changes } = mergeBudget(existingBudget, incomingBudget);
+        if (changes.length > 0) {
+          console.log('  budget.json (from incoming):');
+          for (const ch of changes) {
+            console.log(`    ${ch}`);
+          }
+          if (!dryRun) {
+            writeFileSync(BUDGET_JSON, JSON.stringify(result, null, 2) + '\n');
+          }
+          totalUpdated++;
+        } else {
+          totalUnchanged++;
+        }
+      }
+    }
+  }
+
+  console.log('');
+}
 
 // ── 1. Sync department configs ──
 
@@ -284,9 +409,9 @@ if (existsSync(DEPARTMENTS_DIR)) {
   console.log('  No config/departments/ directory found. Skipping department sync.');
 }
 
-// ── 2. Sync budget.json (only when no specific department target) ──
+// ── 2. Sync budget.json (only when no specific department target and not during update) ──
 
-if (!targetDept && existsSync(BUDGET_JSON)) {
+if (!targetDept && !UPDATE_DIR && existsSync(BUDGET_JSON)) {
   // For budget.json, we can't easily get the "incoming" version after rsync.
   // This merge is defensive — it ensures the structure has expected fields.
   const expectedStructure = {
