@@ -11,6 +11,7 @@ const SESSIONS_DIR = join(PROJECT_ROOT, '.openclaw-state', 'agents')
 const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
 
 const MISSION_FILE = join(CONFIG_DIR, 'mission.md')
+const BASE_MISSION_FILE = join(CONFIG_DIR, 'base-mission.md')
 const STATE_FILE = join(CONFIG_DIR, 'autopilot-state.json')
 const TASKS_FILE = join(CONFIG_DIR, 'tasks.json')
 const DEPARTMENTS_FILE = join(CONFIG_DIR, 'departments.json')
@@ -42,6 +43,7 @@ module.exports = {
   SESSIONS_DIR,
   WORKSPACES_DIR,
   MISSION_FILE,
+  BASE_MISSION_FILE,
   STATE_FILE,
   TASKS_FILE,
   DEPARTMENTS_FILE,

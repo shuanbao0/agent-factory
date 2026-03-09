@@ -188,6 +188,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ kpis })
   }
 
+  if (view === 'base-mission') {
+    const BASE_MISSION_FILE = join(PROJECT_ROOT, 'config/base-mission.md')
+    let content = ''
+    try {
+      if (existsSync(BASE_MISSION_FILE)) {
+        content = readFileSync(BASE_MISSION_FILE, 'utf-8')
+      }
+    } catch {}
+    return NextResponse.json({ content })
+  }
+
   if (view === 'mission') {
     let content = ''
     try {
@@ -214,9 +225,18 @@ export async function GET(req: Request) {
     }
   } catch {}
 
+  let baseMission = ''
+  try {
+    const BASE_MISSION_FILE = join(PROJECT_ROOT, 'config/base-mission.md')
+    if (existsSync(BASE_MISSION_FILE)) {
+      baseMission = readFileSync(BASE_MISSION_FILE, 'utf-8')
+    }
+  } catch {}
+
   return NextResponse.json({
     ...state,
     missionSummary,
+    baseMission,
     recentHistory: state.history.slice(-10),
   })
 }
@@ -395,6 +415,14 @@ export async function POST(req: Request) {
       })
       child.unref()
       return NextResponse.json({ ok: true, message: `Department ${deptId} single cycle started`, pid: child.pid })
+    }
+
+    if (action === 'set-base-mission') {
+      const { content } = body
+      if (typeof content !== 'string') return NextResponse.json({ ok: false, error: 'content required' }, { status: 400 })
+      const BASE_MISSION_FILE = join(PROJECT_ROOT, 'config/base-mission.md')
+      atomicWriteSync(BASE_MISSION_FILE, content)
+      return NextResponse.json({ ok: true })
     }
 
     if (action === 'set-mission') {

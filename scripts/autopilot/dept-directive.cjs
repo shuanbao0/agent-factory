@@ -4,7 +4,7 @@
 const { join } = require('path')
 const { readFileSync, existsSync } = require('fs')
 const { DEPARTMENTS_DIR, PROJECTS_DIR } = require('./constants.cjs')
-const { readAgentActivity, readProjectTasks, readDeptMission } = require('./readers.cjs')
+const { readAgentActivity, readProjectTasks, readDeptMission, readBaseMission } = require('./readers.cjs')
 const { buildMemoryContext } = require('./memory.cjs')
 const logger = require('./logger.cjs')
 
@@ -137,9 +137,20 @@ function buildDepartmentDirective(deptId, config, state) {
     ? `今日已用: ${state.tokensUsedToday || 0} / ${config.budget.dailyTokenLimit} tokens`
     : '(无预算限制)'
 
-  // Read department mission
+  // Read base mission + department mission
+  const baseMission = readBaseMission()
   const deptMission = readDeptMission(deptId)
-  const missionSection = deptMission ? `\n## 部门使命\n${deptMission}\n` : ''
+
+  let missionSection = ''
+  if (baseMission || deptMission) {
+    missionSection = '\n## 部门使命\n'
+    if (baseMission) {
+      missionSection += `### 通用准则\n${baseMission}\n\n`
+    }
+    if (deptMission) {
+      missionSection += `### 本部门使命\n${deptMission}\n`
+    }
+  }
 
   return `[Department Loop: ${deptId} Cycle #${(state.cycleCount || 0) + 1}]
 

@@ -458,6 +458,14 @@
       "saving": "Saving...",
       "saved": "Saved",
       "loadFailed": "Failed to load mission file"
+    },
+    "baseMission": {
+      "title": "Base Department Guidelines",
+      "desc": "Quality standards and operational guidelines shared across all departments",
+      "save": "Save",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "loadFailed": "Failed to load"
     }
   },
   "phases": {

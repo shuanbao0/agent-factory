@@ -458,6 +458,14 @@
       "saving": "保存中...",
       "saved": "已保存",
       "loadFailed": "加载使命文件失败"
+    },
+    "baseMission": {
+      "title": "通用部门准则",
+      "desc": "适用于所有部门的质量标准和运营规范，自动合并到每个部门的使命中",
+      "save": "保存",
+      "saving": "保存中...",
+      "saved": "已保存",
+      "loadFailed": "加载失败"
     }
   },
   "phases": {

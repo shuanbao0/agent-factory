@@ -4,7 +4,7 @@
 const { readFileSync, existsSync, readdirSync, statSync } = require('fs')
 const { join } = require('path')
 const {
-  MISSION_FILE, TASKS_FILE, PROJECTS_DIR, SESSIONS_DIR,
+  MISSION_FILE, BASE_MISSION_FILE, TASKS_FILE, PROJECTS_DIR, SESSIONS_DIR,
   CEO_WORKSPACE, AGENTS_DIR, DEPARTMENTS_DIR,
 } = require('./constants.cjs')
 const logger = require('./logger.cjs')
@@ -16,6 +16,17 @@ function readMission() {
     logger.warn('readers', 'Mission file not found', err)
     return '(mission.md not found)'
   }
+}
+
+function readBaseMission() {
+  try {
+    if (existsSync(BASE_MISSION_FILE)) {
+      return readFileSync(BASE_MISSION_FILE, 'utf-8')
+    }
+  } catch (err) {
+    logger.debug('readers', 'Base mission file not found or unreadable', err)
+  }
+  return ''
 }
 
 function readWorkspaceFile(agentDir, filename) {
@@ -257,6 +268,7 @@ function readDeptMission(deptId) {
 
 module.exports = {
   readMission,
+  readBaseMission,
   readWorkspaceFile,
   readCeoWorkspaceFile,
   readProjectTasks,
