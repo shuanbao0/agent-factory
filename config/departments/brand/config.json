@@ -36,5 +36,83 @@
       "type": "lamp",
       "count": 2
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "planning",
+        "labelZh": "策划",
+        "labelEn": "Planning"
+      },
+      {
+        "key": "creation",
+        "labelZh": "创作",
+        "labelEn": "Creation"
+      },
+      {
+        "key": "review",
+        "labelZh": "审核",
+        "labelEn": "Review"
+      },
+      {
+        "key": "publishing",
+        "labelZh": "发布",
+        "labelEn": "Publishing"
+      },
+      {
+        "key": "analytics",
+        "labelZh": "分析",
+        "labelEn": "Analytics"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "planning",
+        "labelZh": "策划",
+        "labelEn": "Planning",
+        "color": "blue"
+      },
+      {
+        "value": "creation",
+        "labelZh": "创作",
+        "labelEn": "Creation",
+        "color": "purple"
+      },
+      {
+        "value": "review",
+        "labelZh": "审核",
+        "labelEn": "Review",
+        "color": "pink"
+      },
+      {
+        "value": "publishing",
+        "labelZh": "发布",
+        "labelEn": "Publishing",
+        "color": "green"
+      },
+      {
+        "value": "analytics",
+        "labelZh": "分析",
+        "labelEn": "Analytics",
+        "color": "cyan"
+      }
+    ],
+    "directories": [
+      "strategy",
+      "content",
+      "review",
+      "published",
+      "analytics"
+    ],
+    "pipeline": [
+      {
+        "from": "creation",
+        "to": "review"
+      },
+      {
+        "from": "review",
+        "to": "publishing"
+      }
+    ]
+  }
 }

@@ -87,6 +87,8 @@ export interface Task {
   dependencies: string[]
   output?: string
   tags?: string[]
+  type?: string                  // structured task type from workflow
+  parentTaskId?: string          // sub-task relationship
   quality?: TaskQuality
   createdAt: string
   updatedAt: string
@@ -110,6 +112,31 @@ export interface DepartmentLoopState {
   budgetResetAt: string | null
 }
 
+export interface PhaseDefinition {
+  key: string
+  labelZh: string
+  labelEn: string
+}
+
+export interface TaskTypeDefinition {
+  value: string
+  labelZh: string
+  labelEn: string
+  color: string
+}
+
+export interface PipelineStep {
+  from: string
+  to: string
+}
+
+export interface DepartmentWorkflow {
+  phases: PhaseDefinition[]
+  taskTypes: TaskTypeDefinition[]
+  directories: string[]
+  pipeline: PipelineStep[]
+}
+
 export interface DepartmentConfig {
   id: string
   name: string
@@ -122,6 +149,7 @@ export interface DepartmentConfig {
     alertThreshold: number
   }
   kpis?: Record<string, { target: number; unit: string }>
+  workflow?: DepartmentWorkflow
 }
 
 export interface BudgetSummary {
@@ -147,6 +175,8 @@ export interface Project {
   tasks: Task[]
   createdAt: string
   tokensUsed: number
+  phases?: PhaseDefinition[]
+  department?: string
 }
 
 export interface Skill {

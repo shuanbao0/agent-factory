@@ -39,5 +39,82 @@
       "type": "lamp",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "planning",
+        "labelZh": "规划",
+        "labelEn": "Planning"
+      },
+      {
+        "key": "execution",
+        "labelZh": "执行",
+        "labelEn": "Execution"
+      },
+      {
+        "key": "monitoring",
+        "labelZh": "监控",
+        "labelEn": "Monitoring"
+      },
+      {
+        "key": "optimization",
+        "labelZh": "优化",
+        "labelEn": "Optimization"
+      },
+      {
+        "key": "review",
+        "labelZh": "复盘",
+        "labelEn": "Review"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "planning",
+        "labelZh": "规划",
+        "labelEn": "Planning",
+        "color": "blue"
+      },
+      {
+        "value": "execution",
+        "labelZh": "执行",
+        "labelEn": "Execution",
+        "color": "green"
+      },
+      {
+        "value": "monitoring",
+        "labelZh": "监控",
+        "labelEn": "Monitoring",
+        "color": "cyan"
+      },
+      {
+        "value": "optimization",
+        "labelZh": "优化",
+        "labelEn": "Optimization",
+        "color": "amber"
+      },
+      {
+        "value": "review",
+        "labelZh": "复盘",
+        "labelEn": "Review",
+        "color": "pink"
+      }
+    ],
+    "directories": [
+      "plans",
+      "execution",
+      "monitoring",
+      "reports"
+    ],
+    "pipeline": [
+      {
+        "from": "execution",
+        "to": "monitoring"
+      },
+      {
+        "from": "optimization",
+        "to": "review"
+      }
+    ]
+  }
 }

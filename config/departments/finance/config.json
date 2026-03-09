@@ -35,5 +35,82 @@
       "type": "plant",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "analysis",
+        "labelZh": "分析",
+        "labelEn": "Analysis"
+      },
+      {
+        "key": "planning",
+        "labelZh": "规划",
+        "labelEn": "Planning"
+      },
+      {
+        "key": "execution",
+        "labelZh": "执行",
+        "labelEn": "Execution"
+      },
+      {
+        "key": "audit",
+        "labelZh": "审计",
+        "labelEn": "Audit"
+      },
+      {
+        "key": "reporting",
+        "labelZh": "报告",
+        "labelEn": "Reporting"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "analysis",
+        "labelZh": "分析",
+        "labelEn": "Analysis",
+        "color": "blue"
+      },
+      {
+        "value": "planning",
+        "labelZh": "规划",
+        "labelEn": "Planning",
+        "color": "purple"
+      },
+      {
+        "value": "execution",
+        "labelZh": "执行",
+        "labelEn": "Execution",
+        "color": "green"
+      },
+      {
+        "value": "audit",
+        "labelZh": "审计",
+        "labelEn": "Audit",
+        "color": "amber"
+      },
+      {
+        "value": "reporting",
+        "labelZh": "报告",
+        "labelEn": "Reporting",
+        "color": "cyan"
+      }
+    ],
+    "directories": [
+      "analysis",
+      "plans",
+      "reports",
+      "audit"
+    ],
+    "pipeline": [
+      {
+        "from": "execution",
+        "to": "audit"
+      },
+      {
+        "from": "audit",
+        "to": "reporting"
+      }
+    ]
+  }
 }

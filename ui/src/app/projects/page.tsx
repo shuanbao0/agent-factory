@@ -14,6 +14,12 @@ const ROLE_EMOJI: Record<string, string> = {
   marketing: '📣', analyst: '📊', writer: '✍️',
 }
 
+interface PhaseDefinition {
+  key: string
+  labelZh: string
+  labelEn: string
+}
+
 interface FsProject {
   id: string
   name: string
@@ -21,6 +27,8 @@ interface FsProject {
   status: 'planning' | 'in-progress' | 'completed' | 'paused' | 'unknown'
   currentPhase?: number
   totalPhases?: number
+  phases?: PhaseDefinition[]
+  department?: string
   tasks?: Task[]
   assignedAgents?: string[]
   tokensUsed?: number
@@ -191,7 +199,7 @@ function OverviewTab({ project }: { project: FsProject }) {
         </div>
       )}
 
-      <PhaseProgress current={project.currentPhase ?? 1} total={project.totalPhases ?? 5} />
+      <PhaseProgress current={project.currentPhase ?? 1} total={project.totalPhases ?? 5} phases={project.phases} />
 
       <div className="flex gap-4 text-xs text-muted-foreground">
         {project.createdAt && (
@@ -521,6 +529,11 @@ function PreviewTab({ projectId }: { projectId: string }) {
   )
 }
 
+interface DeptOption {
+  id: string
+  name: string
+}
+
 export default function ProjectsPage() {
   const { t } = useTranslation()
   const [projects, setProjects] = useState<FsProject[]>([])
@@ -529,6 +542,8 @@ export default function ProjectsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
+  const [newDept, setNewDept] = useState('')
+  const [departments, setDepartments] = useState<DeptOption[]>([])
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -543,6 +558,17 @@ export default function ProjectsPage() {
 
   useEffect(() => { fetchProjects() }, [])
 
+  // Load departments for the create form
+  useEffect(() => {
+    fetch('/api/autopilot/departments')
+      .then(r => r.json())
+      .then(data => {
+        const depts = (data.departments || []).map((d: Record<string, unknown>) => ({ id: d.id as string, name: (d.name || d.id) as string }))
+        setDepartments(depts)
+      })
+      .catch(() => {})
+  }, [])
+
   const handleCreate = async () => {
     if (!newName.trim()) return
     setCreating(true)
@@ -550,13 +576,14 @@ export default function ProjectsPage() {
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() }),
+        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim(), department: newDept || undefined }),
       })
       const data = await res.json()
       if (data.ok) {
         setShowCreate(false)
         setNewName('')
         setNewDesc('')
+        setNewDept('')
         await fetchProjects()
         setSelected(data.project.id)
       }
@@ -632,7 +659,7 @@ export default function ProjectsPage() {
                     <Badge variant={statusVariant[p.status] ?? 'muted'}>{p.status}</Badge>
                   </div>
                 </div>
-                <PhaseProgress current={p.currentPhase ?? 1} total={p.totalPhases ?? 5} />
+                <PhaseProgress current={p.currentPhase ?? 1} total={p.totalPhases ?? 5} phases={p.phases} />
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-xs text-muted-foreground">{formatNumber(p.tokensUsed ?? 0)} {t('common.tokens')}</span>
                   {(p.assignedAgents?.length ?? 0) > 0 && (
@@ -692,9 +719,23 @@ export default function ProjectsPage() {
                   className="w-full mt-1.5 px-3 py-2 text-sm bg-muted/30 border border-border rounded-lg focus:outline-none focus:border-primary resize-none"
                 />
               </div>
+              {/* Department selector */}
+              <div>
+                <label className="text-sm font-medium">{t('projects.department')}</label>
+                <select
+                  value={newDept}
+                  onChange={e => setNewDept(e.target.value)}
+                  className="w-full mt-1.5 px-3 py-2 text-sm bg-muted/30 border border-border rounded-lg focus:outline-none focus:border-primary"
+                >
+                  <option value="">{t('projects.noDepartment')}</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => { setShowCreate(false); setNewName(''); setNewDesc('') }}
+                  onClick={() => { setShowCreate(false); setNewName(''); setNewDesc(''); setNewDept('') }}
                   className="flex-1 px-4 py-2 text-sm border border-border rounded-lg text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {t('common.cancel')}

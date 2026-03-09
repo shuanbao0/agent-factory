@@ -49,5 +49,94 @@
       "type": "plant",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "concept",
+        "labelZh": "企划",
+        "labelEn": "Concept"
+      },
+      {
+        "key": "script",
+        "labelZh": "脚本",
+        "labelEn": "Script"
+      },
+      {
+        "key": "storyboard",
+        "labelZh": "分镜",
+        "labelEn": "Storyboard"
+      },
+      {
+        "key": "production",
+        "labelZh": "制作",
+        "labelEn": "Production"
+      },
+      {
+        "key": "postproduction",
+        "labelZh": "后期",
+        "labelEn": "Post-production"
+      },
+      {
+        "key": "distribution",
+        "labelZh": "发行",
+        "labelEn": "Distribution"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "concept",
+        "labelZh": "企划",
+        "labelEn": "Concept",
+        "color": "blue"
+      },
+      {
+        "value": "script",
+        "labelZh": "脚本",
+        "labelEn": "Script",
+        "color": "purple"
+      },
+      {
+        "value": "storyboard",
+        "labelZh": "分镜",
+        "labelEn": "Storyboard",
+        "color": "amber"
+      },
+      {
+        "value": "animation",
+        "labelZh": "制作",
+        "labelEn": "Animation",
+        "color": "green"
+      },
+      {
+        "value": "post-production",
+        "labelZh": "后期",
+        "labelEn": "Post-production",
+        "color": "rose"
+      },
+      {
+        "value": "review",
+        "labelZh": "审核",
+        "labelEn": "Review",
+        "color": "pink"
+      }
+    ],
+    "directories": [
+      "concept",
+      "script",
+      "storyboard",
+      "assets",
+      "postproduction"
+    ],
+    "pipeline": [
+      {
+        "from": "animation",
+        "to": "post-production"
+      },
+      {
+        "from": "post-production",
+        "to": "review"
+      }
+    ]
+  }
 }

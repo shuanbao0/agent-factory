@@ -1,9 +1,17 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from '@/lib/i18n'
 import { useAppStore } from '@/lib/store'
-import { Task } from '@/lib/types'
+import { Task, TaskTypeDefinition } from '@/lib/types'
 import { X, Loader2 } from 'lucide-react'
+
+const DEFAULT_TASK_TYPES: TaskTypeDefinition[] = [
+  { value: 'research', labelZh: '调研', labelEn: 'Research', color: 'blue' },
+  { value: 'design', labelZh: '设计', labelEn: 'Design', color: 'purple' },
+  { value: 'coding', labelZh: '开发', labelEn: 'Coding', color: 'green' },
+  { value: 'testing', labelZh: '测试', labelEn: 'Testing', color: 'amber' },
+  { value: 'review', labelZh: '评审', labelEn: 'Review', color: 'pink' },
+]
 
 interface TaskFormProps {
   editTask?: Task | null
@@ -12,7 +20,7 @@ interface TaskFormProps {
 }
 
 export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
   const { agents, projects, tasks } = useAppStore()
   const isEdit = !!editTask
 
@@ -24,8 +32,34 @@ export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
   const [dependencies, setDependencies] = useState<string[]>(editTask?.dependencies || [])
   const [tags, setTags] = useState(editTask?.tags?.join(', ') || '')
   const [status, setStatus] = useState<Task['status']>(editTask?.status || 'pending')
+  const [taskType, setTaskType] = useState<string>(editTask?.type || '')
+  const [taskTypes, setTaskTypes] = useState<TaskTypeDefinition[]>(DEFAULT_TASK_TYPES)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Load task types from project's department workflow
+  useEffect(() => {
+    if (!projectId) {
+      setTaskTypes(DEFAULT_TASK_TYPES)
+      return
+    }
+    const proj = projects.find(p => p.id === projectId)
+    const dept = proj?.department
+    if (!dept) {
+      setTaskTypes(DEFAULT_TASK_TYPES)
+      return
+    }
+    fetch(`/api/departments/${dept}/workflow`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.workflow?.taskTypes?.length > 0) {
+          setTaskTypes(data.workflow.taskTypes)
+        } else {
+          setTaskTypes(DEFAULT_TASK_TYPES)
+        }
+      })
+      .catch(() => setTaskTypes(DEFAULT_TASK_TYPES))
+  }, [projectId, projects])
 
   const toggleAssignee = (agentId: string) => {
     setAssignees(prev =>
@@ -56,6 +90,7 @@ export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
       projectId: projectId || null,
       dependencies,
       tags: parsedTags.length > 0 ? parsedTags : undefined,
+      type: taskType || undefined,
     }
 
     if (isEdit) {
@@ -167,6 +202,36 @@ export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
               </select>
             </div>
           )}
+
+          {/* Task Type */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.type')}</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setTaskType('')}
+                className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                  !taskType
+                    ? 'bg-primary/20 text-primary border-primary/40'
+                    : 'bg-muted text-muted-foreground border-border hover:border-primary/30'
+                }`}
+              >
+                -
+              </button>
+              {taskTypes.map(tt => (
+                <button
+                  key={tt.value}
+                  onClick={() => setTaskType(tt.value)}
+                  className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+                    taskType === tt.value
+                      ? `bg-${tt.color}-500/20 text-${tt.color}-400 border-${tt.color}-500/40`
+                      : 'bg-muted text-muted-foreground border-border hover:border-primary/30'
+                  }`}
+                >
+                  {locale === 'zh' ? tt.labelZh : tt.labelEn}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Assign Agents */}
           <div>

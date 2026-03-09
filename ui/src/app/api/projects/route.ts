@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join, resolve } from 'path'
+import { getDepartmentWorkflow } from '@/lib/department-workflow'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,12 +108,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, description = '' } = await req.json() as { name: string; description?: string }
+    const { name, description = '', department } = await req.json() as { name: string; description?: string; department?: string }
     if (!name?.trim()) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 })
     }
 
-    // Slugify name → id
+    // Slugify name -> id
     const id = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '')
     if (!id) return NextResponse.json({ error: 'invalid project name' }, { status: 400 })
 
@@ -121,18 +122,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Project "${id}" already exists` }, { status: 409 })
     }
 
-    // Create directory structure
-    for (const sub of ['docs', 'design', 'src', 'tests']) {
+    // Get workflow from department
+    const workflow = getDepartmentWorkflow(department)
+
+    // Create directory structure from workflow
+    for (const sub of workflow.directories) {
       mkdirSync(join(projectDir, sub), { recursive: true })
     }
 
     const now = new Date().toISOString()
-    const meta = {
+    const meta: Record<string, unknown> = {
       name: name.trim(),
       description,
       status: 'planning',
       currentPhase: 1,
-      totalPhases: 5,
+      totalPhases: workflow.phases.length,
+      phases: workflow.phases,
+      department: department || undefined,
       createdAt: now,
       tokensUsed: 0,
       tasks: [],
@@ -140,11 +146,15 @@ export async function POST(req: NextRequest) {
     }
     writeFileSync(join(projectDir, '.project-meta.json'), JSON.stringify(meta, null, 2) + '\n')
 
-    // Write BRIEF.md for agents
+    // Build BRIEF.md content based on department
+    const dirList = workflow.directories.map(d => `- \`${d}/\``).join('\n')
+    const phaseList = workflow.phases.map((p, i) => `${i + 1}. **${p.labelEn}** (${p.labelZh})`).join('\n')
+
     const brief = `# Project Brief: ${meta.name}
 
 **Project ID:** ${id}
 **Created:** ${now}
+**Department:** ${department || 'none'}
 **Description:** ${description || '(none)'}
 
 ## Shared Workspace
@@ -152,27 +162,18 @@ export async function POST(req: NextRequest) {
 This project's shared workspace is at:
 \`${projectDir}\`
 
+## Phases
+
+${phaseList}
+
 ## Directory Conventions
 
-- \`docs/\` — All written documents: PRD, API spec, DB schema, research, meeting notes
-- \`design/\` — UI designs, wireframes, design tokens, image assets
-- \`src/\` — Source code (create \`frontend/\` and \`backend/\` subdirectories as needed)
-- \`tests/\` — Test files, test reports, QA notes
+${dirList}
 
 ## Agent Workflow
 
-1. **PM** assigns work → creates task notes in \`docs/\`
-2. **Researcher** writes findings → \`docs/research-{topic}.md\`
-3. **Product** writes PRD → \`docs/prd.md\`
-4. **Designer** outputs → \`design/\`
-5. **Frontend** writes code → \`src/frontend/\`
-6. **Backend** writes code → \`src/backend/\`
-7. **Tester** writes tests → \`tests/\`
-
-## Communication
-
-- Leave notes for other agents in \`docs/notes-from-{your-role}.md\`
-- Update \`docs/status.md\` when you complete a phase
+Agents should coordinate through tasks and use the shared directories above for deliverables.
+Leave notes for other agents in the project directory.
 `
     writeFileSync(join(projectDir, 'BRIEF.md'), brief)
 

@@ -182,7 +182,10 @@
     "createFirst": "Create your first project",
     "confirmDelete": "Delete this project? All files will be removed.",
     "structure": "Directory Structure",
-    "assignedAgents": "Assigned Agents"
+    "assignedAgents": "Assigned Agents",
+    "department": "Department",
+    "selectDepartment": "Select Department",
+    "noDepartment": "No department"
   },
   "skills": {
     "title": "Skill Store",
@@ -489,7 +492,23 @@
     "allStatuses": "All Statuses",
     "progress": "Progress",
     "createdBy": "Created by",
-    "output": "Output"
+    "output": "Output",
+    "type": "Type",
+    "filterByType": "All Types",
+    "groupBy": "Group by",
+    "groupByStatus": "By Status",
+    "groupByAgent": "By Agent",
+    "groupByType": "By Type",
+    "quality": "Quality",
+    "selfCheck": "Self Check",
+    "peerReview": "Peer Review",
+    "headApproval": "Head Approval",
+    "score": "Score",
+    "passed": "Passed",
+    "failed": "Failed",
+    "pipeline": "Pipeline",
+    "nextStep": "Next Step",
+    "autoCreated": "Auto-created"
   },
   "messages": {
     "title": "Message Center",

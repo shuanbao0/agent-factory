@@ -49,5 +49,83 @@
       "type": "plant",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "research",
+        "labelZh": "调研",
+        "labelEn": "Research"
+      },
+      {
+        "key": "modeling",
+        "labelZh": "建模",
+        "labelEn": "Modeling"
+      },
+      {
+        "key": "backtesting",
+        "labelZh": "回测",
+        "labelEn": "Backtesting"
+      },
+      {
+        "key": "deployment",
+        "labelZh": "部署",
+        "labelEn": "Deployment"
+      },
+      {
+        "key": "monitoring",
+        "labelZh": "监控",
+        "labelEn": "Monitoring"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "research",
+        "labelZh": "调研",
+        "labelEn": "Research",
+        "color": "blue"
+      },
+      {
+        "value": "modeling",
+        "labelZh": "建模",
+        "labelEn": "Modeling",
+        "color": "purple"
+      },
+      {
+        "value": "backtesting",
+        "labelZh": "回测",
+        "labelEn": "Backtesting",
+        "color": "amber"
+      },
+      {
+        "value": "deployment",
+        "labelZh": "部署",
+        "labelEn": "Deployment",
+        "color": "green"
+      },
+      {
+        "value": "monitoring",
+        "labelZh": "监控",
+        "labelEn": "Monitoring",
+        "color": "cyan"
+      }
+    ],
+    "directories": [
+      "research",
+      "models",
+      "backtest",
+      "deploy",
+      "logs"
+    ],
+    "pipeline": [
+      {
+        "from": "modeling",
+        "to": "backtesting"
+      },
+      {
+        "from": "backtesting",
+        "to": "deployment"
+      }
+    ]
+  }
 }

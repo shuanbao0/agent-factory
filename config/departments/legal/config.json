@@ -36,5 +36,82 @@
       "type": "lamp",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "research",
+        "labelZh": "调研",
+        "labelEn": "Research"
+      },
+      {
+        "key": "drafting",
+        "labelZh": "起草",
+        "labelEn": "Drafting"
+      },
+      {
+        "key": "review",
+        "labelZh": "审核",
+        "labelEn": "Review"
+      },
+      {
+        "key": "revision",
+        "labelZh": "修订",
+        "labelEn": "Revision"
+      },
+      {
+        "key": "filing",
+        "labelZh": "归档",
+        "labelEn": "Filing"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "research",
+        "labelZh": "调研",
+        "labelEn": "Research",
+        "color": "blue"
+      },
+      {
+        "value": "drafting",
+        "labelZh": "起草",
+        "labelEn": "Drafting",
+        "color": "purple"
+      },
+      {
+        "value": "review",
+        "labelZh": "审核",
+        "labelEn": "Review",
+        "color": "pink"
+      },
+      {
+        "value": "revision",
+        "labelZh": "修订",
+        "labelEn": "Revision",
+        "color": "amber"
+      },
+      {
+        "value": "filing",
+        "labelZh": "归档",
+        "labelEn": "Filing",
+        "color": "green"
+      }
+    ],
+    "directories": [
+      "research",
+      "drafts",
+      "review",
+      "archive"
+    ],
+    "pipeline": [
+      {
+        "from": "drafting",
+        "to": "review"
+      },
+      {
+        "from": "review",
+        "to": "revision"
+      }
+    ]
+  }
 }

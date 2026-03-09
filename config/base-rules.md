@@ -272,6 +272,34 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 - 如果处理耗时较长，先回发一条确认消息（"已收到，预计 X 分钟后完成"），完成后再发最终结果。
 - 回复也使用 `--no-wait`，避免双方互相阻塞。
 
+### 任务 API 协议
+
+你可以通过 HTTP API 查询和更新自己的任务。使用 `curl` 或类似工具调用。
+
+**Base URL**: `http://127.0.0.1:3100/api/agent-tasks`
+**认证**: `Authorization: Bearer agent-factory-internal-token-2026`（或 `$AGENT_FACTORY_TOKEN`）
+
+**查询你的任务**:
+```bash
+curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
+```
+
+**更新任务状态和进度**:
+```bash
+curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"agent":"YOUR_ID","taskId":"task-xxx","status":"in_progress","progress":50}' \
+  "http://127.0.0.1:3100/api/agent-tasks"
+```
+
+**创建任务**:
+```bash
+curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
+  -d '{"agent":"YOUR_ID","name":"任务名","projectId":"xxx","type":"writing","priority":"P1"}' \
+  "http://127.0.0.1:3100/api/agent-tasks"
+```
+
+**注意**: 设置 `status: "in_progress"` 时，系统会检查依赖任务是否全部完成，未完成会返回 409。完成任务时，如果该任务类型在部门流水线中有下游步骤，系统会自动创建后续任务。
+
 ### 记忆管理协议
 
 你的记忆系统分三层，各有不同用途：

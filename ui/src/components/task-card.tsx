@@ -2,7 +2,7 @@
 import { Task } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-import { Clock, User, FolderKanban } from 'lucide-react'
+import { Clock, User, FolderKanban, Shield, Tag } from 'lucide-react'
 
 interface TaskCardProps {
   task: Task
@@ -57,8 +57,24 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </span>
       </div>
 
-      {/* Task name */}
-      <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{task.name}</p>
+      {/* Task name + type badge */}
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{task.name}</p>
+        <div className="flex items-center gap-1.5">
+          {task.type && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+              <Tag className="w-2.5 h-2.5" />
+              {task.type}
+            </span>
+          )}
+          {task.quality && (
+            <Shield className={cn('w-3 h-3',
+              task.quality.headApproval?.passed ? 'text-emerald-400' :
+              task.quality.selfCheck ? 'text-amber-400' : 'text-muted-foreground'
+            )} />
+          )}
+        </div>
+      </div>
 
       {/* Assignees */}
       {task.assignees.length > 0 && (

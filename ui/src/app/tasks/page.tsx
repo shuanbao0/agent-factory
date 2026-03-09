@@ -5,13 +5,16 @@ import { useAppStore } from '@/lib/store'
 import { Task } from '@/lib/types'
 import { TaskCard } from '@/components/task-card'
 import { TaskForm } from '@/components/task-form'
+import { TaskPipeline } from '@/components/task-pipeline'
+import { TaskQuality } from '@/components/task-quality'
 import {
   CheckSquare, Plus, LayoutGrid, List, X,
-  ChevronRight, User, FolderKanban, Clock, Trash2, Edit3
+  ChevronRight, User, FolderKanban, Clock, Trash2, Edit3, Tag, Shield
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type ViewMode = 'kanban' | 'list'
+type GroupBy = 'status' | 'agent' | 'type'
 
 // Kanban columns: merge pending+assigned into one column
 const KANBAN_COLS = [
@@ -41,6 +44,12 @@ export default function TasksPage() {
     }
     return 'kanban'
   })
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('af-task-groupby') as GroupBy) || 'status'
+    }
+    return 'status'
+  })
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [detailTask, setDetailTask] = useState<Task | null>(null)
@@ -49,9 +58,11 @@ export default function TasksPage() {
   const [filterProject, setFilterProject] = useState('')
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterType, setFilterType] = useState('')
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
   useEffect(() => { localStorage.setItem('af-task-view', view) }, [view])
+  useEffect(() => { localStorage.setItem('af-task-groupby', groupBy) }, [groupBy])
 
   // Filtered tasks
   const filtered = useMemo(() => {
@@ -67,17 +78,54 @@ export default function TasksPage() {
     if (filterStatus) {
       result = result.filter(t => t.status === filterStatus)
     }
+    if (filterType) {
+      result = result.filter(t => filterType === '_none' ? !t.type : t.type === filterType)
+    }
     return result
-  }, [tasks, filterProject, filterAgent, filterStatus])
+  }, [tasks, filterProject, filterAgent, filterStatus, filterType])
 
-  // Group for kanban
+  // Group for kanban by status
   const kanbanGroups = useMemo(() => {
-    const groups: Record<string, Task[]> = {}
-    for (const col of KANBAN_COLS) {
-      groups[col.key] = filtered.filter(t => col.statuses.includes(t.status as never))
+    if (groupBy === 'status') {
+      const groups: Record<string, Task[]> = {}
+      for (const col of KANBAN_COLS) {
+        groups[col.key] = filtered.filter(t => col.statuses.includes(t.status as never))
+      }
+      return groups
+    }
+    if (groupBy === 'agent') {
+      const groups: Record<string, Task[]> = { _unassigned: [] }
+      for (const task of filtered) {
+        if (!task.assignees || task.assignees.length === 0) {
+          groups._unassigned.push(task)
+        } else {
+          for (const a of task.assignees) {
+            if (!groups[a]) groups[a] = []
+            groups[a].push(task)
+          }
+        }
+      }
+      return groups
+    }
+    // groupBy === 'type'
+    const groups: Record<string, Task[]> = { _untyped: [] }
+    for (const task of filtered) {
+      const key = task.type || '_untyped'
+      if (!groups[key]) groups[key] = []
+      groups[key].push(task)
     }
     return groups
-  }, [filtered])
+  }, [filtered, groupBy])
+
+  const kanbanColumns = useMemo(() => {
+    if (groupBy === 'status') {
+      return KANBAN_COLS.map(col => ({ key: col.key, label: t(col.labelKey) }))
+    }
+    return Object.keys(kanbanGroups).map(key => ({
+      key,
+      label: key === '_unassigned' ? t('tasks.standalone') : key === '_untyped' ? '-' : key,
+    }))
+  }, [groupBy, kanbanGroups, t])
 
   const handleSaved = useCallback(() => {
     setShowForm(false)
@@ -111,6 +159,12 @@ export default function TasksPage() {
     return Array.from(ids)
   }, [tasks])
 
+  // Unique task types for filter
+  const typeOptions = useMemo(() => {
+    const types = new Set(tasks.map(t => t.type).filter(Boolean) as string[])
+    return Array.from(types)
+  }, [tasks])
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -127,6 +181,16 @@ export default function TasksPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Group by selector */}
+          <select
+            className="px-2 py-1.5 text-xs rounded-lg bg-muted border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            value={groupBy}
+            onChange={e => setGroupBy(e.target.value as GroupBy)}
+          >
+            <option value="status">{t('tasks.groupByStatus')}</option>
+            <option value="agent">{t('tasks.groupByAgent')}</option>
+            <option value="type">{t('tasks.groupByType')}</option>
+          </select>
           {/* View toggle */}
           <div className="flex items-center bg-muted rounded-lg p-0.5 border border-border">
             <button
@@ -190,6 +254,17 @@ export default function TasksPage() {
             </option>
           ))}
         </select>
+        <select
+          className="px-3 py-1.5 text-xs rounded-lg bg-muted border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          value={filterType}
+          onChange={e => setFilterType(e.target.value)}
+        >
+          <option value="">{t('tasks.filterByType')}</option>
+          <option value="_none">-</option>
+          {typeOptions.map(type => (
+            <option key={type} value={type}>{type}</option>
+          ))}
+        </select>
       </div>
 
       {/* Empty state */}
@@ -208,12 +283,15 @@ export default function TasksPage() {
 
       {/* Kanban view */}
       {view === 'kanban' && tasks.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 min-h-[400px]">
-          {KANBAN_COLS.map(col => (
+        <div className={cn(
+          'grid gap-4 min-h-[400px]',
+          kanbanColumns.length <= 5 ? `grid-cols-1 md:grid-cols-3 lg:grid-cols-${Math.min(kanbanColumns.length, 5)}` : 'grid-cols-1 md:grid-cols-3 lg:grid-cols-5'
+        )} style={kanbanColumns.length > 5 ? { gridTemplateColumns: `repeat(${kanbanColumns.length}, minmax(180px, 1fr))`, overflowX: 'auto' } : undefined}>
+          {kanbanColumns.map(col => (
             <div key={col.key} className="space-y-2">
               <div className="flex items-center justify-between px-2">
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  {t(col.labelKey)}
+                  {col.label}
                 </h3>
                 <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
                   {kanbanGroups[col.key]?.length || 0}
@@ -237,6 +315,7 @@ export default function TasksPage() {
               <tr className="bg-muted/50 text-xs text-muted-foreground">
                 <th className="text-left px-4 py-2.5 font-medium">Status</th>
                 <th className="text-left px-4 py-2.5 font-medium">{t('tasks.taskName')}</th>
+                <th className="text-left px-4 py-2.5 font-medium hidden md:table-cell">{t('tasks.type')}</th>
                 <th className="text-left px-4 py-2.5 font-medium hidden md:table-cell">{t('tasks.assignAgent')}</th>
                 <th className="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Project</th>
                 <th className="text-left px-4 py-2.5 font-medium">{t('tasks.priority')}</th>
@@ -254,6 +333,11 @@ export default function TasksPage() {
                     <span className={cn('inline-block w-2.5 h-2.5 rounded-full', statusDot[task.status] || 'bg-zinc-400')} />
                   </td>
                   <td className="px-4 py-2.5 text-foreground font-medium truncate max-w-[200px]">{task.name}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
+                    {task.type ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.type}</span>
+                    ) : '-'}
+                  </td>
                   <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
                     {task.assignees?.join(', ') || '-'}
                   </td>
@@ -391,6 +475,17 @@ function TaskDetailPanel({
             </span>
           </div>
 
+          {/* Type */}
+          {task.type && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.type')}</label>
+              <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                <Tag className="w-3 h-3" />
+                {task.type}
+              </span>
+            </div>
+          )}
+
           {/* Description */}
           {task.description && (
             <div>
@@ -430,6 +525,22 @@ function TaskDetailPanel({
               <span className="text-xs text-muted-foreground">{task.progress}%</span>
             </div>
           </div>
+
+          {/* Pipeline indicator */}
+          {task.type && task.projectId && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.pipeline')}</label>
+              <TaskPipeline taskType={task.type} projectId={task.projectId} department={project?.department} />
+            </div>
+          )}
+
+          {/* Quality */}
+          {task.quality && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">{t('tasks.quality')}</label>
+              <TaskQuality quality={task.quality} />
+            </div>
+          )}
 
           {/* Creator */}
           <div>

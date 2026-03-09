@@ -40,5 +40,82 @@
       "type": "cooler",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "prospecting",
+        "labelZh": "线索",
+        "labelEn": "Prospecting"
+      },
+      {
+        "key": "outreach",
+        "labelZh": "接触",
+        "labelEn": "Outreach"
+      },
+      {
+        "key": "proposal",
+        "labelZh": "方案",
+        "labelEn": "Proposal"
+      },
+      {
+        "key": "negotiation",
+        "labelZh": "谈判",
+        "labelEn": "Negotiation"
+      },
+      {
+        "key": "closing",
+        "labelZh": "成交",
+        "labelEn": "Closing"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "prospecting",
+        "labelZh": "线索",
+        "labelEn": "Prospecting",
+        "color": "blue"
+      },
+      {
+        "value": "outreach",
+        "labelZh": "接触",
+        "labelEn": "Outreach",
+        "color": "purple"
+      },
+      {
+        "value": "proposal",
+        "labelZh": "方案",
+        "labelEn": "Proposal",
+        "color": "amber"
+      },
+      {
+        "value": "negotiation",
+        "labelZh": "谈判",
+        "labelEn": "Negotiation",
+        "color": "orange"
+      },
+      {
+        "value": "closing",
+        "labelZh": "成交",
+        "labelEn": "Closing",
+        "color": "green"
+      }
+    ],
+    "directories": [
+      "leads",
+      "outreach",
+      "proposals",
+      "contracts"
+    ],
+    "pipeline": [
+      {
+        "from": "proposal",
+        "to": "negotiation"
+      },
+      {
+        "from": "negotiation",
+        "to": "closing"
+      }
+    ]
+  }
 }

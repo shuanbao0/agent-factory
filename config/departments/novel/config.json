@@ -64,5 +64,100 @@
       "type": "meeting_table",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "topic",
+        "labelZh": "选题",
+        "labelEn": "Topic Selection"
+      },
+      {
+        "key": "worldbuilding",
+        "labelZh": "世界观构建",
+        "labelEn": "Worldbuilding"
+      },
+      {
+        "key": "outline",
+        "labelZh": "大纲",
+        "labelEn": "Outline"
+      },
+      {
+        "key": "writing",
+        "labelZh": "章节写作",
+        "labelEn": "Writing"
+      },
+      {
+        "key": "editing",
+        "labelZh": "审校",
+        "labelEn": "Editing"
+      },
+      {
+        "key": "publishing",
+        "labelZh": "发布",
+        "labelEn": "Publishing"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "writing",
+        "labelZh": "写作",
+        "labelEn": "Writing",
+        "color": "emerald"
+      },
+      {
+        "value": "worldbuilding",
+        "labelZh": "世界观",
+        "labelEn": "Worldbuilding",
+        "color": "cyan"
+      },
+      {
+        "value": "character",
+        "labelZh": "角色设计",
+        "labelEn": "Character",
+        "color": "violet"
+      },
+      {
+        "value": "plotting",
+        "labelZh": "情节",
+        "labelEn": "Plotting",
+        "color": "orange"
+      },
+      {
+        "value": "editing",
+        "labelZh": "编辑",
+        "labelEn": "Editing",
+        "color": "rose"
+      },
+      {
+        "value": "review",
+        "labelZh": "审校",
+        "labelEn": "Review",
+        "color": "pink"
+      },
+      {
+        "value": "research",
+        "labelZh": "调研",
+        "labelEn": "Research",
+        "color": "blue"
+      }
+    ],
+    "directories": [
+      "outline",
+      "characters",
+      "world",
+      "chapters",
+      "review"
+    ],
+    "pipeline": [
+      {
+        "from": "writing",
+        "to": "editing"
+      },
+      {
+        "from": "editing",
+        "to": "review"
+      }
+    ]
+  }
 }

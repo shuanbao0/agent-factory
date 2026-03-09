@@ -52,5 +52,82 @@
       "type": "cooler",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "research",
+        "labelZh": "调研",
+        "labelEn": "Research"
+      },
+      {
+        "key": "design",
+        "labelZh": "设计",
+        "labelEn": "Design"
+      },
+      {
+        "key": "develop",
+        "labelZh": "开发",
+        "labelEn": "Develop"
+      },
+      {
+        "key": "test",
+        "labelZh": "测试",
+        "labelEn": "Test"
+      },
+      {
+        "key": "deploy",
+        "labelZh": "部署",
+        "labelEn": "Deploy"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "research",
+        "labelZh": "调研",
+        "labelEn": "Research",
+        "color": "blue"
+      },
+      {
+        "value": "design",
+        "labelZh": "设计",
+        "labelEn": "Design",
+        "color": "purple"
+      },
+      {
+        "value": "coding",
+        "labelZh": "开发",
+        "labelEn": "Coding",
+        "color": "green"
+      },
+      {
+        "value": "testing",
+        "labelZh": "测试",
+        "labelEn": "Testing",
+        "color": "amber"
+      },
+      {
+        "value": "review",
+        "labelZh": "评审",
+        "labelEn": "Review",
+        "color": "pink"
+      }
+    ],
+    "directories": [
+      "docs",
+      "design",
+      "src",
+      "tests"
+    ],
+    "pipeline": [
+      {
+        "from": "coding",
+        "to": "review"
+      },
+      {
+        "from": "review",
+        "to": "testing"
+      }
+    ]
+  }
 }

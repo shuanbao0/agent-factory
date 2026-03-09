@@ -56,17 +56,45 @@ function buildDeptTasks(deptId, config) {
     if (tasks.length === 0) continue
 
     result += `\n### ${proj.name}\n`
-    const running = tasks.filter(t => t.status === 'running' || t.status === 'in_progress')
-    const pending = tasks.filter(t => t.status === 'pending' || t.status === 'assigned')
-    const completed = tasks.filter(t => t.status === 'completed')
 
-    if (running.length > 0) {
-      result += `进行中: ${running.map(t => `[${t.id}] ${t.name} (${t.progress || 0}%)`).join(', ')}\n`
+    // Group by task type if available
+    const byType = {}
+    const untyped = []
+    for (const t of tasks) {
+      if (t.type) {
+        if (!byType[t.type]) byType[t.type] = []
+        byType[t.type].push(t)
+      } else {
+        untyped.push(t)
+      }
     }
-    if (pending.length > 0) {
-      result += `待办: ${pending.map(t => `[${t.id}] ${t.name}`).join(', ')}\n`
+
+    const typeKeys = Object.keys(byType)
+    if (typeKeys.length > 0) {
+      for (const type of typeKeys) {
+        const typeTasks = byType[type]
+        const running = typeTasks.filter(t => t.status === 'running' || t.status === 'in_progress')
+        const pending = typeTasks.filter(t => t.status === 'pending' || t.status === 'assigned')
+        const completed = typeTasks.filter(t => t.status === 'completed')
+        result += `**[${type}]** 进行中: ${running.length}, 待办: ${pending.length}, 完成: ${completed.length}/${typeTasks.length}\n`
+        if (running.length > 0) {
+          result += `  ${running.map(t => `[${t.id}] ${t.name} (${t.progress || 0}%)`).join(', ')}\n`
+        }
+      }
     }
-    result += `完成: ${completed.length}/${tasks.length}\n`
+
+    if (untyped.length > 0) {
+      const running = untyped.filter(t => t.status === 'running' || t.status === 'in_progress')
+      const pending = untyped.filter(t => t.status === 'pending' || t.status === 'assigned')
+      const completed = untyped.filter(t => t.status === 'completed')
+      if (running.length > 0) {
+        result += `进行中: ${running.map(t => `[${t.id}] ${t.name} (${t.progress || 0}%)`).join(', ')}\n`
+      }
+      if (pending.length > 0) {
+        result += `待办: ${pending.map(t => `[${t.id}] ${t.name}`).join(', ')}\n`
+      }
+      result += `完成: ${completed.length}/${untyped.length}\n`
+    }
   }
 
   return result || '(无部门任务)'

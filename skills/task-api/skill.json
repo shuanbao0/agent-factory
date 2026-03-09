@@ -1,0 +1,5 @@
+{
+  "id": "task-api",
+  "name": "Task API",
+  "description": "Query and update tasks via HTTP API. Allows agents to check their assigned tasks, create new tasks, and update task status/progress."
+}

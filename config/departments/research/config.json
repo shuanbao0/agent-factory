@@ -40,5 +40,83 @@
       "type": "plant",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "topic",
+        "labelZh": "选题",
+        "labelEn": "Topic Selection"
+      },
+      {
+        "key": "research",
+        "labelZh": "调研",
+        "labelEn": "Research"
+      },
+      {
+        "key": "experiment",
+        "labelZh": "实验",
+        "labelEn": "Experiment"
+      },
+      {
+        "key": "analysis",
+        "labelZh": "分析",
+        "labelEn": "Analysis"
+      },
+      {
+        "key": "publication",
+        "labelZh": "发表",
+        "labelEn": "Publication"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "topic",
+        "labelZh": "选题",
+        "labelEn": "Topic",
+        "color": "blue"
+      },
+      {
+        "value": "research",
+        "labelZh": "调研",
+        "labelEn": "Research",
+        "color": "purple"
+      },
+      {
+        "value": "experiment",
+        "labelZh": "实验",
+        "labelEn": "Experiment",
+        "color": "green"
+      },
+      {
+        "value": "analysis",
+        "labelZh": "分析",
+        "labelEn": "Analysis",
+        "color": "amber"
+      },
+      {
+        "value": "publication",
+        "labelZh": "发表",
+        "labelEn": "Publication",
+        "color": "cyan"
+      }
+    ],
+    "directories": [
+      "topics",
+      "literature",
+      "experiments",
+      "analysis",
+      "papers"
+    ],
+    "pipeline": [
+      {
+        "from": "experiment",
+        "to": "analysis"
+      },
+      {
+        "from": "analysis",
+        "to": "publication"
+      }
+    ]
+  }
 }

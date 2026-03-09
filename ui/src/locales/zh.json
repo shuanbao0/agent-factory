@@ -182,7 +182,10 @@
     "createFirst": "创建第一个项目",
     "confirmDelete": "确定删除此项目？所有文件将被删除。",
     "structure": "目录结构",
-    "assignedAgents": "参与智能体"
+    "assignedAgents": "参与智能体",
+    "department": "部门",
+    "selectDepartment": "选择部门",
+    "noDepartment": "无部门"
   },
   "skills": {
     "title": "技能商店",
@@ -489,7 +492,23 @@
     "allStatuses": "全部状态",
     "progress": "进度",
     "createdBy": "创建者",
-    "output": "产出物"
+    "output": "产出物",
+    "type": "类型",
+    "filterByType": "全部类型",
+    "groupBy": "分组方式",
+    "groupByStatus": "按状态",
+    "groupByAgent": "按智能体",
+    "groupByType": "按类型",
+    "quality": "质量",
+    "selfCheck": "自检",
+    "peerReview": "同行审核",
+    "headApproval": "主管审批",
+    "score": "评分",
+    "passed": "通过",
+    "failed": "未通过",
+    "pipeline": "流水线",
+    "nextStep": "下一步",
+    "autoCreated": "自动创建"
   },
   "messages": {
     "title": "消息中心",

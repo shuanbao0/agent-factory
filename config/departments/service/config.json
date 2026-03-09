@@ -36,5 +36,82 @@
       "type": "cooler",
       "count": 1
     }
-  ]
+  ],
+  "workflow": {
+    "phases": [
+      {
+        "key": "intake",
+        "labelZh": "受理",
+        "labelEn": "Intake"
+      },
+      {
+        "key": "analysis",
+        "labelZh": "分析",
+        "labelEn": "Analysis"
+      },
+      {
+        "key": "resolution",
+        "labelZh": "处理",
+        "labelEn": "Resolution"
+      },
+      {
+        "key": "followup",
+        "labelZh": "跟进",
+        "labelEn": "Follow-up"
+      },
+      {
+        "key": "reporting",
+        "labelZh": "总结",
+        "labelEn": "Reporting"
+      }
+    ],
+    "taskTypes": [
+      {
+        "value": "intake",
+        "labelZh": "受理",
+        "labelEn": "Intake",
+        "color": "blue"
+      },
+      {
+        "value": "analysis",
+        "labelZh": "分析",
+        "labelEn": "Analysis",
+        "color": "purple"
+      },
+      {
+        "value": "resolution",
+        "labelZh": "处理",
+        "labelEn": "Resolution",
+        "color": "green"
+      },
+      {
+        "value": "followup",
+        "labelZh": "跟进",
+        "labelEn": "Follow-up",
+        "color": "amber"
+      },
+      {
+        "value": "reporting",
+        "labelZh": "总结",
+        "labelEn": "Reporting",
+        "color": "cyan"
+      }
+    ],
+    "directories": [
+      "tickets",
+      "analysis",
+      "solutions",
+      "reports"
+    ],
+    "pipeline": [
+      {
+        "from": "resolution",
+        "to": "followup"
+      },
+      {
+        "from": "followup",
+        "to": "reporting"
+      }
+    ]
+  }
 }
