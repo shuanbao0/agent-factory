@@ -152,11 +152,24 @@
     "pipeline": [
       {
         "from": "writing",
-        "to": "editing"
+        "to": "editing",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3,
+          "validators": ["wordCount"],
+          "validatorConfig": { "wordCount": { "min": 3000 } }
+        }
       },
       {
         "from": "editing",
-        "to": "review"
+        "to": "review",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

@@ -107,11 +107,22 @@
     "pipeline": [
       {
         "from": "creation",
-        "to": "review"
+        "to": "review",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "review",
-        "to": "publishing"
+        "to": "publishing",
+        "qualityGate": {
+          "minScore": 80,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

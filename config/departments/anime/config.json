@@ -131,11 +131,22 @@
     "pipeline": [
       {
         "from": "animation",
-        "to": "post-production"
+        "to": "post-production",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "post-production",
-        "to": "review"
+        "to": "review",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

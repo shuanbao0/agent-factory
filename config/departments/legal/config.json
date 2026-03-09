@@ -106,11 +106,22 @@
     "pipeline": [
       {
         "from": "drafting",
-        "to": "review"
+        "to": "review",
+        "qualityGate": {
+          "minScore": 80,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "review",
-        "to": "revision"
+        "to": "revision",
+        "qualityGate": {
+          "minScore": 85,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

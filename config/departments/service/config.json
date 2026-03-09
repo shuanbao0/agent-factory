@@ -106,11 +106,21 @@
     "pipeline": [
       {
         "from": "resolution",
-        "to": "followup"
+        "to": "followup",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "followup",
-        "to": "reporting"
+        "to": "reporting",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       }
     ]
   }

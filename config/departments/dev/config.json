@@ -122,11 +122,22 @@
     "pipeline": [
       {
         "from": "coding",
-        "to": "review"
+        "to": "review",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "review",
-        "to": "testing"
+        "to": "testing",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

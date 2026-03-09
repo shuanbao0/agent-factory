@@ -111,11 +111,22 @@
     "pipeline": [
       {
         "from": "experiment",
-        "to": "analysis"
+        "to": "analysis",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "analysis",
-        "to": "publication"
+        "to": "publication",
+        "qualityGate": {
+          "minScore": 85,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

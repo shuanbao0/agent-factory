@@ -109,11 +109,21 @@
     "pipeline": [
       {
         "from": "execution",
-        "to": "monitoring"
+        "to": "monitoring",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "optimization",
-        "to": "review"
+        "to": "review",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       }
     ]
   }

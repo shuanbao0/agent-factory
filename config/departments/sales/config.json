@@ -110,11 +110,21 @@
     "pipeline": [
       {
         "from": "proposal",
-        "to": "negotiation"
+        "to": "negotiation",
+        "qualityGate": {
+          "minScore": 75,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "negotiation",
-        "to": "closing"
+        "to": "closing",
+        "qualityGate": {
+          "minScore": 80,
+          "requireSelfCheck": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

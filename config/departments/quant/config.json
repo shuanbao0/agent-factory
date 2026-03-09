@@ -120,11 +120,22 @@
     "pipeline": [
       {
         "from": "modeling",
-        "to": "backtesting"
+        "to": "backtesting",
+        "qualityGate": {
+          "minScore": 80,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "backtesting",
-        "to": "deployment"
+        "to": "deployment",
+        "qualityGate": {
+          "minScore": 90,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }

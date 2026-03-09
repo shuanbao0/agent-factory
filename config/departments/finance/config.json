@@ -105,11 +105,22 @@
     "pipeline": [
       {
         "from": "execution",
-        "to": "audit"
+        "to": "audit",
+        "qualityGate": {
+          "minScore": 80,
+          "requireSelfCheck": true,
+          "maxReworks": 3
+        }
       },
       {
         "from": "audit",
-        "to": "reporting"
+        "to": "reporting",
+        "qualityGate": {
+          "minScore": 85,
+          "requireSelfCheck": true,
+          "requirePeerReview": true,
+          "maxReworks": 2
+        }
       }
     ]
   }
