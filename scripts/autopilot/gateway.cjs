@@ -40,7 +40,7 @@ function getGatewayConfig() {
 function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const config = getGatewayConfig()
-    const runId = randomUUID()
+    let runId = randomUUID()
     let fullText = ''
     let done = false
 
@@ -99,6 +99,11 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
         } else {
           finish({ ok: false, error: `Connect failed: ${f.error?.message}` })
         }
+        return
+      }
+
+      if (f.type === 'res' && f.id === 's' && f.ok) {
+        if (f.payload?.runId) runId = f.payload.runId
         return
       }
 

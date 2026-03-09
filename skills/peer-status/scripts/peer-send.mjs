@@ -130,7 +130,7 @@ function main() {
   const gwConfig = getGatewayConfig()
 
   const sessionKey = `agent:${to}:main`
-  const idempotencyKey = randomUUID()
+  let idempotencyKey = randomUUID()
 
   // Prepend sender identification header
   // In async (--no-wait) mode, add [async] tag so receiving agent knows to reply via peer-send
@@ -209,6 +209,7 @@ function main() {
 
     // chat.send response
     if (f.type === 'res' && f.id === 's') {
+      if (f.ok && f.payload?.runId) idempotencyKey = f.payload.runId
       if (!f.ok) {
         clearTimeout(timer)
         finish(JSON.stringify({ ok: false, error: `chat.send failed: ${f.error?.message}` }), 1)

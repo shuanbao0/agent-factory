@@ -50,7 +50,7 @@ function getConfig() {
 }
 
 const config = getConfig()
-const runId = randomUUID()
+let runId = randomUUID()
 let fullText = ''
 let resolved = false
 
@@ -102,6 +102,11 @@ ws.on('message', (data) => {
       clearTimeout(timer)
       finish('error', { error: `Connect failed: ${f.error?.message}` })
     }
+    return
+  }
+
+  if (f.type === 'res' && f.id === 's' && f.ok) {
+    if (f.payload?.runId) runId = f.payload.runId
     return
   }
 
