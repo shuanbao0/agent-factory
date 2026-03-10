@@ -41,8 +41,16 @@ const COMPACT_TOKEN_RATIO = 0.6              // Compact at 60% of contextTokens
 const RESET_COMPACT_COUNT = 10               // Reset session after 10 compactions
 const RESET_TOKEN_RATIO = 0.8               // Reset if compact didn't bring tokens below 80%
 const DEFAULT_COMPACT_TIMEOUT_MS = 30000     // Compact/kill timeout
-const HEALTH_CHECK_INTERVAL = 5              // Health check every N cycles
+const HEALTH_CHECK_INTERVAL = 3              // Health check every N cycles (was 5)
 const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000      // Max chars for domain knowledge file
+
+// Session health thresholds
+const SESSION_RESET_INPUT_TOKENS = 80000     // Reset session when inputTokens exceeds this
+const SESSION_FORCE_COMPACT_TOKENS = 50000   // Force compact when inputTokens exceeds this
+
+// Chief response validation
+const MIN_EFFECTIVE_OUTPUT_TOKENS = 50       // Below this = ineffective response
+const MAX_CONSECUTIVE_FAILURES = 3           // Trigger fallback dispatch after N consecutive failures
 
 module.exports = {
   PROJECT_ROOT,
@@ -76,4 +84,8 @@ module.exports = {
   DEFAULT_COMPACT_TIMEOUT_MS,
   HEALTH_CHECK_INTERVAL,
   MAX_DOMAIN_KNOWLEDGE_CHARS,
+  SESSION_RESET_INPUT_TOKENS,
+  SESSION_FORCE_COMPACT_TOKENS,
+  MIN_EFFECTIVE_OUTPUT_TOKENS,
+  MAX_CONSECUTIVE_FAILURES,
 }

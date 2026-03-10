@@ -12,9 +12,10 @@ const { join } = require('path')
 const {
   DEPARTMENTS_DIR, DEFAULT_DEPT_INTERVAL_SEC, MAX_HISTORY_ENTRIES,
   COMPACT_TOKEN_RATIO, DEFAULT_CONTEXT_TOKENS, HEALTH_CHECK_INTERVAL,
-  SESSIONS_DIR,
+  SESSIONS_DIR, SESSION_RESET_INPUT_TOKENS, SESSION_FORCE_COMPACT_TOKENS,
+  MIN_EFFECTIVE_OUTPUT_TOKENS, MAX_CONSECUTIVE_FAILURES,
 } = require('./constants.cjs')
-const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo } = require('./readers.cjs')
+const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo, readAgentActivity } = require('./readers.cjs')
 const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
@@ -64,16 +65,62 @@ async function runDepartmentCycle(deptId) {
   const taskId = await createCycleTask(config.head, `dept-${deptId}-cycle`, state.cycleCount)
 
   try {
+    const sessionKey = `agent:${config.head}:dept-autopilot`
+
+    // ── Step 1: Session health check before sending ──
+    await ensureSessionHealth(config.head, sessionKey, deptId)
+
+    // Snapshot idle workers BEFORE sending to chief
+    const workers = (config.agents || []).filter(id => id !== config.head)
+    const activityBefore = readAgentActivity()
+    const idleWorkersBefore = workers.filter(id => {
+      const a = activityBefore[id]
+      return !a || a.idleMins >= 5
+    })
+
     // Build directive for department head
     const directive = buildDepartmentDirective(deptId, config, state)
 
     // Send to department head
-    const sessionKey = `agent:${config.head}:dept-autopilot`
     const result = await sendToAgent(config.head, sessionKey, directive)
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
     if (result.ok) {
       logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} completed in ${elapsed}s`)
+
+      // ── Response validation: token check ──
+      const outputTokens = result.usage?.outputTokens || result.usage?.output_tokens || 0
+      const isEffective = outputTokens >= MIN_EFFECTIVE_OUTPUT_TOKENS
+      if (!isEffective) {
+        state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
+        logger.warn('dept-loop', `Department ${deptId} chief ineffective response: ${outputTokens} output tokens (cycle #${state.cycleCount}, consecutive failures: ${state.consecutiveFailures})`)
+      } else {
+        state.consecutiveFailures = 0
+      }
+
+      // ── Dispatch verification: did chief actually send work to idle agents? ──
+      let dispatchNeeded = false
+      if (isEffective && idleWorkersBefore.length > 0) {
+        // Wait a moment for session files to be updated by gateway
+        await new Promise(r => setTimeout(r, 2000))
+        const activityAfter = readAgentActivity()
+        const stillIdle = idleWorkersBefore.filter(id => {
+          const a = activityAfter[id]
+          return !a || a.idleMins >= 3  // slight grace: 3min vs 5min
+        })
+        if (stillIdle.length === idleWorkersBefore.length) {
+          // Chief produced tokens but none of the idle agents received work
+          state.dispatchMisses = (state.dispatchMisses || 0) + 1
+          logger.warn('dept-loop', `Department ${deptId}: chief responded but ${stillIdle.length} idle agents still idle (miss #${state.dispatchMisses})`)
+          if (state.dispatchMisses >= MAX_CONSECUTIVE_FAILURES) {
+            dispatchNeeded = true
+            state.dispatchMisses = 0
+          }
+        } else {
+          state.dispatchMisses = 0
+          logger.debug('dept-loop', `Department ${deptId}: dispatch verified, ${idleWorkersBefore.length - stillIdle.length} agents activated`)
+        }
+      }
 
       // Generate department report
       generateDepartmentReport(deptId, result.text)
@@ -88,6 +135,23 @@ async function runDepartmentCycle(deptId) {
         compressMemoryByRole(config.head, result.text, 'leader')
       } catch (e) {
         logger.debug('dept-loop', `Memory compression failed for ${config.head}`, e)
+      }
+
+      // ── Fallback dispatch: triggered by token failure OR dispatch miss ──
+      if (state.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || dispatchNeeded) {
+        const reason = dispatchNeeded
+          ? `idle agents not receiving work for ${MAX_CONSECUTIVE_FAILURES} cycles`
+          : `chief produced < ${MIN_EFFECTIVE_OUTPUT_TOKENS} output tokens for ${state.consecutiveFailures} cycles`
+        logger.warn('dept-loop', `Department ${deptId} fallback dispatch triggered: ${reason}`)
+        await fallbackDispatch(deptId, config)
+        // Reset session to clear bloated context that caused the failure
+        try {
+          await killSession(sessionKey)
+          logger.info('dept-loop', `Reset chief session ${sessionKey} after fallback dispatch`)
+        } catch (e) {
+          logger.debug('dept-loop', `Failed to reset chief session after fallback`, e)
+        }
+        state.consecutiveFailures = 0
       }
 
       // Periodic health check: compact oversized sessions + save member memories
@@ -105,6 +169,9 @@ async function runDepartmentCycle(deptId) {
         completedAt: new Date().toISOString(),
         elapsedSec: parseFloat(elapsed),
         result: result.text.slice(0, 300),
+        outputTokens,
+        effective: isEffective,
+        idleWorkers: idleWorkersBefore.length,
       })
       if (state.history.length > MAX_HISTORY_ENTRIES) {
         state.history = state.history.slice(-MAX_HISTORY_ENTRIES)
@@ -115,6 +182,7 @@ async function runDepartmentCycle(deptId) {
       return { ok: true, text: result.text }
     } else {
       logger.error('dept-loop', `Department ${deptId} cycle failed: ${result.error}`)
+      state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
       state.status = 'error'
       state.lastCycleResult = `Error: ${result.error}`
       saveDeptState(deptId, state)
@@ -123,11 +191,129 @@ async function runDepartmentCycle(deptId) {
     }
   } catch (err) {
     logger.error('dept-loop', `Department ${deptId} cycle error`, err)
+    state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
     state.status = 'error'
     state.lastCycleResult = `Error: ${err.message}`
     saveDeptState(deptId, state)
     await completeCycleTask(config.head, taskId, { ok: false, error: err.message })
     return { ok: false, error: err.message }
+  }
+}
+
+/**
+ * Ensure department head session is healthy before sending a directive.
+ * Resets session if inputTokens exceed threshold, compacts if moderately bloated.
+ */
+async function ensureSessionHealth(headAgent, sessionKey, deptId) {
+  const sessInfo = getSessionTokenInfo(headAgent, sessionKey)
+  if (!sessInfo) return
+
+  const inputTokens = sessInfo.totalTokens || 0
+
+  if (inputTokens > SESSION_RESET_INPUT_TOKENS) {
+    logger.warn('dept-loop', `Session ${sessionKey} bloated (${inputTokens} tokens > ${SESSION_RESET_INPUT_TOKENS}), resetting`)
+    try {
+      await killSession(sessionKey)
+      logger.info('dept-loop', `Reset session ${sessionKey} for ${deptId}`)
+    } catch (e) {
+      logger.error('dept-loop', `Failed to reset bloated session ${sessionKey}`, e)
+    }
+  } else if (inputTokens > SESSION_FORCE_COMPACT_TOKENS) {
+    logger.info('dept-loop', `Session ${sessionKey} moderately bloated (${inputTokens} tokens > ${SESSION_FORCE_COMPACT_TOKENS}), compacting`)
+    try {
+      await compactSession(sessionKey)
+      logger.info('dept-loop', `Compacted session ${sessionKey} for ${deptId}`)
+    } catch (e) {
+      logger.debug('dept-loop', `Failed to compact session ${sessionKey}`, e)
+    }
+  }
+}
+
+/**
+ * Fallback dispatch: when the department head fails to produce effective responses
+ * for MAX_CONSECUTIVE_FAILURES cycles, directly send tasks to idle workers.
+ */
+async function fallbackDispatch(deptId, config) {
+  const { readProjectTasks } = require('./readers.cjs')
+  const { execFile } = require('child_process')
+  const { promisify } = require('util')
+  const execFileAsync = promisify(execFile)
+  const { PROJECT_ROOT } = require('./constants.cjs')
+
+  const agentActivity = readAgentActivity()
+  const agents = config.agents || []
+  const head = config.head
+
+  // Find idle workers (not the head)
+  const idleAgents = agents.filter(id => {
+    if (id === head) return false
+    const a = agentActivity[id]
+    if (!a) return true  // No activity record = idle
+    return a.idleMins >= 5  // 5+ minutes idle
+  })
+
+  if (idleAgents.length === 0) {
+    logger.info('dept-loop', `Fallback dispatch for ${deptId}: no idle agents found`)
+    return
+  }
+
+  // Find pending tasks for this department
+  const projects = readProjectTasks()
+  const pendingTasks = []
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      if (t.status === 'pending' || t.status === 'assigned') {
+        const assignees = [t.assignedAgent, ...(t.assignees || [])]
+        if (assignees.some(a => agents.includes(a))) {
+          pendingTasks.push({ ...t, projectName: proj.name })
+        }
+      }
+    }
+  }
+
+  // Build generic task message for idle agents without specific tasks
+  const peerSendScript = join(PROJECT_ROOT, 'skills', 'peer-status', 'scripts', 'peer-send.mjs')
+
+  let dispatched = 0
+  for (const agentId of idleAgents) {
+    // Find a task specifically assigned to this agent, or use a generic prompt
+    const agentTask = pendingTasks.find(t =>
+      t.assignedAgent === agentId || (t.assignees || []).includes(agentId)
+    )
+
+    let message
+    if (agentTask) {
+      message = `[Fallback Dispatch from department-loop]\n\n你有一个待办任务需要继续：\n- 项目: ${agentTask.projectName}\n- 任务: [${agentTask.id}] ${agentTask.name}\n${agentTask.description ? `- 描述: ${agentTask.description}` : ''}\n\n请立即开始工作。`
+    } else {
+      message = `[Fallback Dispatch from department-loop]\n\n你当前处于空闲状态。请检查你的工作空间和任务列表，继续推进未完成的工作。如果没有明确任务，请回顾之前的产出并进行改进或扩展。`
+    }
+
+    try {
+      await execFileAsync('node', [peerSendScript, '--from', head, '--to', agentId, '--message', message, '--no-wait'], {
+        cwd: PROJECT_ROOT,
+        timeout: 30000,
+      })
+      dispatched++
+      logger.info('dept-loop', `Fallback dispatch: sent task to ${agentId} in dept ${deptId}`)
+    } catch (e) {
+      logger.error('dept-loop', `Fallback dispatch failed for ${agentId}: ${e.message}`)
+    }
+  }
+
+  if (dispatched > 0) {
+    logger.info('dept-loop', `Fallback dispatch for ${deptId}: dispatched to ${dispatched}/${idleAgents.length} idle agents`)
+
+    // Record in department report
+    const reportNote = `\n\n---\n⚠️ **Fallback Dispatch** (${new Date().toISOString()})\nChief 连续 ${MAX_CONSECUTIVE_FAILURES} 轮无有效产出，department-loop 直接派发任务给 ${dispatched} 个空闲 agent。\n`
+    try {
+      const reportPath = join(DEPARTMENTS_DIR, deptId, 'report.md')
+      if (existsSync(reportPath)) {
+        const existing = readFileSync(reportPath, 'utf-8')
+        writeFileSync(reportPath, existing + reportNote)
+      }
+    } catch (e) {
+      logger.debug('dept-loop', `Failed to append fallback note to report`, e)
+    }
   }
 }
 
@@ -326,4 +512,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { runDepartmentCycle, generateDepartmentReport }
+module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch }

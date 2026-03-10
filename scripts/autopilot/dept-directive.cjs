@@ -172,16 +172,42 @@ ${buildDeptTasks(deptId, config)}
 ${buildKpiStatus(deptId, config.kpis)}
 
 ## 行动要求
-1. **分配/调整团队任务** — 根据团队空闲状态和任务优先级重新分配工作
-2. **检查进行中任务的产出质量** — 确保输出符合标准
-3. **向 CEO 汇报关键进展** — 将重要信息写入部门报告
-4. **更新你的 MEMORY.md** — 记录本轮做了什么
-5. **如果部门方向、工作重点发生变化，更新部门使命文件** — 写入 config/departments/${deptId}/mission.md
+
+### ⚠️ 最重要：分配任务给空闲 agent
+如果团队中有 🟢 空闲 或 ⚪ 无记录的 agent，你**必须**立即使用 peer-send 给他们分配任务。
+
+**调用方式（直接在 bash 中执行）：**
+\`\`\`bash
+node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <目标agent-id> --message "具体任务指令" --no-wait
+\`\`\`
+
+**示例：**
+\`\`\`bash
+node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-writer --message "请继续写作第3章，参考 projects/novel/ 下的大纲" --no-wait
+\`\`\`
+
+### 其他行动
+1. **检查进行中任务的产出质量** — 确保输出符合标准
+2. **向 CEO 汇报关键进展** — 将重要信息写入部门报告
+3. **更新你的 MEMORY.md** — 记录本轮做了什么
+4. **如果部门方向、工作重点发生变化，更新部门使命文件** — 写入 config/departments/${deptId}/mission.md
 
 ## 行动原则
-- 空闲 agent 必须有事做
+- **空闲 agent 必须有事做** — 发现空闲 agent 不分配任务是严重失职
 - 卡住超过 2 轮的任务要换方式推进
 - 重要进展和阻塞立即上报
+- 每轮 cycle 至少执行一次 peer-send（如果有空闲 agent）
+
+## 输出格式要求
+请在响应中包含以下结构化总结：
+\`\`\`
+[任务分配]
+- <agent-id>: <分配的任务摘要> (peer-send 已发送/无需分配)
+[进展汇报]
+- <关键进展>
+[阻塞项]
+- <如有>
+\`\`\`
 `
 }
 
