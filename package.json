@@ -1,6 +1,6 @@
 {
   "name": "agent-factory",
-  "version": "0.4.21",
+  "version": "0.4.22",
   "description": "AI Employee Factory — Self-contained multi-agent team with built-in OpenClaw engine",
   "type": "module",
   "bin": {
