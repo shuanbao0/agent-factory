@@ -678,8 +678,6 @@ function OpenClawUpdateCard() {
     }
   }, [])
 
-  useEffect(() => { checkUpdate() }, [checkUpdate])
-
   const doUpdate = async () => {
     setUpdating(true)
     setUpdateResult(null)
@@ -816,8 +814,6 @@ function PlatformUpdateCard() {
       setChecking(false)
     }
   }, [t])
-
-  useEffect(() => { checkUpdate() }, [checkUpdate])
 
   const doUpdate = async () => {
     setUpdating(true)
