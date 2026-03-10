@@ -18,7 +18,7 @@
  *   node scripts/migrate-sync-builtin.mjs --dry-run     # preview changes
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, copyFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, copyFileSync, symlinkSync, lstatSync, unlinkSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -117,6 +117,51 @@ function arrayUnion(existing, incoming) {
   return { merged: [...existing, ...added], added };
 }
 
+// ── Skill symlink helpers ──
+
+function findBuiltinSkillsDir() {
+  const candidates = [
+    join(ROOT, 'node_modules', 'openclaw', 'skills'),
+    '/opt/homebrew/lib/node_modules/openclaw/skills',
+    '/usr/local/lib/node_modules/openclaw/skills',
+  ];
+  return candidates.find(p => existsSync(p)) || null;
+}
+
+function resolveSkillDir(slug, builtinDir) {
+  const projectPath = join(ROOT, 'skills', slug);
+  if (existsSync(projectPath)) return projectPath;
+  if (builtinDir) {
+    const builtinPath = join(builtinDir, slug);
+    if (existsSync(builtinPath)) return builtinPath;
+  }
+  return null;
+}
+
+function syncSkillSymlinks(agentId, enabledSlugs, builtinDir) {
+  const skillsDir = join(ROOT, 'agents', agentId, 'skills');
+  mkdirSync(skillsDir, { recursive: true });
+
+  // Remove existing symlinks
+  for (const entry of readdirSync(skillsDir)) {
+    const fp = join(skillsDir, entry);
+    try {
+      if (lstatSync(fp).isSymbolicLink()) unlinkSync(fp);
+    } catch { /* ignore */ }
+  }
+
+  // Create symlinks for all enabled skills
+  for (const slug of enabledSlugs) {
+    const src = resolveSkillDir(slug, builtinDir);
+    const link = join(skillsDir, slug);
+    if (src && !existsSync(link)) {
+      try {
+        symlinkSync(src, link, 'dir');
+      } catch { /* ignore */ }
+    }
+  }
+}
+
 // ── Main ──
 
 if (!existsSync(AGENTS_DIR)) {
@@ -145,6 +190,9 @@ const agentDirs = targetAgent
   : readdirSync(AGENTS_DIR, { withFileTypes: true })
       .filter(d => d.isDirectory() && !d.name.startsWith('.'))
       .map(d => d.name);
+
+// Cache builtin skills dir once
+const builtinSkillsDir = findBuiltinSkillsDir();
 
 console.log(`${dryRun ? '[DRY-RUN] ' : ''}=== Sync builtin templates → agents/ ===\n`);
 
@@ -197,6 +245,12 @@ for (const agentId of agentDirs) {
   if (addedSkills.length > 0) {
     agent.skills = mergedSkills;
     changes.push(`skills:     + ${addedSkills.join(', ')}  (${addedSkills.length} added)`);
+  }
+
+  // ── 2b. Sync skill symlinks (always, to fix previously missing symlinks) ──
+  const finalSkills = agent.skills || [];
+  if (finalSkills.length > 0 && !dryRun) {
+    syncSkillSymlinks(agentId, finalSkills, builtinSkillsDir);
   }
 
   // ── 3. Sync AGENTS.md (replace, preserve base-rules blocks) ──
