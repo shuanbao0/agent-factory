@@ -5,6 +5,7 @@ import { injectBaseRulesForAgent } from '@/lib/base-rules'
 import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, renameSync } from 'fs'
 import { join, resolve } from 'path'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
+import { syncSkillSymlinks } from '@/lib/skill-symlinks'
 
 export const dynamic = 'force-dynamic'
 
@@ -337,6 +338,9 @@ export async function POST(req: NextRequest) {
       writeFileSync(join(agentDir, 'AGENTS.md'), generateAgentsMd({ id, role: finalRole, name, description: finalDescription, peers: finalPeers }))
     }
 
+    // 2.5. Create skill symlinks (must happen before TOOLS.md generation)
+    syncSkillSymlinks(id, finalSkills)
+
     // 3. Materialize TOOLS.md
     if (tmplDir && existsSync(join(tmplDir, 'TOOLS.md'))) {
       writeFileSync(join(agentDir, 'TOOLS.md'), readFileSync(join(tmplDir, 'TOOLS.md'), 'utf-8'))
@@ -550,6 +554,7 @@ export async function PUT(req: NextRequest) {
     // Regenerate TOOLS.md in agents/{id}/ when skills change
     if (skills !== undefined) {
       const finalSkills = (agentJson.skills as string[]) || []
+      syncSkillSymlinks(id, finalSkills)
       writeFileSync(join(agentDir, 'TOOLS.md'), generateToolsMd(id, finalSkills, agentDir))
     }
 
