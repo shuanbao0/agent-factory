@@ -24,10 +24,11 @@ function getOpenClawBin(): string {
   return 'openclaw'
 }
 
-function buildCmd(method: string, params?: Record<string, unknown>): string {
+function buildCmd(method: string, params?: Record<string, unknown>, timeoutMs?: number): string {
   const bin = getOpenClawBin()
   const paramsArg = params ? ` --params '${JSON.stringify(params)}'` : ''
-  return `${bin} gateway call ${method} --json --url ${GW_URL} --token ${GW_TOKEN}${paramsArg}`
+  const timeoutArg = timeoutMs ? ` --timeout ${timeoutMs}` : ''
+  return `${bin} gateway call ${method} --json --url ${GW_URL} --token ${GW_TOKEN}${timeoutArg}${paramsArg}`
 }
 
 function parseGwOutput(raw: string): unknown {
@@ -42,8 +43,8 @@ function parseGwOutput(raw: string): unknown {
 
 /** Synchronous gateway call */
 export function gwCall(method: string, params?: Record<string, unknown>, timeoutMs = 15000): unknown {
-  const raw = execSync(buildCmd(method, params), {
-    timeout: timeoutMs, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
+  const raw = execSync(buildCmd(method, params, timeoutMs), {
+    timeout: timeoutMs + 5000, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
   })
   return parseGwOutput(raw)
 }
@@ -51,8 +52,8 @@ export function gwCall(method: string, params?: Record<string, unknown>, timeout
 /** Async gateway call — runs in parallel, does not block the event loop */
 export function gwCallAsync(method: string, params?: Record<string, unknown>, timeoutMs = 10000): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    exec(buildCmd(method, params), {
-      timeout: timeoutMs, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
+    exec(buildCmd(method, params, timeoutMs), {
+      timeout: timeoutMs + 5000, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
     }, (error, stdout) => {
       if (error) return reject(error)
       try { resolve(parseGwOutput(stdout)) } catch (e) { reject(e) }
