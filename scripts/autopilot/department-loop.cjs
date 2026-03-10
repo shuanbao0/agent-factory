@@ -13,7 +13,7 @@ const {
   DEPARTMENTS_DIR, DEFAULT_DEPT_INTERVAL_SEC, MAX_HISTORY_ENTRIES,
   COMPACT_TOKEN_RATIO, DEFAULT_CONTEXT_TOKENS, HEALTH_CHECK_INTERVAL,
   SESSIONS_DIR, SESSION_RESET_INPUT_TOKENS, SESSION_FORCE_COMPACT_TOKENS,
-  MIN_EFFECTIVE_OUTPUT_TOKENS, MAX_CONSECUTIVE_FAILURES,
+  MIN_EFFECTIVE_RESPONSE_LENGTH, MAX_CONSECUTIVE_FAILURES,
 } = require('./constants.cjs')
 const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo, readAgentActivity } = require('./readers.cjs')
 const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
@@ -93,11 +93,11 @@ async function runDepartmentCycle(deptId) {
       logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} completed in ${elapsed}s`)
 
       // ── Response validation: token check ──
-      const outputTokens = result.usage?.outputTokens || result.usage?.output_tokens || 0
-      const isEffective = outputTokens >= MIN_EFFECTIVE_OUTPUT_TOKENS
+      const responseLength = (result.text || '').trim().length
+      const isEffective = responseLength >= MIN_EFFECTIVE_RESPONSE_LENGTH
       if (!isEffective) {
         state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
-        logger.warn('dept-loop', `Department ${deptId} chief ineffective response: ${outputTokens} output tokens (cycle #${state.cycleCount}, consecutive failures: ${state.consecutiveFailures})`)
+        logger.warn('dept-loop', `Department ${deptId} chief ineffective response: ${responseLength} chars (cycle #${state.cycleCount}, consecutive failures: ${state.consecutiveFailures})`)
       } else {
         state.consecutiveFailures = 0
       }
@@ -145,7 +145,7 @@ async function runDepartmentCycle(deptId) {
       if (state.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || dispatchNeeded) {
         const reason = dispatchNeeded
           ? `idle agents not receiving work for ${MAX_CONSECUTIVE_FAILURES} cycles`
-          : `chief produced < ${MIN_EFFECTIVE_OUTPUT_TOKENS} output tokens for ${state.consecutiveFailures} cycles`
+          : `chief produced < ${MIN_EFFECTIVE_RESPONSE_LENGTH} chars for ${state.consecutiveFailures} cycles`
         logger.warn('dept-loop', `Department ${deptId} fallback dispatch triggered: ${reason}`)
         await fallbackDispatch(deptId, config)
         // Reset session to clear bloated context that caused the failure
@@ -174,7 +174,7 @@ async function runDepartmentCycle(deptId) {
         completedAt: new Date().toISOString(),
         elapsedSec: parseFloat(elapsed),
         result: result.text.slice(0, 300),
-        outputTokens,
+        responseLength,
         effective: isEffective,
         idleWorkers: idleWorkersBefore.length,
       })

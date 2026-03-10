@@ -49,7 +49,7 @@ const SESSION_RESET_INPUT_TOKENS = 80000     // Reset session when inputTokens e
 const SESSION_FORCE_COMPACT_TOKENS = 50000   // Force compact when inputTokens exceeds this
 
 // Chief response validation
-const MIN_EFFECTIVE_OUTPUT_TOKENS = 50       // Below this = ineffective response
+const MIN_EFFECTIVE_RESPONSE_LENGTH = 50    // Below this char count = ineffective response
 const MAX_CONSECUTIVE_FAILURES = 3           // Trigger fallback dispatch after N consecutive failures
 
 module.exports = {
@@ -86,6 +86,6 @@ module.exports = {
   MAX_DOMAIN_KNOWLEDGE_CHARS,
   SESSION_RESET_INPUT_TOKENS,
   SESSION_FORCE_COMPACT_TOKENS,
-  MIN_EFFECTIVE_OUTPUT_TOKENS,
+  MIN_EFFECTIVE_RESPONSE_LENGTH,
   MAX_CONSECUTIVE_FAILURES,
 }
