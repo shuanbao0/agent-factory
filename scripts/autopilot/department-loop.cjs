@@ -23,6 +23,10 @@ const { checkBudget, trackTokenUsage } = require('./budget.cjs')
 const { createCycleTask, completeCycleTask } = require('./task-bridge.cjs')
 const logger = require('./logger.cjs')
 
+// Cooldown: skip session health check if recently reset
+const sessionResetCooldowns = new Map()  // sessionKey → timestamp
+const RESET_COOLDOWN_MS = 120_000
+
 /**
  * Run a single department cycle.
  *
@@ -147,6 +151,7 @@ async function runDepartmentCycle(deptId) {
         // Reset session to clear bloated context that caused the failure
         try {
           await killSession(sessionKey)
+          sessionResetCooldowns.set(sessionKey, Date.now())
           logger.info('dept-loop', `Reset chief session ${sessionKey} after fallback dispatch`)
         } catch (e) {
           logger.debug('dept-loop', `Failed to reset chief session after fallback`, e)
@@ -205,6 +210,13 @@ async function runDepartmentCycle(deptId) {
  * Resets session if inputTokens exceed threshold, compacts if moderately bloated.
  */
 async function ensureSessionHealth(headAgent, sessionKey, deptId) {
+  // Cooldown: skip check if recently reset
+  const lastReset = sessionResetCooldowns.get(sessionKey)
+  if (lastReset && Date.now() - lastReset < RESET_COOLDOWN_MS) {
+    logger.debug('dept-loop', `Session ${sessionKey} recently reset, skipping health check`)
+    return
+  }
+
   const sessInfo = getSessionTokenInfo(headAgent, sessionKey)
   if (!sessInfo) return
 
@@ -214,6 +226,7 @@ async function ensureSessionHealth(headAgent, sessionKey, deptId) {
     logger.warn('dept-loop', `Session ${sessionKey} bloated (${inputTokens} tokens > ${SESSION_RESET_INPUT_TOKENS}), resetting`)
     try {
       await killSession(sessionKey)
+      sessionResetCooldowns.set(sessionKey, Date.now())
       logger.info('dept-loop', `Reset session ${sessionKey} for ${deptId}`)
     } catch (e) {
       logger.error('dept-loop', `Failed to reset bloated session ${sessionKey}`, e)

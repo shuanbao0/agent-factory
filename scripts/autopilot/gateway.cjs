@@ -154,8 +154,8 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
             retried = true
             logger.warn('gateway', `Empty response from ${agentId} on ${sessionKey}, resetting session and retrying`)
             ws.send(JSON.stringify({
-              type: 'req', id: 'retry-kill', method: 'sessions.kill',
-              params: { sessionKey }
+              type: 'req', id: 'retry-kill', method: 'sessions.reset',
+              params: { key: sessionKey }
             }))
             return
           }
@@ -192,7 +192,7 @@ function sendToCeo(message, timeoutMs = DEFAULT_AGENT_TIMEOUT_MS) {
 /**
  * Send a session management command (compact or kill) via WebSocket.
  *
- * @param {string} method - 'sessions.compact' or 'sessions.kill'
+ * @param {string} method - 'sessions.compact' or 'sessions.reset'
  * @param {string} sessionKey - Session key to operate on
  * @param {number} timeoutMs - Timeout in milliseconds
  * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
@@ -243,7 +243,7 @@ function sendSessionCommand(method, sessionKey, timeoutMs = DEFAULT_COMPACT_TIME
         if (f.ok) {
           ws.send(JSON.stringify({
             type: 'req', id: 'cmd', method,
-            params: { sessionKey }
+            params: { key: sessionKey }
           }))
           logger.debug('gateway', `Connected, sending ${method} for ${sessionKey}`)
         } else {
@@ -287,7 +287,7 @@ function compactSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
  * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
  */
 function killSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
-  return sendSessionCommand('sessions.kill', sessionKey, timeoutMs)
+  return sendSessionCommand('sessions.reset', sessionKey, timeoutMs)
 }
 
 module.exports = { getGatewayConfig, sendToAgent, sendToCeo, compactSession, killSession }
