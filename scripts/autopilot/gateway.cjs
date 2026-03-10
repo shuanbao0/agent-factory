@@ -8,6 +8,7 @@ const { randomUUID } = require('crypto')
 const { readFileSync, existsSync } = require('fs')
 const { join } = require('path')
 const { CONFIG_DIR, DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_COMPACT_TIMEOUT_MS } = require('./constants.cjs')
+const { readMemorySummary } = require('./readers.cjs')
 const logger = require('./logger.cjs')
 
 function getGatewayConfig() {
@@ -113,14 +114,21 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
         return
       }
 
-      // Retry-kill response — empty response recovery
+      // Retry-kill response — empty response recovery with memory injection
       if (f.type === 'res' && f.id === 'retry-kill') {
         logger.info('gateway', `Empty response recovery: session ${sessionKey} ${f.ok ? 'reset' : 'reset failed'}, retrying`)
         runId = randomUUID()
         fullText = ''
+        // Inject memory summary so the fresh session has context
+        let retryMessage = message
+        const summary = readMemorySummary(agentId)
+        if (summary) {
+          retryMessage = `[Context from previous session]\n${summary}\n\n${message}`
+          logger.debug('gateway', `Injected memory summary for ${agentId} (${summary.length} chars)`)
+        }
         ws.send(JSON.stringify({
           type: 'req', id: 's', method: 'chat.send',
-          params: { sessionKey, message, idempotencyKey: runId }
+          params: { sessionKey, message: retryMessage, idempotencyKey: runId }
         }))
         return
       }
