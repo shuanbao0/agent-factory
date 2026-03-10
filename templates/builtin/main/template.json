@@ -9,7 +9,8 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5-highspeed",
     "skills": [
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": []
   }

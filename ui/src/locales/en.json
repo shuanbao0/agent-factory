@@ -17,6 +17,8 @@
     "mode": "mode",
     "tokens": "tokens",
     "messages": "messages",
+    "completed": "completed",
+    "inProgress": "in progress",
     "tasks": "tasks",
     "total": "total",
     "online": "online",

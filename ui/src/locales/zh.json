@@ -17,6 +17,8 @@
     "mode": "模式",
     "tokens": "Token",
     "messages": "交互次数",
+    "completed": "已完成",
+    "inProgress": "进行中",
     "tasks": "任务",
     "total": "总计",
     "online": "在线",

@@ -10,7 +10,8 @@
     "skills": [
       "summarize",
       "nano-pdf",
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": [
       "pm",

@@ -12,7 +12,8 @@
       "session-logs",
       "nano-pdf",
       "github",
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": [
       "chief-scientist",

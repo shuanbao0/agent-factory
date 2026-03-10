@@ -10,7 +10,8 @@
     "skills": [
       "summarize",
       "session-logs",
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": [
       "ceo",

@@ -11,7 +11,8 @@
       "tmux",
       "github",
       "session-logs",
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": [
       "ceo",

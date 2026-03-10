@@ -6,7 +6,7 @@ import { useAppStore } from '@/lib/store'
 import { Card, CardContent } from './ui/card'
 import { Badge } from './ui/badge'
 import { timeAgo, formatNumber } from '@/lib/utils'
-import { Zap, MessageSquare, Pencil, Trash2, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
+import { Zap, MessageSquare, CheckCircle, ListTodo, Pencil, Trash2, ChevronRight, Loader2, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 
 const statusColor = { online: 'success', busy: 'warning' } as const
@@ -99,7 +99,16 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
             )}
             <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1"><Zap className="w-3 h-3" />{formatNumber(agent.tokensUsed)} {t('common.tokens')}</span>
-              <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" />{formatNumber(agent.messagesCount)} {t('common.messages')}</span>
+              {(agent.tasksCompleted > 0 || agent.tasksInProgress > 0) ? (
+                <>
+                  {agent.tasksInProgress > 0 && (
+                    <span className="flex items-center gap-1 text-yellow-400"><ListTodo className="w-3 h-3" />{agent.tasksInProgress} {t('common.inProgress')}</span>
+                  )}
+                  <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3" />{agent.tasksCompleted} {t('common.completed')}</span>
+                </>
+              ) : (
+                <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" />{formatNumber(agent.messagesCount)} {t('common.messages')}</span>
+              )}
               {template && (
                 <Badge variant="muted" className="text-[9px] py-0 px-1.5">
                   {template.emoji} {template.id}

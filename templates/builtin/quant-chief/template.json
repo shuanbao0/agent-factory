@@ -7,7 +7,20 @@
   "group": "quant",
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
-    "skills": ["summarize", "session-logs", "peer-status"],
-    "peers": ["quant-researcher", "quant-developer", "data-engineer-quant", "risk-manager", "market-analyst-crypto", "strategy-optimizer", "execution-engineer"]
+    "skills": [
+      "summarize",
+      "session-logs",
+      "peer-status",
+      "task-api"
+    ],
+    "peers": [
+      "quant-researcher",
+      "quant-developer",
+      "data-engineer-quant",
+      "risk-manager",
+      "market-analyst-crypto",
+      "strategy-optimizer",
+      "execution-engineer"
+    ]
   }
 }

@@ -11,7 +11,8 @@
       "1password",
       "github",
       "tmux",
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": [
       "pm",

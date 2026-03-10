@@ -272,33 +272,85 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 - 如果处理耗时较长，先回发一条确认消息（"已收到，预计 X 分钟后完成"），完成后再发最终结果。
 - 回复也使用 `--no-wait`，避免双方互相阻塞。
 
-### 任务 API 协议
+### 任务先行协议
 
-你可以通过 HTTP API 查询和更新自己的任务。使用 `curl` 或类似工具调用。
+> **[ENFORCE] 硬性规则。所有工作必须通过任务系统追踪，禁止"隐形工作"。**
+
+**核心原则**：没有任务，不做事情。Dashboard 任务面板是团队唯一的工作真相来源。所有可追踪的工作必须在任务系统中体现。
 
 **Base URL**: `http://127.0.0.1:3100/api/agent-tasks`
 **认证**: `Authorization: Bearer agent-factory-internal-token-2026`（或 `$AGENT_FACTORY_TOKEN`）
 
-**查询你的任务**:
-```bash
-curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
-```
+#### 协调者（部门主管/PM）的强制流程
 
-**更新任务状态和进度**:
-```bash
-curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"agent":"YOUR_ID","taskId":"task-xxx","status":"in_progress","progress":50}' \
-  "http://127.0.0.1:3100/api/agent-tasks"
-```
+当你需要分派工作给其他 Agent 时，**必须**按以下顺序执行：
 
-**创建任务**:
+1. **检查项目状态** — 先查看 `projects/{部门ID}/` 确认项目上下文。
+2. **查询现有任务** — 查看是否已有相关任务：
+   ```bash
+   curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
+   ```
+3. **创建任务** — 如果没有对应任务，**先创建再分派**：
+   ```bash
+   curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
+     -d '{"agent":"YOUR_ID","name":"任务名","description":"具体要求","projectId":"xxx","type":"writing","priority":"P1","assignees":["目标AgentID"]}' \
+     "http://127.0.0.1:3100/api/agent-tasks"
+   ```
+4. **发送 peer-send 时引用任务 ID** — 消息中**必须**包含任务 ID，格式：`[Task: task-xxx] 具体指令...`
+5. **跟踪完成情况** — 收到执行结果后，更新任务状态。
+
+**禁止**：通过 peer-send 发送工作指令但不创建对应任务。这会导致工作不可追踪、Dashboard 无数据。
+
+#### 执行者（收到工作指令的 Agent）的强制流程
+
+收到包含 `[Task: task-xxx]` 的工作指令时：
+
+1. **查询任务详情** — 确认任务存在且分配给自己：
+   ```bash
+   curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
+   ```
+2. **更新为进行中** — 开始工作前：
+   ```bash
+   curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
+     -d '{"agent":"YOUR_ID","taskId":"task-xxx","status":"in_progress","progress":0}' \
+     "http://127.0.0.1:3100/api/agent-tasks"
+   ```
+3. **过程中更新进度** — 每完成重要阶段：
+   ```bash
+   curl -X PUT ... -d '{"agent":"YOUR_ID","taskId":"task-xxx","progress":50}'
+   ```
+4. **完成时提交** — 附带产出和自检评分：
+   ```bash
+   curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
+     -d '{"agent":"YOUR_ID","taskId":"task-xxx","status":"completed","progress":100,"output":"产出文件路径","quality":{"selfCheck":{"passed":true,"score":85,"checklist":["xxx"],"at":"ISO时间"}}}' \
+     "http://127.0.0.1:3100/api/agent-tasks"
+   ```
+
+**收到没有 Task ID 的工作指令时**：如果 peer-send 消息是明确的工作任务但没有引用 Task ID，你**应该主动创建任务**再开始执行：
 ```bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"agent":"YOUR_ID","name":"任务名","projectId":"xxx","type":"writing","priority":"P1"}' \
+  -d '{"agent":"YOUR_ID","name":"从消息中提取的任务名","projectId":"xxx","type":"类型","priority":"P1"}' \
   "http://127.0.0.1:3100/api/agent-tasks"
 ```
 
-**注意**: 设置 `status: "in_progress"` 时，系统会检查依赖任务是否全部完成，未完成会返回 409。完成任务时，如果该任务类型在部门流水线中有下游步骤，系统会自动创建后续任务。
+#### 任务状态流转
+
+```
+pending → in_progress → completed
+                ↘ review → completed
+                ↘ rework → in_progress（返工循环）
+                ↘ failed（终止）
+```
+
+#### 质量门控自动触发
+
+完成任务时（`status: "completed"`），系统自动执行：
+- 检查部门流水线中是否定义了质量门控
+- 如果定义了：验证自检评分、字数、内容重复率等
+- 门控通过 → 自动创建流水线下游任务
+- 门控失败 → 自动创建返工任务（最多 3 次）
+
+**注意**: 设置 `status: "in_progress"` 时，系统会检查依赖任务是否全部完成，未完成会返回 409。
 
 ### 记忆管理协议
 

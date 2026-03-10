@@ -11,7 +11,8 @@
       "summarize",
       "session-logs",
       "document-pro",
-      "peer-status"
+      "peer-status",
+      "task-api"
     ],
     "peers": [
       "ceo",

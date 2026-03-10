@@ -358,6 +358,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           department: a.department || undefined,
           tokensUsed: 0,
           messagesCount: 0,
+          tasksCompleted: 0,
+          tasksInProgress: 0,
           lastActive: new Date().toISOString(),
           currentTask: a.isDefault ? 'Default agent' : undefined,
         }))
@@ -369,6 +371,15 @@ export const useAppStore = create<AppState>((set, get) => ({
             a.tokensUsed = usage.totals.totalTokens
             a.messagesCount = usage.totals.totalMessages || 0
           }
+        }
+        // Merge task counts from tasks
+        const tasks = get().tasks
+        for (const a of agents) {
+          const agentTasks = tasks.filter(t => t.assignees?.includes(a.id) || t.assignedAgent === a.id)
+          a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
+          a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
+          const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
+          if (inProgressTask) a.currentTask = inProgressTask.name
         }
         set({ agents, connected: true, dataSource: 'gateway' })
       }
@@ -498,6 +509,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             department: a.department || undefined,
             tokensUsed: 0,
             messagesCount: 0,
+            tasksCompleted: 0,
+            tasksInProgress: 0,
             lastActive: new Date().toISOString(),
             currentTask: a.isDefault ? 'Default agent' : undefined,
           }))
@@ -508,6 +521,15 @@ export const useAppStore = create<AppState>((set, get) => ({
               a.tokensUsed = usage.totals.totalTokens
               a.messagesCount = usage.totals.totalMessages || 0
             }
+          }
+          // Merge task counts
+          const tasks = get().tasks
+          for (const a of agents) {
+            const agentTasks = tasks.filter(t => t.assignees?.includes(a.id) || t.assignedAgent === a.id)
+            a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
+            a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
+            const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
+            if (inProgressTask) a.currentTask = inProgressTask.name
           }
           set({ agents, connected: true, dataSource: 'gateway' })
         }
@@ -585,6 +607,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             completedAt: t.completedAt as string | undefined,
           }))
           set({ tasks })
+          // Re-merge task counts into agents
+          const agents = [...get().agents]
+          for (const a of agents) {
+            const agentTasks = tasks.filter(t => t.assignees?.includes(a.id) || t.assignedAgent === a.id)
+            a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
+            a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
+            const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
+            if (inProgressTask) a.currentTask = inProgressTask.name
+          }
+          set({ agents })
         }
       } catch { /* ignore */ }
     })
