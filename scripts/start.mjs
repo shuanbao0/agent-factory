@@ -122,7 +122,9 @@ function killOldStartProcess() {
   try {
     const oldPid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
     if (oldPid && oldPid !== process.pid) {
-      process.kill(oldPid, 'SIGTERM');
+      try { process.kill(-oldPid, 'SIGTERM'); } catch {
+        try { process.kill(oldPid, 'SIGTERM'); } catch { /* already dead */ }
+      }
     }
   } catch { /* no pid file or process already dead */ }
 }
@@ -134,8 +136,13 @@ function writePidFile() {
 
 function cleanup() {
   try { unlinkSync(PID_FILE); } catch { /* ignore */ }
-  if (gatewayProcess) gatewayProcess.kill('SIGTERM');
-  if (dashboardProcess) dashboardProcess.kill('SIGTERM');
+  for (const child of [gatewayProcess, dashboardProcess]) {
+    if (child && child.pid) {
+      try { process.kill(-child.pid, 'SIGTERM'); } catch {
+        try { process.kill(child.pid, 'SIGTERM'); } catch { /* already dead */ }
+      }
+    }
+  }
   process.exit(0);
 }
 
@@ -162,6 +169,7 @@ async function startDashboard() {
       AGENT_FACTORY_PORT: String(GW_PORT),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
 
   dashboardProcess.stdout.on('data', (d) => {
@@ -222,6 +230,7 @@ async function startGateway() {
       OPENCLAW_CONFIG_PATH: CONFIG_PATH,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
 
   gatewayProcess.stdout.on('data', (d) => {

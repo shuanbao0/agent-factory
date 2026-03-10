@@ -164,7 +164,13 @@ async function cmdStop() {
     try {
       const startPid = parseInt(readFileSync(startPidFile, 'utf-8').trim(), 10);
       if (startPid) {
-        try { process.kill(startPid, 'SIGTERM'); stopped = true; console.log(c.green(`Stopped start.mjs (PID ${startPid})`)); } catch { /* already dead */ }
+        try {
+          process.kill(-startPid, 'SIGTERM');
+          stopped = true;
+          console.log(c.green(`Stopped start.mjs process group (PGID ${startPid})`));
+        } catch {
+          try { process.kill(startPid, 'SIGTERM'); stopped = true; } catch { /* already dead */ }
+        }
       }
       unlinkSync(startPidFile);
     } catch { /* ignore */ }
