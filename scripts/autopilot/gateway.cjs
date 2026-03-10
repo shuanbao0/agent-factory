@@ -7,7 +7,7 @@ const WebSocket = require('ws')
 const { randomUUID } = require('crypto')
 const { readFileSync, existsSync } = require('fs')
 const { join } = require('path')
-const { CONFIG_DIR, DEFAULT_AGENT_TIMEOUT_MS } = require('./constants.cjs')
+const { CONFIG_DIR, DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_COMPACT_TIMEOUT_MS } = require('./constants.cjs')
 const logger = require('./logger.cjs')
 
 function getGatewayConfig() {
@@ -156,4 +156,105 @@ function sendToCeo(message, timeoutMs = DEFAULT_AGENT_TIMEOUT_MS) {
   return sendToAgent('ceo', 'agent:ceo:autopilot', message, timeoutMs)
 }
 
-module.exports = { getGatewayConfig, sendToAgent, sendToCeo }
+/**
+ * Send a session management command (compact or kill) via WebSocket.
+ *
+ * @param {string} method - 'sessions.compact' or 'sessions.kill'
+ * @param {string} sessionKey - Session key to operate on
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
+ */
+function sendSessionCommand(method, sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const config = getGatewayConfig()
+    let done = false
+
+    const finish = (result) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      try { ws.close() } catch {}
+      resolve(result)
+    }
+
+    const timer = setTimeout(() => {
+      finish({ ok: false, error: `Timeout after ${timeoutMs / 1000}s for ${method}` })
+    }, timeoutMs)
+
+    const connectFrame = JSON.stringify({
+      type: 'req', id: 'c', method: 'connect',
+      params: {
+        minProtocol: 3, maxProtocol: 3,
+        client: { id: 'openclaw-control-ui', mode: 'backend', version: '1.0.0', platform: process.platform },
+        caps: [],
+        auth: { token: config.token },
+        role: 'operator',
+        scopes: ['operator.admin', 'operator.read', 'operator.write'],
+      }
+    })
+
+    const ws = new WebSocket(`ws://127.0.0.1:${config.port}`, {
+      headers: { Origin: `http://127.0.0.1:${config.port}` }
+    })
+
+    ws.on('message', (data) => {
+      let f
+      try { f = JSON.parse(data.toString()) } catch { return }
+
+      if (f.type === 'event' && f.event === 'connect.challenge') {
+        ws.send(connectFrame)
+        return
+      }
+
+      if (f.type === 'res' && f.id === 'c') {
+        if (f.ok) {
+          ws.send(JSON.stringify({
+            type: 'req', id: 'cmd', method,
+            params: { sessionKey }
+          }))
+          logger.debug('gateway', `Connected, sending ${method} for ${sessionKey}`)
+        } else {
+          finish({ ok: false, error: `Connect failed: ${f.error?.message}` })
+        }
+        return
+      }
+
+      if (f.type === 'res' && f.id === 'cmd') {
+        if (f.ok) {
+          finish({ ok: true, payload: f.payload })
+        } else {
+          finish({ ok: false, error: `${method} failed: ${f.error?.message}` })
+        }
+      }
+    })
+
+    ws.on('error', (err) => {
+      finish({ ok: false, error: `WebSocket: ${err.message}` })
+    })
+    ws.on('close', (code) => {
+      if (!done) finish({ ok: false, error: `WebSocket closed (${code})` })
+    })
+  })
+}
+
+/**
+ * Compact a session via Gateway WebSocket.
+ * @param {string} sessionKey
+ * @param {number} timeoutMs
+ * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
+ */
+function compactSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
+  return sendSessionCommand('sessions.compact', sessionKey, timeoutMs)
+}
+
+/**
+ * Kill (reset) a session via Gateway WebSocket.
+ * @param {string} sessionKey
+ * @param {number} timeoutMs
+ * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
+ */
+function killSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
+  return sendSessionCommand('sessions.kill', sessionKey, timeoutMs)
+}
+
+module.exports = { getGatewayConfig, sendToAgent, sendToCeo, compactSession, killSession }

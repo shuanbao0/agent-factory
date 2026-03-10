@@ -35,6 +35,15 @@ const MAX_HISTORY_ENTRIES = 50
 const MAX_CYCLE_RESULT_LENGTH = 500
 const MAX_HISTORY_RESULT_LENGTH = 300
 
+// Session context management
+const DEFAULT_CONTEXT_TOKENS = 200000        // Default context window
+const COMPACT_TOKEN_RATIO = 0.6              // Compact at 60% of contextTokens
+const RESET_COMPACT_COUNT = 10               // Reset session after 10 compactions
+const RESET_TOKEN_RATIO = 0.8               // Reset if compact didn't bring tokens below 80%
+const DEFAULT_COMPACT_TIMEOUT_MS = 30000     // Compact/kill timeout
+const HEALTH_CHECK_INTERVAL = 5              // Health check every N cycles
+const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000      // Max chars for domain knowledge file
+
 module.exports = {
   PROJECT_ROOT,
   CONFIG_DIR,
@@ -60,4 +69,11 @@ module.exports = {
   MAX_HISTORY_ENTRIES,
   MAX_CYCLE_RESULT_LENGTH,
   MAX_HISTORY_RESULT_LENGTH,
+  DEFAULT_CONTEXT_TOKENS,
+  COMPACT_TOKEN_RATIO,
+  RESET_COMPACT_COUNT,
+  RESET_TOKEN_RATIO,
+  DEFAULT_COMPACT_TIMEOUT_MS,
+  HEALTH_CHECK_INTERVAL,
+  MAX_DOMAIN_KNOWLEDGE_CHARS,
 }

@@ -8,7 +8,7 @@
  */
 const { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } = require('fs')
 const { join } = require('path')
-const { AGENTS_DIR } = require('./constants.cjs')
+const { AGENTS_DIR, MAX_DOMAIN_KNOWLEDGE_CHARS } = require('./constants.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -199,4 +199,210 @@ function buildSummaryFromResponse(response, date) {
   return `# Agent Memory Summary\n\nLast updated: ${date}\n\n## 最新状态\n${firstLines.slice(0, 1000)}\n`
 }
 
-module.exports = { buildMemoryContext, compressMemory, extractSummaryFromMemory }
+/**
+ * Role-aware memory compression.
+ *
+ * @param {string} agentId - Agent ID
+ * @param {string} fullResponse - The full agent response text
+ * @param {'ceo'|'leader'|'member'} role - Agent role
+ */
+function compressMemoryByRole(agentId, fullResponse, role) {
+  if (!fullResponse) return
+
+  const agentDir = join(AGENTS_DIR, agentId)
+  const memoryDir = join(agentDir, 'memory')
+
+  // Ensure base memory directory exists
+  if (!existsSync(memoryDir)) {
+    try { mkdirSync(memoryDir, { recursive: true }) } catch {}
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const timestamp = new Date().toISOString().slice(11, 19)
+
+  // All roles: update SUMMARY.md
+  const summaryFile = join(memoryDir, 'SUMMARY.md')
+  try {
+    const summary = buildSummaryFromResponse(fullResponse, today)
+    if (summary) {
+      writeFileSync(summaryFile, summary)
+      logger.debug('memory', `Updated SUMMARY.md for ${agentId} (role=${role})`)
+    }
+  } catch (err) {
+    logger.warn('memory', `Failed to update SUMMARY.md for ${agentId}`, err)
+  }
+
+  if (role === 'ceo' || role === 'leader') {
+    // CEO/Leader: decisions + lessons
+    const decisionsDir = join(memoryDir, 'decisions')
+    if (!existsSync(decisionsDir)) {
+      try { mkdirSync(decisionsDir, { recursive: true }) } catch {}
+    }
+    const decisionsFile = join(decisionsDir, `${today}.md`)
+    try {
+      const entry = extractDecisionEntry(fullResponse, timestamp)
+      if (entry) appendFileSync(decisionsFile, entry + '\n\n')
+    } catch (err) {
+      logger.warn('memory', `Failed to write decision log for ${agentId}`, err)
+    }
+
+    if (role === 'ceo') {
+      const lessonsDir = join(memoryDir, 'lessons')
+      if (!existsSync(lessonsDir)) {
+        try { mkdirSync(lessonsDir, { recursive: true }) } catch {}
+      }
+      try {
+        updateLessons(agentId, fullResponse)
+      } catch (err) {
+        logger.debug('memory', `Failed to update lessons for ${agentId}`, err)
+      }
+    }
+  } else {
+    // Member: work-output + domain knowledge
+    const workOutputDir = join(memoryDir, 'work-output')
+    if (!existsSync(workOutputDir)) {
+      try { mkdirSync(workOutputDir, { recursive: true }) } catch {}
+    }
+    const workOutputFile = join(workOutputDir, `${today}.md`)
+    try {
+      const entry = extractWorkOutput(fullResponse, timestamp)
+      if (entry) appendFileSync(workOutputFile, entry + '\n\n')
+    } catch (err) {
+      logger.warn('memory', `Failed to write work output for ${agentId}`, err)
+    }
+
+    const domainsDir = join(memoryDir, 'domains')
+    if (!existsSync(domainsDir)) {
+      try { mkdirSync(domainsDir, { recursive: true }) } catch {}
+    }
+    try {
+      updateDomainKnowledge(agentId, fullResponse)
+    } catch (err) {
+      logger.debug('memory', `Failed to update domain knowledge for ${agentId}`, err)
+    }
+  }
+}
+
+/**
+ * Extract work output summary from a team member's response.
+ */
+function extractWorkOutput(response, timestamp) {
+  if (!response || response.length < 20) return null
+
+  const lines = response.split('\n').filter(l => l.trim())
+
+  // Look for output-related keywords
+  const outputKeywords = ['完成', '创建', '生成', '写入', '输出', '产出',
+    'completed', 'created', 'generated', 'wrote', 'output', 'produced',
+    'saved', 'published', 'updated', 'built']
+
+  const relevantLines = lines.filter(l => {
+    const lower = l.toLowerCase()
+    return outputKeywords.some(k => lower.includes(k))
+  })
+
+  const summary = relevantLines.length > 0
+    ? relevantLines.slice(0, 8).join('\n')
+    : lines.slice(0, 5).join('\n')
+
+  return `#### ${timestamp}\n${summary.slice(0, 500)}`
+}
+
+/**
+ * Update domain knowledge file for a team member.
+ * Appends new knowledge points, deduplicates, and caps at MAX_DOMAIN_KNOWLEDGE_CHARS.
+ */
+function updateDomainKnowledge(agentId, response) {
+  if (!response || response.length < 50) return
+
+  const memoryDir = join(AGENTS_DIR, agentId, 'memory', 'domains')
+  const knowledgePath = join(memoryDir, 'knowledge.md')
+
+  // Extract knowledge-like content (patterns, findings, technical details)
+  const knowledgeKeywords = ['发现', '学到', '注意', '规律', '模式', '技巧', '经验',
+    'learned', 'discovered', 'pattern', 'insight', 'technique', 'finding', 'note']
+
+  const lines = response.split('\n').filter(l => l.trim())
+  const knowledgeLines = lines.filter(l => {
+    const lower = l.toLowerCase()
+    return knowledgeKeywords.some(k => lower.includes(k))
+  })
+
+  if (knowledgeLines.length === 0) return
+
+  const newKnowledge = knowledgeLines.slice(0, 5).join('\n')
+
+  let existing = ''
+  if (existsSync(knowledgePath)) {
+    existing = readFileSync(knowledgePath, 'utf-8')
+  }
+
+  // Deduplicate: skip if the new content is already substantially present
+  if (existing && newKnowledge.split('\n').every(line =>
+    line.length < 10 || existing.includes(line.trim())
+  )) {
+    return
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const updated = existing
+    ? `${existing}\n\n### ${today}\n${newKnowledge}`
+    : `# Domain Knowledge\n\n### ${today}\n${newKnowledge}`
+
+  // Cap at MAX_DOMAIN_KNOWLEDGE_CHARS — trim oldest entries
+  if (updated.length > MAX_DOMAIN_KNOWLEDGE_CHARS) {
+    const header = '# Domain Knowledge\n\n'
+    const trimmed = updated.slice(updated.length - MAX_DOMAIN_KNOWLEDGE_CHARS + header.length)
+    // Find next section boundary to avoid cutting mid-entry
+    const nextSection = trimmed.indexOf('\n### ')
+    const clean = nextSection >= 0 ? trimmed.slice(nextSection + 1) : trimmed
+    writeFileSync(knowledgePath, header + clean)
+  } else {
+    writeFileSync(knowledgePath, updated)
+  }
+
+  logger.debug('memory', `Updated domain knowledge for ${agentId}`)
+}
+
+/**
+ * Update lessons learned for CEO.
+ */
+function updateLessons(agentId, response) {
+  if (!response || response.length < 50) return
+
+  const lessonsPath = join(AGENTS_DIR, agentId, 'memory', 'lessons', 'what-worked.md')
+
+  const lessonKeywords = ['成功', '有效', '改进', '教训', '失败', '经验',
+    'worked', 'success', 'improve', 'lesson', 'failed', 'better']
+
+  const lines = response.split('\n').filter(l => l.trim())
+  const lessonLines = lines.filter(l => {
+    const lower = l.toLowerCase()
+    return lessonKeywords.some(k => lower.includes(k))
+  })
+
+  if (lessonLines.length === 0) return
+
+  const today = new Date().toISOString().slice(0, 10)
+  const entry = `\n### ${today}\n${lessonLines.slice(0, 5).join('\n')}\n`
+
+  let existing = ''
+  if (existsSync(lessonsPath)) {
+    existing = readFileSync(lessonsPath, 'utf-8')
+  }
+
+  const updated = existing ? existing + entry : `# Lessons Learned\n${entry}`
+
+  // Cap at 5000 chars
+  if (updated.length > 5000) {
+    const header = '# Lessons Learned\n'
+    const trimmed = updated.slice(updated.length - 5000 + header.length)
+    const nextSection = trimmed.indexOf('\n### ')
+    const clean = nextSection >= 0 ? trimmed.slice(nextSection + 1) : trimmed
+    writeFileSync(lessonsPath, header + clean)
+  } else {
+    writeFileSync(lessonsPath, updated)
+  }
+}
+
+module.exports = { buildMemoryContext, compressMemory, compressMemoryByRole, extractSummaryFromMemory }

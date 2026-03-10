@@ -6,6 +6,11 @@
  * restrictions, enabling cross-agent communication while keeping
  * visibility="agent" as a hard constraint.
  *
+ * Session context management (three-layer defense):
+ * 1. Token-aware compact: only compact when tokens > 60% of contextTokens
+ * 2. Session reset: kill + re-create when compactionCount >= 10
+ * 3. Memory injection: inject SUMMARY.md into first message after reset
+ *
  * Reference: ui/scripts/gateway-chat.js (WebSocket chat.send protocol)
  *
  * Usage:
@@ -39,10 +44,17 @@ function findProjectRoot() {
 
 const PROJECT_ROOT = findProjectRoot()
 
-// ── Load ws module from project node_modules ─────────────────────
+// ── Load CJS modules from project ────────────────────────────────
 
 const require = createRequire(join(PROJECT_ROOT, 'package.json'))
 const WebSocket = require('ws')
+
+// Load autopilot modules for session token checking
+const { getSessionTokenInfo, readMemorySummary } = require('./scripts/autopilot/readers.cjs')
+const {
+  COMPACT_TOKEN_RATIO, RESET_COMPACT_COUNT, RESET_TOKEN_RATIO,
+  DEFAULT_CONTEXT_TOKENS,
+} = require('./scripts/autopilot/constants.cjs')
 
 // ── Gateway config ───────────────────────────────────────────────
 
@@ -122,6 +134,40 @@ function getPeerName(peerId) {
   return peerId
 }
 
+// ── Session context analysis ─────────────────────────────────────
+
+/**
+ * Analyze target session and decide what action to take before sending.
+ *
+ * @returns {{ action: 'none'|'compact'|'reset', reason?: string }}
+ */
+function analyzeSessionContext(agentId, sessionKey) {
+  const sessInfo = getSessionTokenInfo(agentId, sessionKey)
+  if (!sessInfo) return { action: 'none' }
+
+  const contextTokens = sessInfo.contextTokens || DEFAULT_CONTEXT_TOKENS
+  const compactThreshold = contextTokens * COMPACT_TOKEN_RATIO
+  const resetTokenThreshold = contextTokens * RESET_TOKEN_RATIO
+
+  // Layer 2: Too many compactions — reset session
+  if (sessInfo.compactionCount >= RESET_COMPACT_COUNT) {
+    return {
+      action: 'reset',
+      reason: `compactionCount=${sessInfo.compactionCount} >= ${RESET_COMPACT_COUNT}`
+    }
+  }
+
+  // Layer 1: Token threshold — compact
+  if (sessInfo.totalTokens > compactThreshold) {
+    return {
+      action: 'compact',
+      reason: `totalTokens=${sessInfo.totalTokens} > threshold=${compactThreshold}`
+    }
+  }
+
+  return { action: 'none' }
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 
 function main() {
@@ -132,14 +178,28 @@ function main() {
   const sessionKey = `agent:${to}:main`
   let idempotencyKey = randomUUID()
 
+  // ── Layer 1 & 2: Analyze session context (local file read, < 1ms) ──
+  const { action, reason } = analyzeSessionContext(to, sessionKey)
+
   // Prepend sender identification header
-  // In async (--no-wait) mode, add [async] tag so receiving agent knows to reply via peer-send
   const header = noWait
     ? `[Inter-Agent Message from: ${from} (${senderName})] [async — reply via peer-send]`
     : `[Inter-Agent Message from: ${from} (${senderName})]`
-  const fullMessage = `${header}\n\n${message}`
+  let fullMessage = `${header}\n\n${message}`
+
+  // Layer 2: If resetting, inject memory summary into message
+  if (action === 'reset') {
+    const summary = readMemorySummary(to)
+    if (summary) {
+      fullMessage = `${header}\n\n[Context from previous session]\n${summary}\n\n${message}`
+    }
+    process.stderr.write(`[peer-send] Session reset needed for ${to}: ${reason}\n`)
+  } else if (action === 'compact') {
+    process.stderr.write(`[peer-send] Compact needed for ${to}: ${reason}\n`)
+  }
 
   let resolved = false
+  let pendingAction = action  // Track what we need to do after connect
 
   const finish = (output, exitCode = 0) => {
     if (resolved) return
@@ -177,6 +237,14 @@ function main() {
 
   let fullText = ''
 
+  /** Send the chat message (common path after optional compact/reset) */
+  function sendChatMessage() {
+    ws.send(JSON.stringify({
+      type: 'req', id: 's', method: 'chat.send',
+      params: { sessionKey, message: fullMessage, idempotencyKey }
+    }))
+  }
+
   ws.on('message', (data) => {
     let f
     try { f = JSON.parse(data.toString()) } catch { return }
@@ -190,20 +258,48 @@ function main() {
     // Connect response
     if (f.type === 'res' && f.id === 'c') {
       if (f.ok) {
-        // Send the chat message
-        ws.send(JSON.stringify({
-          type: 'req', id: 's', method: 'chat.send',
-          params: { sessionKey, message: fullMessage, idempotencyKey }
-        }))
-
-        // In no-wait mode, exit after send acknowledgement will come next
-        if (noWait) {
-          // We still wait for the chat.send response to confirm delivery
+        if (pendingAction === 'reset') {
+          // Step 1: Kill the session first
+          ws.send(JSON.stringify({
+            type: 'req', id: 'kill', method: 'sessions.kill',
+            params: { sessionKey }
+          }))
+        } else if (pendingAction === 'compact') {
+          // Step 1: Compact the session first
+          ws.send(JSON.stringify({
+            type: 'req', id: 'compact', method: 'sessions.compact',
+            params: { sessionKey }
+          }))
+        } else {
+          // No action needed, send chat directly
+          sendChatMessage()
         }
       } else {
         clearTimeout(timer)
         finish(JSON.stringify({ ok: false, error: `Connect failed: ${f.error?.message}` }), 1)
       }
+      return
+    }
+
+    // Kill response — session cleared, now send chat (new session auto-created)
+    if (f.type === 'res' && f.id === 'kill') {
+      if (f.ok) {
+        process.stderr.write(`[peer-send] Session ${sessionKey} killed successfully, sending message to new session\n`)
+      } else {
+        process.stderr.write(`[peer-send] Session kill failed: ${f.error?.message}, sending anyway\n`)
+      }
+      sendChatMessage()
+      return
+    }
+
+    // Compact response — session compacted, now send chat
+    if (f.type === 'res' && f.id === 'compact') {
+      if (f.ok) {
+        process.stderr.write(`[peer-send] Session ${sessionKey} compacted successfully\n`)
+      } else {
+        process.stderr.write(`[peer-send] Session compact failed: ${f.error?.message}, sending anyway\n`)
+      }
+      sendChatMessage()
       return
     }
 

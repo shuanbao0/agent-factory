@@ -266,6 +266,49 @@ function readDeptMission(deptId) {
   return ''
 }
 
+/**
+ * Read token and compaction info for a specific session.
+ *
+ * @param {string} agentId - Agent ID (e.g. 'novel-chief')
+ * @param {string} sessionKey - Session key (e.g. 'agent:novel-chief:main')
+ * @returns {{ totalTokens: number, compactionCount: number, contextTokens: number } | null}
+ */
+function getSessionTokenInfo(agentId, sessionKey) {
+  const sessFile = join(SESSIONS_DIR, agentId, 'sessions', 'sessions.json')
+  try {
+    if (!existsSync(sessFile)) return null
+    const sessions = JSON.parse(readFileSync(sessFile, 'utf-8'))
+    const sess = sessions[sessionKey]
+    if (!sess || typeof sess !== 'object') return null
+    return {
+      totalTokens: sess.totalTokens || 0,
+      compactionCount: sess.compactionCount || 0,
+      contextTokens: sess.contextTokens || 200000,
+    }
+  } catch (err) {
+    logger.debug('readers', `Failed to read session info for ${agentId}:${sessionKey}`, err)
+    return null
+  }
+}
+
+/**
+ * Read an agent's memory SUMMARY.md
+ *
+ * @param {string} agentId
+ * @returns {string | null}
+ */
+function readMemorySummary(agentId) {
+  const summaryPath = join(AGENTS_DIR, agentId, 'memory', 'SUMMARY.md')
+  try {
+    if (existsSync(summaryPath)) {
+      return readFileSync(summaryPath, 'utf-8').slice(0, 2000)
+    }
+  } catch (err) {
+    logger.debug('readers', `Failed to read SUMMARY.md for ${agentId}`, err)
+  }
+  return null
+}
+
 module.exports = {
   readMission,
   readBaseMission,
@@ -281,4 +324,6 @@ module.exports = {
   loadDeptState,
   saveDeptState,
   readDeptMission,
+  getSessionTokenInfo,
+  readMemorySummary,
 }

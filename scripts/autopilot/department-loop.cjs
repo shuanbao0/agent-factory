@@ -9,11 +9,14 @@
  */
 const { writeFileSync, existsSync, mkdirSync } = require('fs')
 const { join } = require('path')
-const { DEPARTMENTS_DIR, DEFAULT_DEPT_INTERVAL_SEC, MAX_HISTORY_ENTRIES } = require('./constants.cjs')
-const { loadDeptConfig, loadDeptState, saveDeptState } = require('./readers.cjs')
-const { sendToAgent } = require('./gateway.cjs')
+const {
+  DEPARTMENTS_DIR, DEFAULT_DEPT_INTERVAL_SEC, MAX_HISTORY_ENTRIES,
+  COMPACT_TOKEN_RATIO, DEFAULT_CONTEXT_TOKENS, HEALTH_CHECK_INTERVAL,
+} = require('./constants.cjs')
+const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo } = require('./readers.cjs')
+const { sendToAgent, compactSession } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
-const { compressMemory } = require('./memory.cjs')
+const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
 const logger = require('./logger.cjs')
 
@@ -76,11 +79,16 @@ async function runDepartmentCycle(deptId) {
         trackTokenUsage(deptId, result.usage)
       }
 
-      // Compress memory for department head
+      // Compress memory for department head (role-aware)
       try {
-        compressMemory(config.head, result.text)
+        compressMemoryByRole(config.head, result.text, 'leader')
       } catch (e) {
         logger.debug('dept-loop', `Memory compression failed for ${config.head}`, e)
+      }
+
+      // Periodic health check: compact oversized sessions + save member memories
+      if (state.cycleCount % HEALTH_CHECK_INTERVAL === 0) {
+        await runHealthCheck(deptId, config, result.text)
       }
 
       // Update state
@@ -132,6 +140,67 @@ function generateDepartmentReport(deptId, responseText) {
     logger.debug('dept-loop', `Report generated for ${deptId}`)
   } catch (err) {
     logger.error('dept-loop', `Failed to write report for ${deptId}`, err)
+  }
+}
+
+/**
+ * Periodic health check: compact oversized sessions + save team member memories.
+ *
+ * @param {string} deptId
+ * @param {object} config - Department config
+ * @param {string} headResponse - Latest head response (for context)
+ */
+async function runHealthCheck(deptId, config, headResponse) {
+  const agents = config.agents || []
+  const compactThreshold = DEFAULT_CONTEXT_TOKENS * COMPACT_TOKEN_RATIO
+
+  logger.info('dept-loop', `Running health check for ${deptId} (${agents.length} agents)`)
+
+  for (const agentId of agents) {
+    // Save member memories (not the head — head is handled above)
+    if (agentId !== config.head) {
+      try {
+        // Read last response from the agent's session (we use the head's response as context
+        // since we don't have direct access to the member's last response from here)
+        compressMemoryByRole(agentId, null, 'member')
+      } catch (e) {
+        logger.debug('dept-loop', `Member memory save skipped for ${agentId} (no response)`, e)
+      }
+    }
+
+    // Check main session
+    const mainKey = `agent:${agentId}:main`
+    const mainInfo = getSessionTokenInfo(agentId, mainKey)
+    if (mainInfo && mainInfo.totalTokens > compactThreshold) {
+      try {
+        const res = await compactSession(mainKey)
+        if (res.ok) {
+          logger.info('dept-loop', `Compacted ${mainKey} (was ${mainInfo.totalTokens} tokens)`)
+        } else {
+          logger.warn('dept-loop', `Compact failed for ${mainKey}: ${res.error}`)
+        }
+      } catch (e) {
+        logger.debug('dept-loop', `Compact error for ${mainKey}`, e)
+      }
+    }
+
+    // Check dept-autopilot session for the head
+    if (agentId === config.head) {
+      const headKey = `agent:${agentId}:dept-autopilot`
+      const headInfo = getSessionTokenInfo(agentId, headKey)
+      if (headInfo && headInfo.totalTokens > compactThreshold) {
+        try {
+          const res = await compactSession(headKey)
+          if (res.ok) {
+            logger.info('dept-loop', `Compacted ${headKey} (was ${headInfo.totalTokens} tokens)`)
+          } else {
+            logger.warn('dept-loop', `Compact failed for ${headKey}: ${res.error}`)
+          }
+        } catch (e) {
+          logger.debug('dept-loop', `Compact error for ${headKey}`, e)
+        }
+      }
+    }
   }
 }
 
