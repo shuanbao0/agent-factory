@@ -68,6 +68,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'agent and name are required' }, { status: 400 })
     }
 
+    // Validate projectId exists if provided
+    if (projectId) {
+      const meta = readProjectMeta(projectId)
+      if (!meta) {
+        return NextResponse.json({
+          error: `Project "${projectId}" not found. Create the project first via /api/projects, or omit projectId for standalone task.`,
+          hint: 'Available projects can be listed via GET /api/projects',
+        }, { status: 404 })
+      }
+    }
+
     const now = new Date().toISOString()
     const task: Task = {
       id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,

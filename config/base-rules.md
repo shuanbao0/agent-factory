@@ -285,17 +285,21 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 
 当你需要分派工作给其他 Agent 时，**必须**按以下顺序执行：
 
-1. **检查项目状态** — 先查看 `projects/{部门ID}/` 确认项目上下文。
+1. **确认项目** — 查询你部门的项目，确认使用哪个 projectId：
+   - 部门项目通常位于 `projects/{部门ID}/`，projectId 即为部门 ID（如 `novel`）
+   - 可通过 API 查询：`curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects"`
+   - 如果项目不存在，先通过 Dashboard 或请 Orchestrator 创建
 2. **查询现有任务** — 查看是否已有相关任务：
    ```bash
    curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
    ```
-3. **创建任务** — 如果没有对应任务，**先创建再分派**：
+3. **创建任务（必须关联项目）** — projectId 为必填字段，**先创建再分派**：
    ```bash
    curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
-     -d '{"agent":"YOUR_ID","name":"任务名","description":"具体要求","projectId":"xxx","type":"writing","priority":"P1","assignees":["目标AgentID"]}' \
+     -d '{"agent":"YOUR_ID","name":"任务名","description":"具体要求","projectId":"你的部门ID","type":"writing","priority":"P1","assignees":["目标AgentID"]}' \
      "http://127.0.0.1:3100/api/agent-tasks"
    ```
+   ⚠️ **禁止创建不带 projectId 的任务**。所有任务必须关联到具体项目，否则项目面板无法追踪。
 4. **发送 peer-send 时引用任务 ID** — 消息中**必须**包含任务 ID，格式：`[Task: task-xxx] 具体指令...`
 5. **跟踪完成情况** — 收到执行结果后，更新任务状态。
 
@@ -327,9 +331,11 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
    ```
 
 **收到没有 Task ID 的工作指令时**：如果 peer-send 消息是明确的工作任务但没有引用 Task ID，你**应该主动创建任务**再开始执行：
+- 从消息上下文推断 projectId（通常是你所属部门的 ID）
+- 如果无法确定 projectId，使用你的 department 作为 projectId
 ```bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"agent":"YOUR_ID","name":"从消息中提取的任务名","projectId":"xxx","type":"类型","priority":"P1"}' \
+  -d '{"agent":"YOUR_ID","name":"从消息中提取的任务名","projectId":"你的部门ID","type":"类型","priority":"P1"}' \
   "http://127.0.0.1:3100/api/agent-tasks"
 ```
 
@@ -351,6 +357,17 @@ pending → in_progress → completed
 - 门控失败 → 自动创建返工任务（最多 3 次）
 
 **注意**: 设置 `status: "in_progress"` 时，系统会检查依赖任务是否全部完成，未完成会返回 409。
+
+#### 项目查询
+
+查询可用项目列表（确认 projectId 有效性）：
+```bash
+curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects"
+```
+
+返回格式：`{ "projects": [{ "id": "novel", "name": "...", "status": "..." }] }`
+
+你的部门 ID 通常就是 projectId（如 department 为 `novel` → `projectId` 为 `novel`）。如果创建任务时 projectId 无效，API 会返回 404 错误。
 
 ### 记忆管理协议
 

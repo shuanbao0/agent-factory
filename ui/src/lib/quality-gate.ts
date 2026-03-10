@@ -211,10 +211,12 @@ export function persistNewTask(task: Task): void {
       if (stored.status === 'in_progress') (stored as Record<string, unknown>).status = 'running';
       (meta.tasks as Record<string, unknown>[]).push(stored)
       writeProjectMeta(task.projectId, meta)
+      return
     }
-  } else {
-    const tasks = readStandaloneTasks()
-    tasks.push(task)
-    writeStandaloneTasks(tasks)
+    // Project not found — fallback to standalone to prevent data loss
+    console.warn(`[persistNewTask] Project "${task.projectId}" not found, saving as standalone task`)
   }
+  const tasks = readStandaloneTasks()
+  tasks.push(task)
+  writeStandaloneTasks(tasks)
 }
