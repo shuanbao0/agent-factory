@@ -6,7 +6,7 @@
  */
 
 import { resolve } from 'node:path';
-import { existsSync, readFileSync, copyFileSync } from 'node:fs';
+import { existsSync, readFileSync, copyFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { spawn, execSync } from 'node:child_process';
 import net from 'node:net';
 
@@ -16,6 +16,7 @@ const UI_PORT = 3100;
 const STATE_DIR = resolve(ROOT, '.openclaw-state');
 const CONFIG_PATH = resolve(ROOT, 'config/openclaw.json');
 const MODELS_PATH = resolve(ROOT, 'config/models.json');
+const PID_FILE = resolve(STATE_DIR, 'start.pid');
 
 /** Copy from .default.json templates if runtime configs don't exist */
 function ensureConfigFiles() {
@@ -117,7 +118,22 @@ function waitForPort(host, port, timeoutMs = 30000) {
 let gatewayProcess = null;
 let dashboardProcess = null;
 
+function killOldStartProcess() {
+  try {
+    const oldPid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
+    if (oldPid && oldPid !== process.pid) {
+      process.kill(oldPid, 'SIGTERM');
+    }
+  } catch { /* no pid file or process already dead */ }
+}
+
+function writePidFile() {
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(PID_FILE, String(process.pid));
+}
+
 function cleanup() {
+  try { unlinkSync(PID_FILE); } catch { /* ignore */ }
   if (gatewayProcess) gatewayProcess.kill('SIGTERM');
   if (dashboardProcess) dashboardProcess.kill('SIGTERM');
   process.exit(0);
@@ -238,6 +254,8 @@ async function main() {
   console.log('🏭 Agent Factory starting...\n');
   loadEnvFile();
   ensureConfigFiles();
+  killOldStartProcess();
+  writePidFile();
 
   // Always start Dashboard first
   await startDashboard();

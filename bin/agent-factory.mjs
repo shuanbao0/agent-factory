@@ -17,7 +17,7 @@
 //
 
 import { spawn, execSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, renameSync, unlinkSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
@@ -157,6 +157,18 @@ async function cmdStop() {
   const GW_PORT = parseInt(process.env.OPENCLAW_GATEWAY_PORT || '19100', 10);
 
   let stopped = false;
+
+  // Kill start.mjs process via PID file (sends SIGTERM which cascades to children)
+  const startPidFile = resolve(ROOT, '.openclaw-state', 'start.pid');
+  if (existsSync(startPidFile)) {
+    try {
+      const startPid = parseInt(readFileSync(startPidFile, 'utf-8').trim(), 10);
+      if (startPid) {
+        try { process.kill(startPid, 'SIGTERM'); stopped = true; console.log(c.green(`Stopped start.mjs (PID ${startPid})`)); } catch { /* already dead */ }
+      }
+      unlinkSync(startPidFile);
+    } catch { /* ignore */ }
+  }
 
   if (killPort(UI_PORT)) {
     console.log(c.green(`Stopped Dashboard (port ${UI_PORT})`));
