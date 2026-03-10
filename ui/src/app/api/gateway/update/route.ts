@@ -34,27 +34,27 @@ function getLatestVersion(): string | null {
   } catch { return null }
 }
 
-function getChangelog(): string | null {
+function getAvailableVersions(): string[] {
   try {
-    // Try npm view for recent changes
-    const info = execSync('npm view openclaw --json 2>/dev/null', { timeout: 15000 }).toString()
-    const parsed = JSON.parse(info)
-    // Return description or last few version tags as a simple changelog
-    const versions = parsed['dist-tags'] || {}
-    return JSON.stringify(versions)
-  } catch { return null }
+    const output = execSync('npm view openclaw versions --json 2>/dev/null', { timeout: 15000 }).toString()
+    const versions: string[] = JSON.parse(output)
+    // Filter out beta/prerelease, return newest first
+    return versions.filter(v => !v.includes('-')).reverse()
+  } catch { return [] }
 }
 
-// GET: check current + latest version
+// GET: check current + latest version + available versions
 export async function GET() {
   const current = getInstalledVersion()
   const latest = getLatestVersion()
   const hasUpdate = !!(current && latest && current !== latest && current !== 'unknown')
+  const versions = getAvailableVersions()
 
   return NextResponse.json({
     current: current || 'unknown',
     latest: latest || 'unknown',
     hasUpdate,
+    versions,
     checkedAt: new Date().toISOString(),
   })
 }
@@ -64,8 +64,18 @@ export async function POST(req: NextRequest) {
   try {
     const current = getInstalledVersion()
 
-    // Install latest version (npm update won't catch prerelease tags)
-    const output = execSync('npm install openclaw@latest 2>&1', {
+    // Support installing a specific version via request body
+    let targetVersion = 'latest'
+    try {
+      const body = await req.json()
+      if (body.version && /^[\w.\-]+$/.test(body.version)) {
+        targetVersion = body.version
+      }
+    } catch {
+      // No body or invalid JSON — use latest
+    }
+
+    const output = execSync(`npm install openclaw@${targetVersion} 2>&1`, {
       cwd: PROJECT_ROOT,
       timeout: 120000,
       env: { ...process.env },

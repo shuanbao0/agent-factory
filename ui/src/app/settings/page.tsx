@@ -660,6 +660,8 @@ function OpenClawUpdateCard() {
   const [updating, setUpdating] = useState(false)
   const [checkedAt, setCheckedAt] = useState<string | null>(null)
   const [updateResult, setUpdateResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [targetVersion, setTargetVersion] = useState('')
+  const [versions, setVersions] = useState<string[]>([])
 
   const checkUpdate = useCallback(async () => {
     setChecking(true)
@@ -671,6 +673,7 @@ function OpenClawUpdateCard() {
       setLatest(data.latest)
       setHasUpdate(data.hasUpdate)
       setCheckedAt(data.checkedAt)
+      if (data.versions) setVersions(data.versions)
     } catch {
       setUpdateResult({ ok: false, message: 'Failed to check for updates' })
     } finally {
@@ -678,11 +681,15 @@ function OpenClawUpdateCard() {
     }
   }, [])
 
-  const doUpdate = async () => {
+  const doUpdate = async (version?: string) => {
     setUpdating(true)
     setUpdateResult(null)
     try {
-      const res = await fetch('/api/gateway/update', { method: 'POST' })
+      const res = await fetch('/api/gateway/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(version ? { version } : {}),
+      })
       const data = await res.json()
       if (data.ok) {
         setUpdateResult({
@@ -751,7 +758,7 @@ function OpenClawUpdateCard() {
           </button>
           {hasUpdate && (
             <button
-              onClick={doUpdate}
+              onClick={() => doUpdate()}
               disabled={updating}
               className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
             >
@@ -760,6 +767,30 @@ function OpenClawUpdateCard() {
             </button>
           )}
         </div>
+
+        {/* Install specific version */}
+        {versions.length > 0 && (
+          <div className="flex gap-2">
+            <select
+              value={targetVersion}
+              onChange={e => setTargetVersion(e.target.value)}
+              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            >
+              <option value="">{t('settings.selectVersion')}</option>
+              {versions.map(v => (
+                <option key={v} value={v}>{v}{v === current ? ` (${t('settings.currentLabel')})` : ''}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => doUpdate(targetVersion)}
+              disabled={updating || !targetVersion}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted disabled:opacity-50 whitespace-nowrap"
+            >
+              {updating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {t('settings.installVersion')}
+            </button>
+          </div>
+        )}
 
         {/* Result message */}
         {updateResult && (
