@@ -367,6 +367,15 @@ export async function POST(req: Request) {
           }
         } catch {}
       }
+      // Prevent duplicate: kill existing process if still alive
+      const deptStatePath = join(DEPARTMENTS_DIR, deptId, 'state.json')
+      let deptState: Record<string, unknown> = { status: 'stopped', cycleCount: 0, history: [] }
+      if (existsSync(deptStatePath)) {
+        try { deptState = JSON.parse(readFileSync(deptStatePath, 'utf-8')) } catch {}
+      }
+      if (typeof deptState.pid === 'number' && isProcessRunning(deptState.pid)) {
+        try { process.kill(deptState.pid, 'SIGTERM') } catch {}
+      }
       const deptInterval = String(interval || 600)
       const child = spawn('node', [DEPT_LOOP_SCRIPT, '--dept', deptId, '--loop', '--interval', deptInterval], {
         cwd: PROJECT_ROOT,
@@ -375,6 +384,10 @@ export async function POST(req: Request) {
         env: { ...process.env },
       })
       child.unref()
+      // Write state immediately so UI picks up 'running' before child writes its own
+      deptState.status = 'running'
+      deptState.pid = child.pid || null
+      atomicWriteSync(deptStatePath, JSON.stringify(deptState, null, 2))
       return NextResponse.json({ ok: true, message: `Department ${deptId} loop started`, pid: child.pid })
     }
 
