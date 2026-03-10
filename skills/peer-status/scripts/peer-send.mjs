@@ -10,6 +10,7 @@
  * 1. Token-aware compact: only compact when tokens > 60% of contextTokens
  * 2. Session reset: kill + re-create when compactionCount >= 10
  * 3. Memory injection: inject SUMMARY.md into first message after reset
+ * 4. Empty response recovery: if final text is empty, auto-reset and retry once
  *
  * Reference: ui/scripts/gateway-chat.js (WebSocket chat.send protocol)
  *
@@ -200,6 +201,7 @@ function main() {
 
   let resolved = false
   let pendingAction = action  // Track what we need to do after connect
+  let retried = false         // Track if we already retried after empty response
 
   const finish = (output, exitCode = 0) => {
     if (resolved) return
@@ -292,6 +294,24 @@ function main() {
       return
     }
 
+    // Retry-kill response — empty response recovery: session reset done, resend
+    if (f.type === 'res' && f.id === 'retry-kill') {
+      if (f.ok) {
+        process.stderr.write(`[peer-send] Empty response recovery: session ${sessionKey} reset, retrying\n`)
+      } else {
+        process.stderr.write(`[peer-send] Empty response recovery: reset failed (${f.error?.message}), retrying anyway\n`)
+      }
+      // Rebuild message with memory summary for the fresh session
+      const summary = readMemorySummary(to)
+      if (summary) {
+        fullMessage = `${header}\n\n[Context from previous session]\n${summary}\n\n${message}`
+      }
+      idempotencyKey = randomUUID()
+      fullText = ''
+      sendChatMessage()
+      return
+    }
+
     // Compact response — session compacted, now send chat
     if (f.type === 'res' && f.id === 'compact') {
       if (f.ok) {
@@ -338,6 +358,18 @@ function main() {
           ?.filter(b => b.type === 'text')
           ?.map(b => b.text || '')
           ?.join('') || fullText
+
+        // Empty response recovery: reset session and retry once
+        if (!text.trim() && !retried) {
+          retried = true
+          process.stderr.write(`[peer-send] Empty response detected for ${to}, resetting session and retrying\n`)
+          ws.send(JSON.stringify({
+            type: 'req', id: 'retry-kill', method: 'sessions.kill',
+            params: { sessionKey }
+          }))
+          return
+        }
+
         clearTimeout(timer)
         finish(text + '\n')
       } else if (p.state === 'error') {

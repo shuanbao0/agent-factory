@@ -43,6 +43,7 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
     let runId = randomUUID()
     let fullText = ''
     let done = false
+    let retried = false  // Track empty-response retry
 
     const finish = (result) => {
       if (done) return
@@ -112,6 +113,18 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
         return
       }
 
+      // Retry-kill response — empty response recovery
+      if (f.type === 'res' && f.id === 'retry-kill') {
+        logger.info('gateway', `Empty response recovery: session ${sessionKey} ${f.ok ? 'reset' : 'reset failed'}, retrying`)
+        runId = randomUUID()
+        fullText = ''
+        ws.send(JSON.stringify({
+          type: 'req', id: 's', method: 'chat.send',
+          params: { sessionKey, message, idempotencyKey: runId }
+        }))
+        return
+      }
+
       if (f.type === 'event' && f.event === 'chat') {
         const p = f.payload
         if (!p || (p.runId !== runId && p.sessionKey !== sessionKey)) return
@@ -127,6 +140,18 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
             ?.filter(b => b.type === 'text')
             ?.map(b => b.text || '')
             ?.join('') || fullText
+
+          // Empty response recovery: reset session and retry once
+          if (!text.trim() && !retried) {
+            retried = true
+            logger.warn('gateway', `Empty response from ${agentId} on ${sessionKey}, resetting session and retrying`)
+            ws.send(JSON.stringify({
+              type: 'req', id: 'retry-kill', method: 'sessions.kill',
+              params: { sessionKey }
+            }))
+            return
+          }
+
           finish({ ok: true, text, usage: p.usage })
         } else if (p.state === 'error') {
           finish({ ok: false, error: p.errorMessage || 'Agent error' })
