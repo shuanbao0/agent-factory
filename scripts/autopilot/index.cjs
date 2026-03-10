@@ -23,9 +23,23 @@ const { buildDirective } = require('./directive.cjs')
 const { syncProjects } = require('./sync.cjs')
 const { buildMemoryContext, compressMemory } = require('./memory.cjs')
 const { runDepartmentCycle } = require('./department-loop.cjs')
+const { createCycleTask, completeCycleTask } = require('./task-bridge.cjs')
 const logger = require('./logger.cjs')
 
 const MAX_HISTORY = 50
+
+function isProcessAlive(pid) {
+  try { process.kill(pid, 0); return true } catch { return false }
+}
+
+async function killExistingAutopilot() {
+  const state = loadState()
+  if (state.pid && state.pid !== process.pid && isProcessAlive(state.pid)) {
+    logger.warn('main', `Killing existing autopilot (PID ${state.pid})`)
+    try { process.kill(state.pid, 'SIGTERM') } catch {}
+    await new Promise(r => setTimeout(r, 2000))
+  }
+}
 
 // ── Parse CLI args ──────────────────────────────────────────────
 const args = process.argv.slice(2)
@@ -99,6 +113,8 @@ async function runCycle() {
   console.log(`📤 Sending directive to CEO...\n`)
   logger.info('main', `Cycle #${cycleNum} started`)
 
+  const taskId = await createCycleTask('ceo', 'coordination', cycleNum)
+
   try {
     const result = await sendToCeo(directive)
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -144,22 +160,26 @@ async function runCycle() {
       }
 
       logger.info('main', `Cycle #${cycleNum} completed in ${elapsed}s`)
+      await completeCycleTask('ceo', taskId, result)
     } else {
       logger.error('main', `Cycle #${cycleNum} failed: ${result.error}`)
       state.status = isLoop ? 'running' : 'error'
       state.lastCycleResult = `Error: ${result.error}`
       saveState(state)
+      await completeCycleTask('ceo', taskId, result)
     }
   } catch (err) {
     logger.error('main', `Cycle #${cycleNum} error: ${err.message}`, err)
     state.status = isLoop ? 'running' : 'error'
     state.lastCycleResult = `Error: ${err.message}`
     saveState(state)
+    await completeCycleTask('ceo', taskId, { ok: false, error: err.message })
   }
 }
 
 // ── Main ────────────────────────────────────────────────────────
 async function main() {
+  await killExistingAutopilot()
   const state = loadState()
   state.pid = process.pid
   state.status = isLoop ? 'running' : 'cycling'
@@ -262,6 +282,8 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
 
   logger.info('main', `CEO ${cycleType} cycle #${cycleNum} started`)
 
+  const taskId = await createCycleTask('ceo', cycleType, cycleNum)
+
   try {
     const memoryContext = buildMemoryContext('ceo', cycleType)
     const directive = buildDirective(cycleNum, cycleType, memoryContext)
@@ -295,22 +317,26 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
       try { compressMemory('ceo', result.text) } catch (e) {
         logger.warn('main', 'Memory compression failed', e)
       }
+      await completeCycleTask('ceo', taskId, result)
     } else {
       logger.error('main', `CEO cycle #${cycleNum} failed: ${result.error}`)
       state.status = 'running'
       state.lastCycleResult = `Error: ${result.error}`
       saveState(state)
+      await completeCycleTask('ceo', taskId, result)
     }
   } catch (err) {
     logger.error('main', `CEO cycle #${cycleNum} error`, err)
     state.status = 'running'
     state.lastCycleResult = `Error: ${err.message}`
     saveState(state)
+    await completeCycleTask('ceo', taskId, { ok: false, error: err.message })
   }
 }
 
 // ── Start all: CEO cycles + department cycles ───────────────────
 async function startAll() {
+  await killExistingAutopilot()
   const state = loadState()
   state.pid = process.pid
   state.status = 'running'

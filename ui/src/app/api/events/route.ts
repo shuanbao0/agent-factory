@@ -52,7 +52,7 @@ function startPolling() {
   poll(fetchHealthData, 'health', 20_000)
   poll(fetchAgentsData, 'agents', 15_000)
   poll(fetchLogsData, 'logs', 10_000)
-  poll(fetchUsageData, 'usage', 30_000)
+  poll(fetchUsageData, 'usage', 60_000)
   poll(fetchMessagesData, 'messages', 15_000)
   poll(fetchTasksData, 'tasks', 10_000)
 }

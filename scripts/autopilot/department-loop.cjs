@@ -7,17 +7,19 @@
  *   node scripts/autopilot/department-loop.cjs --dept novel --loop
  *   node scripts/autopilot/department-loop.cjs --dept novel --loop --interval 600
  */
-const { writeFileSync, existsSync, mkdirSync } = require('fs')
+const { writeFileSync, existsSync, mkdirSync, readdirSync, readFileSync } = require('fs')
 const { join } = require('path')
 const {
   DEPARTMENTS_DIR, DEFAULT_DEPT_INTERVAL_SEC, MAX_HISTORY_ENTRIES,
   COMPACT_TOKEN_RATIO, DEFAULT_CONTEXT_TOKENS, HEALTH_CHECK_INTERVAL,
+  SESSIONS_DIR,
 } = require('./constants.cjs')
 const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo } = require('./readers.cjs')
-const { sendToAgent, compactSession } = require('./gateway.cjs')
+const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
+const { createCycleTask, completeCycleTask } = require('./task-bridge.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -58,6 +60,8 @@ async function runDepartmentCycle(deptId) {
 
   const startTime = Date.now()
   logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} started`)
+
+  const taskId = await createCycleTask(config.head, `dept-${deptId}-cycle`, state.cycleCount)
 
   try {
     // Build directive for department head
@@ -107,12 +111,14 @@ async function runDepartmentCycle(deptId) {
       }
       saveDeptState(deptId, state)
 
+      await completeCycleTask(config.head, taskId, result)
       return { ok: true, text: result.text }
     } else {
       logger.error('dept-loop', `Department ${deptId} cycle failed: ${result.error}`)
       state.status = 'error'
       state.lastCycleResult = `Error: ${result.error}`
       saveDeptState(deptId, state)
+      await completeCycleTask(config.head, taskId, result)
       return { ok: false, error: result.error }
     }
   } catch (err) {
@@ -120,6 +126,7 @@ async function runDepartmentCycle(deptId) {
     state.status = 'error'
     state.lastCycleResult = `Error: ${err.message}`
     saveDeptState(deptId, state)
+    await completeCycleTask(config.head, taskId, { ok: false, error: err.message })
     return { ok: false, error: err.message }
   }
 }
@@ -201,6 +208,52 @@ async function runHealthCheck(deptId, config, headResponse) {
         }
       }
     }
+  }
+
+  // Clean up stale sessions (inactive > 14 days, non-:main)
+  await cleanStaleSessions(14)
+}
+
+/**
+ * Kill sessions that have been inactive for more than maxDays days.
+ * Skips :main sessions (primary agent sessions).
+ */
+async function cleanStaleSessions(maxDays = 14) {
+  const cutoff = Date.now() - maxDays * 86400_000
+  let cleaned = 0
+
+  try {
+    if (!existsSync(SESSIONS_DIR)) return
+    const agentDirs = readdirSync(SESSIONS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
+
+    for (const dir of agentDirs) {
+      const sessFile = join(SESSIONS_DIR, dir.name, 'sessions', 'sessions.json')
+      if (!existsSync(sessFile)) continue
+
+      try {
+        const sessions = JSON.parse(readFileSync(sessFile, 'utf-8'))
+        for (const [key, sess] of Object.entries(sessions)) {
+          if (!sess || typeof sess !== 'object') continue
+          if (key.endsWith(':main')) continue
+          const updatedAt = sess.updatedAt || 0
+          if (updatedAt > 0 && updatedAt < cutoff) {
+            try {
+              await killSession(key)
+              cleaned++
+              logger.debug('dept-loop', `Cleaned stale session ${key} (inactive ${Math.round((Date.now() - updatedAt) / 86400_000)}d)`)
+            } catch (e) {
+              logger.debug('dept-loop', `Failed to kill stale session ${key}`, e)
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+  } catch (e) {
+    logger.debug('dept-loop', 'Stale session cleanup error', e)
+  }
+
+  if (cleaned > 0) {
+    logger.info('dept-loop', `Cleaned ${cleaned} stale sessions`)
   }
 }
 

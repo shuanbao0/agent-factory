@@ -17,7 +17,7 @@
 //
 
 import { spawn, execSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, renameSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createConnection } from 'node:net';
@@ -126,6 +126,15 @@ async function cmdStart() {
   const logDir = resolve(ROOT, '.openclaw-state');
   mkdirSync(logDir, { recursive: true });
   const logFile = resolve(logDir, 'startup.log');
+
+  // Rotate startup.log if > 50MB
+  try {
+    const st = statSync(logFile);
+    if (st.size > 50 * 1024 * 1024) {
+      renameSync(logFile, logFile + '.1');
+    }
+  } catch { /* file doesn't exist yet, that's fine */ }
+
   const { openSync } = await import('node:fs');
   const out = openSync(logFile, 'a');
 
@@ -156,6 +165,41 @@ async function cmdStop() {
   if (killPort(GW_PORT)) {
     console.log(c.green(`Stopped Gateway (port ${GW_PORT})`));
     stopped = true;
+  }
+
+  // Kill autopilot main process
+  const stateFile = resolve(ROOT, 'config', 'autopilot-state.json');
+  if (existsSync(stateFile)) {
+    try {
+      const state = JSON.parse(readFileSync(stateFile, 'utf-8'));
+      if (state.pid) {
+        try { process.kill(state.pid, 'SIGTERM'); stopped = true; console.log(c.green(`Stopped Autopilot (PID ${state.pid})`)); } catch { /* already dead */ }
+        state.status = 'stopped';
+        state.pid = null;
+        writeFileSync(stateFile, JSON.stringify(state, null, 2));
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // Kill department loop processes
+  const deptsDir = resolve(ROOT, 'config', 'departments');
+  if (existsSync(deptsDir)) {
+    try {
+      for (const entry of readdirSync(deptsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const deptStateFile = resolve(deptsDir, entry.name, 'state.json');
+        if (!existsSync(deptStateFile)) continue;
+        try {
+          const deptState = JSON.parse(readFileSync(deptStateFile, 'utf-8'));
+          if (deptState.pid) {
+            try { process.kill(deptState.pid, 'SIGTERM'); stopped = true; console.log(c.green(`Stopped department loop ${entry.name} (PID ${deptState.pid})`)); } catch { /* already dead */ }
+            deptState.status = 'stopped';
+            deptState.pid = null;
+            writeFileSync(deptStateFile, JSON.stringify(deptState, null, 2));
+          }
+        } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
   }
 
   if (!stopped) {

@@ -4,7 +4,8 @@
  * Writes to config/autopilot-logs/YYYY-MM-DD.log
  * Levels: error | warn | info | debug
  */
-const { existsSync, mkdirSync, appendFileSync } = require('fs')
+const { existsSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } = require('fs')
+const { join } = require('path')
 const { LOGS_DIR } = require('./constants.cjs')
 
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 }
@@ -54,6 +55,22 @@ function log(level, component, message, data) {
     console.error(`[LOGGER] Failed to write log file: ${err.message}`)
   }
 }
+
+function cleanOldLogs(maxDays = 14) {
+  if (!existsSync(LOGS_DIR)) return
+  const cutoff = Date.now() - maxDays * 86400_000
+  try {
+    for (const file of readdirSync(LOGS_DIR)) {
+      const match = file.match(/^(\d{4}-\d{2}-\d{2})\.log$/)
+      if (match && new Date(match[1]).getTime() < cutoff) {
+        unlinkSync(join(LOGS_DIR, file))
+      }
+    }
+  } catch { /* best effort */ }
+}
+
+// Clean old logs on module load (once per process)
+cleanOldLogs()
 
 module.exports = {
   setLogLevel,

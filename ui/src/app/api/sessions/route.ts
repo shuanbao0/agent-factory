@@ -16,3 +16,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: String(e), source: 'error' }, { status: 502 })
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const sessionKey = searchParams.get('sessionKey')
+    if (!sessionKey) {
+      return NextResponse.json({ error: 'sessionKey required' }, { status: 400 })
+    }
+    const result = gwCall('sessions.kill', { sessionKey })
+    return NextResponse.json({ ...(result as object), ok: true })
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 502 })
+  }
+}

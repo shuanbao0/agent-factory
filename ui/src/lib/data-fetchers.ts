@@ -253,13 +253,28 @@ export interface UsageResult {
   [key: string]: unknown
 }
 
+let _usageCache: { data: UsageResult; ts: number } | null = null
+const USAGE_CACHE_TTL = 60_000
+
 export async function fetchUsageData(params?: Record<string, unknown>): Promise<UsageResult> {
+  // Return cached data if within TTL (skip cache if custom params are provided)
+  const hasParams = params && Object.keys(params).length > 0
+  if (!hasParams && _usageCache && Date.now() - _usageCache.ts < USAGE_CACHE_TTL) {
+    return _usageCache.data
+  }
+
   const result = await gwCallAsync(
     'sessions.usage',
-    params && Object.keys(params).length ? params : undefined,
+    hasParams ? params : undefined,
     30000,
   ) as Record<string, unknown>
-  return { ...result, source: 'gateway' }
+  const data = { ...result, source: 'gateway' as const }
+
+  if (!hasParams) {
+    _usageCache = { data, ts: Date.now() }
+  }
+
+  return data
 }
 
 // ── Tasks ───────────────────────────────────────────────────────
