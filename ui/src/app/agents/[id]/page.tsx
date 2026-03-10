@@ -677,8 +677,8 @@ export default function AgentWorkspacePage() {
             <p className="text-sm font-semibold">{formatNumber(agent.tokensUsed)}</p>
           </div>
           <div className="p-3 rounded-lg bg-muted/50">
-            <p className="text-xs text-muted-foreground mb-1">{t('common.tasks')}</p>
-            <p className="text-sm font-semibold">{agent.tasksCompleted}</p>
+            <p className="text-xs text-muted-foreground mb-1">{t('common.messages')}</p>
+            <p className="text-sm font-semibold">{formatNumber(agent.messagesCount)}</p>
           </div>
           <div className="p-3 rounded-lg bg-muted/50">
             <p className="text-xs text-muted-foreground mb-1">{t('agents.sessions')}</p>

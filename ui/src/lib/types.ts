@@ -45,7 +45,7 @@ export interface Agent {
   currentTask?: string
   currentTool?: string | null
   tokensUsed: number
-  tasksCompleted: number
+  messagesCount: number
   lastActive: string
   description: string
   department?: string

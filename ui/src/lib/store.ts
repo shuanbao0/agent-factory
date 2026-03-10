@@ -21,6 +21,7 @@ export interface UsageByAgent {
   totals: {
     totalTokens: number
     totalCost: number
+    totalMessages?: number
   }
 }
 
@@ -356,7 +357,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           description: a.description || '',
           department: a.department || undefined,
           tokensUsed: 0,
-          tasksCompleted: 0,
+          messagesCount: 0,
           lastActive: new Date().toISOString(),
           currentTask: a.isDefault ? 'Default agent' : undefined,
         }))
@@ -364,7 +365,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         const byAgent = get().usageByAgent
         for (const a of agents) {
           const usage = byAgent.find(u => u.agentId === a.id || a.id.includes(u.agentId))
-          if (usage) a.tokensUsed = usage.totals.totalTokens
+          if (usage) {
+            a.tokensUsed = usage.totals.totalTokens
+            a.messagesCount = usage.totals.totalMessages || 0
+          }
         }
         set({ agents, connected: true, dataSource: 'gateway' })
       }
@@ -387,9 +391,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           toolCalls: d.toolCalls,
           errors: d.errors,
         }))
-        const byAgent: UsageByAgent[] = (data.aggregates.byAgent || []).map((a: { agentId: string; totals: { totalTokens: number; totalCost: number } }) => ({
+        const byAgent: UsageByAgent[] = (data.aggregates.byAgent || []).map((a: { agentId: string; totals: { totalTokens: number; totalCost: number; totalMessages?: number } }) => ({
           agentId: a.agentId,
-          totals: { totalTokens: a.totals.totalTokens, totalCost: a.totals.totalCost },
+          totals: { totalTokens: a.totals.totalTokens, totalCost: a.totals.totalCost, totalMessages: a.totals.totalMessages || 0 },
         }))
         set({
           usageDaily: daily,
@@ -399,11 +403,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           connected: true,
           dataSource: 'gateway',
         })
-        // Update agent token counts
+        // Update agent token counts and message counts
         const agents = [...get().agents]
         for (const a of agents) {
           const usage = byAgent.find((u: UsageByAgent) => u.agentId === a.id || a.id.includes(u.agentId))
-          if (usage) a.tokensUsed = usage.totals.totalTokens
+          if (usage) {
+            a.tokensUsed = usage.totals.totalTokens
+            a.messagesCount = usage.totals.totalMessages || 0
+          }
         }
         set({ agents })
       }
@@ -490,14 +497,17 @@ export const useAppStore = create<AppState>((set, get) => ({
             description: a.description || '',
             department: a.department || undefined,
             tokensUsed: 0,
-            tasksCompleted: 0,
+            messagesCount: 0,
             lastActive: new Date().toISOString(),
             currentTask: a.isDefault ? 'Default agent' : undefined,
           }))
           const byAgent = get().usageByAgent
           for (const a of agents) {
             const usage = byAgent.find(u => u.agentId === a.id || a.id.includes(u.agentId))
-            if (usage) a.tokensUsed = usage.totals.totalTokens
+            if (usage) {
+              a.tokensUsed = usage.totals.totalTokens
+              a.messagesCount = usage.totals.totalMessages || 0
+            }
           }
           set({ agents, connected: true, dataSource: 'gateway' })
         }
@@ -525,9 +535,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             toolCalls: d.toolCalls,
             errors: d.errors,
           }))
-          const byAgent: UsageByAgent[] = (data.aggregates.byAgent || []).map((a: { agentId: string; totals: { totalTokens: number; totalCost: number } }) => ({
+          const byAgent: UsageByAgent[] = (data.aggregates.byAgent || []).map((a: { agentId: string; totals: { totalTokens: number; totalCost: number; totalMessages?: number } }) => ({
             agentId: a.agentId,
-            totals: { totalTokens: a.totals.totalTokens, totalCost: a.totals.totalCost },
+            totals: { totalTokens: a.totals.totalTokens, totalCost: a.totals.totalCost, totalMessages: a.totals.totalMessages || 0 },
           }))
           set({
             usageDaily: daily,
@@ -540,7 +550,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           const agents = [...get().agents]
           for (const a of agents) {
             const usage = byAgent.find((u: UsageByAgent) => u.agentId === a.id || a.id.includes(u.agentId))
-            if (usage) a.tokensUsed = usage.totals.totalTokens
+            if (usage) {
+              a.tokensUsed = usage.totals.totalTokens
+              a.messagesCount = usage.totals.totalMessages || 0
+            }
           }
           set({ agents })
         }

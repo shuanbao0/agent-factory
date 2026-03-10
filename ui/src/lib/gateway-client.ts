@@ -41,18 +41,18 @@ function parseGwOutput(raw: string): unknown {
 }
 
 /** Synchronous gateway call */
-export function gwCall(method: string, params?: Record<string, unknown>): unknown {
+export function gwCall(method: string, params?: Record<string, unknown>, timeoutMs = 15000): unknown {
   const raw = execSync(buildCmd(method, params), {
-    timeout: 15000, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
+    timeout: timeoutMs, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
   })
   return parseGwOutput(raw)
 }
 
 /** Async gateway call — runs in parallel, does not block the event loop */
-export function gwCallAsync(method: string, params?: Record<string, unknown>): Promise<unknown> {
+export function gwCallAsync(method: string, params?: Record<string, unknown>, timeoutMs = 10000): Promise<unknown> {
   return new Promise((resolve, reject) => {
     exec(buildCmd(method, params), {
-      timeout: 10000, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
+      timeout: timeoutMs, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
     }, (error, stdout) => {
       if (error) return reject(error)
       try { resolve(parseGwOutput(stdout)) } catch (e) { reject(e) }

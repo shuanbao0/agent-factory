@@ -159,7 +159,7 @@ export async function fetchLogsData(): Promise<LogsResult> {
 
   // 1. Gateway system logs from logs.tail
   try {
-    const raw = await gwCallAsync('logs.tail') as Record<string, unknown>
+    const raw = await gwCallAsync('logs.tail', undefined, 20000) as Record<string, unknown>
     const rawLines = (raw.lines || []) as string[]
 
     for (const line of rawLines.slice(-80)) {
@@ -198,7 +198,7 @@ export async function fetchLogsData(): Promise<LogsResult> {
 
   // 2. Agent activity from sessions.list
   try {
-    const sessionsResult = await gwCallAsync('sessions.list', { limit: 100 }) as {
+    const sessionsResult = await gwCallAsync('sessions.list', { limit: 100 }, 20000) as {
       sessions?: GatewaySession[]
     }
     const sessions = sessionsResult.sessions || []
@@ -257,6 +257,7 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
   const result = await gwCallAsync(
     'sessions.usage',
     params && Object.keys(params).length ? params : undefined,
+    30000,
   ) as Record<string, unknown>
   return { ...result, source: 'gateway' }
 }
@@ -348,7 +349,7 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
   const activePairs: Array<{ from: string; to: string; type: 'spawn' | 'send' }> = []
 
   try {
-    const sessResult = await gwCallAsync('sessions.list', { limit: 100 }) as {
+    const sessResult = await gwCallAsync('sessions.list', { limit: 100 }, 20000) as {
       sessions?: Array<{
         key: string
         updatedAt?: number
@@ -401,7 +402,7 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
 
     // Parse gateway logs for errors
     try {
-      const raw = await gwCallAsync('logs.tail') as { lines?: string[] }
+      const raw = await gwCallAsync('logs.tail', undefined, 20000) as { lines?: string[] }
       const lines = raw.lines || []
       for (const line of lines.slice(-50)) {
         try {
