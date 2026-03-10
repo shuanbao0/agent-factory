@@ -295,9 +295,19 @@ if (require.main === module) {
     await runDepartmentCycle(deptId)
 
     if (isLoop) {
+      // Restore running status after cycle (runDepartmentCycle sets idle/error)
+      const restoreRunning = () => {
+        const s = loadDeptState(deptId)
+        if (s.status !== 'stopped') {
+          s.status = 'running'
+          saveDeptState(deptId, s)
+        }
+      }
+      restoreRunning()
       console.log(`\n⏳ Next cycle in ${intervalSec}s...\n`)
       const loop = async () => {
         await runDepartmentCycle(deptId)
+        restoreRunning()
         console.log(`\n⏳ Next cycle in ${intervalSec}s...\n`)
         setTimeout(loop, intervalSec * 1000)
       }
