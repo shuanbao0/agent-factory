@@ -9,11 +9,13 @@
   "scripts": {
     "start": "node scripts/start.mjs",
     "gateway": "node scripts/start.mjs --gateway-only",
-    "ui": "cd ui && npm run dev"
+    "ui": "cd ui && npm run dev",
+    "postinstall": "node scripts/patch-openclaw.mjs"
   },
   "dependencies": {
     "clawhub": "^0.7.0",
-    "openclaw": "^2026.2.23"
+    "openclaw": "^2026.3.8",
+    "ws": "^8.19.0"
   },
   "engines": {
     "node": ">=22.0.0"

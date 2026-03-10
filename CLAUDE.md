@@ -33,7 +33,8 @@ agent-factory/
 │   ├── migrate-sync-config.mjs # 智能同步 config/ 下的部门配置和预算文件（AF_UPDATE_DIR 支持）
 │   ├── migrate-sync-gateway.mjs # 智能同步 openclaw.json 和 models.json（AF_UPDATE_DIR 支持）
 │   ├── migrate-workspaces.mjs # 工作空间迁移（产出从 agents/ 移到 workspaces/）
-│   └── migrate-to-templates.mjs
+│   ├── migrate-to-templates.mjs
+│   └── patch-openclaw.mjs     # postinstall 自动补丁（修复 OpenClaw enforceFinalTag/MiniMax 问题）
 ├── skills/                # 共享技能（project-init、wechat-mp-cn）
 ├── templates/
 │   ├── builtin/           # 内置 Agent 模板（14 个）
@@ -365,9 +366,23 @@ node scripts/migrate-sync-config.mjs novel        # 同步单个部门
 node scripts/migrate-sync-gateway.mjs --dry-run   # 预览
 node scripts/migrate-sync-gateway.mjs             # 同步
 
+# OpenClaw postinstall 补丁（npm install 自动触发，通常无需手动运行）
+node scripts/patch-openclaw.mjs
+
 # 升级（用户端）
 agent-factory update
 ```
+
+### OpenClaw Hotfix 补丁机制
+
+`scripts/patch-openclaw.mjs` 通过 `postinstall` hook 在每次 `npm install` 后自动运行：
+
+1. 定位 `node_modules` 中的 `openclaw`，读取版本号
+2. 若版本 >= `2026.4.0`（上游修复版本），跳过
+3. 扫描 `dist/**/*.js`，找到 `isReasoningTagProvider` 函数中的 `minimax` 判断行并移除
+4. 幂等：已补丁的文件不会重复修改
+
+当上游发布修复版本后，只需更新 `package.json` 中的 openclaw 版本约束，补丁脚本自动跳过。后续版本可移除脚本和 postinstall hook。
 
 ## 故障排除
 
@@ -377,3 +392,74 @@ agent-factory update
 - **ws 模块类型错误**：已知问题，`gateway-chat.ts` 中的 `ws` import 在 `next build` 类型检查时会报错，不影响运行时（聊天通过独立子进程执行）
 - **Agent 不可用**：确认 Gateway 正在运行，检查 `config/openclaw.json` 中 agents 列表是否包含该 Agent
 - **Agent 产出写错位置**：如果 Agent 把产出写到了 `agents/{id}/` 而非 `workspaces/{id}/`，运行 `node scripts/migrate-workspaces.mjs` 迁移，并确认 base-rules 已注入（`node scripts/inject-base-rules.mjs`）
+- **MiniMax 模型 chat 无响应（`(no response)`）**：OpenClaw 2026.3.7 的 `enforceFinalTag` 机制会丢弃 MiniMax 输出（MiniMax 不使用 `<final>` 标签）。已通过 `postinstall` 自动补丁修复（`scripts/patch-openclaw.mjs`），`npm install` 时自动应用。上游 PR：https://github.com/openclaw/openclaw/pull/41115 ，待合并发版后补丁脚本会自动跳过
+
+## 修改 OpenClaw 源码并提交 PR 流程
+
+当需要修复 OpenClaw Gateway 的 bug 时，遵循以下流程：
+
+### 1. 修改与本地测试
+
+```bash
+# OpenClaw 源码位于 /Users/yuanwu/workspace/openclaw
+cd /Users/yuanwu/workspace/openclaw
+
+# 创建 fix 分支
+git checkout -b fix/描述性分支名
+
+# 修改代码后，跑相关测试
+pnpm install                    # 首次需要安装依赖
+pnpm vitest run path/to/test.ts # 跑单个测试文件
+```
+
+### 2. 提交 PR 到 OpenClaw
+
+```bash
+# 提交（OpenClaw 使用 oxfmt 格式化，注意行宽限制）
+git add <files>
+git commit -m "fix: 描述"
+
+# 没有直接 push 权限，需要 fork
+gh repo fork openclaw/openclaw --remote=false
+git remote add fork https://github.com/shuanbao0/openclaw.git
+git push fork fix/分支名
+
+# 创建 PR（按 .github/PULL_REQUEST_TEMPLATE.md 模板填写）
+gh pr create --repo openclaw/openclaw --head shuanbao0:fix/分支名 --title "..." --body "..."
+```
+
+**CI 注意事项：**
+- `check` job 包含 `oxfmt` 格式检查，行太长会失败，需要展开为多行格式
+- `secrets` job（pnpm-audit-prod）是仓库已有的依赖漏洞问题，所有 PR 都会失败，维护者会忽略
+- 修改 `isReasoningTagProvider` 等函数时，记得同步更新 `src/utils/utils-misc.test.ts` 中的断言
+
+### 3. 本地测试修改过的 OpenClaw
+
+在 PR 合并发版前，可以在 Agent Factory 中使用本地修改的 OpenClaw 构建产物测试：
+
+```bash
+# 1. 构建 OpenClaw
+cd /Users/yuanwu/workspace/openclaw
+pnpm build
+
+# 2. 手动 symlink 到 Agent Factory 的 node_modules
+#    ⚠️ 不要用 npm link，会破坏其他依赖（如 ws）
+rm -rf /Users/yuanwu/workspace/agent-factory-workspace/node_modules/openclaw
+ln -s /Users/yuanwu/workspace/openclaw /Users/yuanwu/workspace/agent-factory-workspace/node_modules/openclaw
+
+# 3. 重启 Gateway 并测试
+lsof -ti:19100 | xargs kill -9 2>/dev/null
+npm run gateway
+
+# 4. 用 gateway-chat.js 发测试消息（stderr 输出 [chat-debug] 诊断日志）
+CHAT_INPUT='{"sessionKey":"agent:ceo:test","message":"测试消息"}' node ui/scripts/gateway-chat.js
+
+# 5. 测试完毕后恢复 npm registry 版本
+rm /Users/yuanwu/workspace/agent-factory-workspace/node_modules/openclaw
+npm install
+```
+
+**关键注意：**
+- 使用 `ln -s` 手动 symlink，不要用 `npm link`（会导致 `ws` 等依赖丢失）
+- `npm install` 会覆盖 symlink，恢复为 npm registry 版本
+- 验证 symlink 是否生效：`node -e "console.log(require.resolve('openclaw'))"`，应指向本地源码路径
