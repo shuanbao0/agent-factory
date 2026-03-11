@@ -27,6 +27,7 @@ import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { randomUUID } from 'crypto'
 import { createRequire } from 'module'
+import http from 'http'
 
 // ── Resolve project root ─────────────────────────────────────────
 
@@ -171,6 +172,42 @@ function analyzeSessionContext(agentId, sessionKey) {
 
 // ── Main ─────────────────────────────────────────────────────────
 
+/**
+ * Auto-claim tasks referenced in the message as in_progress.
+ * Extracts all [Task: task-xxx] references and fires PUT requests.
+ */
+function autoClaimTasks(agentId, message, gwConfig) {
+  const taskIds = []
+  const re = /\[Task:\s*(task-[a-z0-9-]+)\]/gi
+  let m
+  while ((m = re.exec(message)) !== null) {
+    taskIds.push(m[1])
+  }
+  if (taskIds.length === 0) return
+
+  const token = gwConfig.token || 'agent-factory-internal-token-2026'
+  for (const taskId of taskIds) {
+    const postData = JSON.stringify({
+      agent: agentId, taskId, status: 'in_progress'
+    })
+    const url = new URL('/api/agent-tasks', 'http://127.0.0.1:3100')
+    const req = http.request(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Content-Length': Buffer.byteLength(postData),
+      },
+      timeout: 5000,
+    })
+    req.on('error', () => {})
+    req.on('timeout', () => req.destroy())
+    req.write(postData)
+    req.end()
+    process.stderr.write(`[peer-send] Auto-claimed task ${taskId} as in_progress for ${agentId}\n`)
+  }
+}
+
 function main() {
   const { from, to, message, noWait, timeout } = parseArgs()
   const senderName = validatePeer(from, to)
@@ -260,6 +297,9 @@ function main() {
     // Connect response
     if (f.type === 'res' && f.id === 'c') {
       if (f.ok) {
+        // Auto-claim any tasks referenced in the message
+        autoClaimTasks(to, message, gwConfig)
+
         if (pendingAction === 'reset') {
           // Step 1: Kill the session first
           ws.send(JSON.stringify({

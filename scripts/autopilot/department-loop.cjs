@@ -20,7 +20,7 @@ const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
-const { createCycleTask, completeCycleTask, createWorkTask } = require('./task-bridge.cjs')
+const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('./task-bridge.cjs')
 const logger = require('./logger.cjs')
 
 // Cooldown: skip session health check if recently reset
@@ -126,11 +126,15 @@ async function runDepartmentCycle(deptId) {
       if (assignments.length > 0) {
         const taskPromises = assignments.map(({ agentId, summary }) =>
           createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
+            .then(taskId => ({ agentId, taskId }))
         )
         Promise.allSettled(taskPromises).then(results => {
-          const created = results.filter(r => r.status === 'fulfilled' && r.value).length
-          if (created > 0) {
-            logger.info('dept-loop', `Auto-created ${created} tasks from chief response in dept ${deptId}`)
+          const created = results.filter(r => r.status === 'fulfilled' && r.value?.taskId)
+          if (created.length > 0) {
+            logger.info('dept-loop', `Auto-created ${created.length} tasks from chief response in dept ${deptId}`)
+            for (const r of created) {
+              updateTaskStatus(r.value.agentId, r.value.taskId, 'in_progress')
+            }
           }
         })
       }
@@ -339,7 +343,8 @@ async function fallbackDispatch(deptId, config) {
 
     let message
     if (agentTask) {
-      // Existing task — reference its ID in the message
+      // Existing task — reference its ID in the message, mark as in_progress
+      updateTaskStatus(agentId, agentTask.id, 'in_progress')
       message = `[Fallback Dispatch from department-loop]\n\n[Task: ${agentTask.id}] 你有一个待办任务需要继续：\n- 项目: ${agentTask.projectName}\n- 任务: [${agentTask.id}] ${agentTask.name}\n${agentTask.description ? `- 描述: ${agentTask.description}` : ''}\n\n请立即开始工作。`
     } else {
       // No existing task — create one before dispatching
@@ -348,6 +353,9 @@ async function fallbackDispatch(deptId, config) {
       const taskId = await createWorkTask(agentId, `[${deptId}] ${agentId} 空闲派发`, deptId, {
         type: 'fallback-dispatch',
       })
+      if (taskId) {
+        updateTaskStatus(agentId, taskId, 'in_progress')
+      }
       const taskRef = taskId ? `[Task: ${taskId}] ` : ''
       message = `[Fallback Dispatch from department-loop]\n\n${taskRef}你当前处于空闲状态。你的职责是：${roleDesc}。请严格在你的职责范围内行动。\n请检查你的工作空间和任务列表，继续推进你职责范围内未完成的工作。\n\n⚠️ 重要：不要创建或接手超出你职责范围的任务。如果发现需要其他角色完成的工作，请通过 peer-send 通知部门主管 ${head}，由主管负责分配。`
     }

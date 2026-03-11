@@ -121,4 +121,24 @@ async function createWorkTask(assignee, taskName, deptId, options = {}) {
   }
 }
 
-module.exports = { createCycleTask, completeCycleTask, createWorkTask }
+/**
+ * Update a task's status (e.g. pending → in_progress).
+ * Fire-and-forget: silently logs on failure.
+ *
+ * @param {string} agentId - Agent that owns the task
+ * @param {string|null} taskId - Task ID to update
+ * @param {string} status - New status (e.g. 'in_progress', 'completed')
+ */
+async function updateTaskStatus(agentId, taskId, status) {
+  if (!taskId) return
+  try {
+    await apiRequest('PUT', '/api/agent-tasks', {
+      agent: agentId, taskId, status,
+    })
+    logger.debug('task-bridge', `Updated task ${taskId} status to ${status}`)
+  } catch (e) {
+    logger.debug('task-bridge', `Failed to update task ${taskId} status`, e)
+  }
+}
+
+module.exports = { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus }

@@ -382,6 +382,15 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (inProgressTask) {
             a.currentTask = inProgressTask.name
             a.currentProject = inProgressTask.projectId || undefined
+          } else if (a.status === 'busy') {
+            const pendingTask = agentTasks
+              .filter(t => t.status === 'pending' || t.status === 'assigned')
+              .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
+              [0]
+            if (pendingTask) {
+              a.currentTask = pendingTask.name
+              a.currentProject = pendingTask.projectId || undefined
+            }
           }
         }
         set({ agents, connected: true, dataSource: 'gateway' })
@@ -535,6 +544,15 @@ export const useAppStore = create<AppState>((set, get) => ({
             if (inProgressTask) {
               a.currentTask = inProgressTask.name
               a.currentProject = inProgressTask.projectId || undefined
+            } else if (a.status === 'busy') {
+              const pendingTask = agentTasks
+                .filter(t => t.status === 'pending' || t.status === 'assigned')
+                .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
+                [0]
+              if (pendingTask) {
+                a.currentTask = pendingTask.name
+                a.currentProject = pendingTask.projectId || undefined
+              }
             }
           }
           set({ agents, connected: true, dataSource: 'gateway' })
@@ -623,6 +641,18 @@ export const useAppStore = create<AppState>((set, get) => ({
             if (inProgressTask) {
               a.currentTask = inProgressTask.name
               a.currentProject = inProgressTask.projectId || undefined
+            } else if (a.status === 'busy') {
+              const pendingTask = agentTasks
+                .filter(t => t.status === 'pending' || t.status === 'assigned')
+                .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
+                [0]
+              if (pendingTask) {
+                a.currentTask = pendingTask.name
+                a.currentProject = pendingTask.projectId || undefined
+              } else {
+                a.currentTask = undefined
+                a.currentProject = undefined
+              }
             } else {
               a.currentTask = undefined
               a.currentProject = undefined
