@@ -50,14 +50,33 @@ function readProjectTasks() {
     const dirs = readdirSync(PROJECTS_DIR, { withFileTypes: true })
       .filter(d => d.isDirectory())
     for (const dir of dirs) {
+      // Top-level project
       const metaPath = join(PROJECTS_DIR, dir.name, '.project-meta.json')
-      if (!existsSync(metaPath)) continue
-      try {
-        const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-        results.push({ id: dir.name, ...meta })
-      } catch (err) {
-        logger.warn('readers', `Failed to parse project meta: ${dir.name}`, err)
+      if (existsSync(metaPath)) {
+        try {
+          const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+          results.push({ id: dir.name, ...meta })
+        } catch (err) {
+          logger.warn('readers', `Failed to parse project meta: ${dir.name}`, err)
+        }
       }
+      // Nested sub-projects: projects/{dept}/{project}/
+      try {
+        const subDirs = readdirSync(join(PROJECTS_DIR, dir.name), { withFileTypes: true })
+          .filter(sd => sd.isDirectory() && !sd.name.startsWith('.'))
+        for (const sd of subDirs) {
+          const subMetaPath = join(PROJECTS_DIR, dir.name, sd.name, '.project-meta.json')
+          if (existsSync(subMetaPath)) {
+            try {
+              const subId = `${dir.name}/${sd.name}`
+              const meta = JSON.parse(readFileSync(subMetaPath, 'utf-8'))
+              results.push({ id: subId, ...meta })
+            } catch (err) {
+              logger.warn('readers', `Failed to parse sub-project meta: ${dir.name}/${sd.name}`, err)
+            }
+          }
+        }
+      } catch { /* skip */ }
     }
   } catch (err) {
     logger.error('readers', 'Failed to read projects directory', err)
