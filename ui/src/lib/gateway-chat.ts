@@ -236,7 +236,7 @@ export async function sendChatMessage(
           // chat.send ack — adopt server-assigned runId
           if (res.ok && connected) {
             const ackRunId = (res.payload as Record<string, unknown>)?.runId
-            if (ackRunId && typeof ackRunId === 'string') runId = ackRunId
+            if (ackRunId && typeof ackRunId === 'string') runId = ackRunId as ReturnType<typeof randomUUID>
             return
           }
         }

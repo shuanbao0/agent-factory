@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const projectId = url.searchParams.get('projectId')
   const type = url.searchParams.get('type')
 
-  let tasks = findAllTasks().filter(t => t.assignees.includes(agent))
+  let tasks = findAllTasks().filter(t => t.assignees.includes(agent) || t.creator === agent)
 
   if (status) tasks = tasks.filter(t => t.status === status)
   if (projectId) tasks = tasks.filter(t => t.projectId === projectId)
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { agent, name, description, projectId, type, priority, parentTaskId, dependencies } = body
+    const { agent, name, description, projectId, type, priority, parentTaskId, dependencies, assignees } = body
 
     if (!agent || !name) {
       return NextResponse.json({ error: 'agent and name are required' }, { status: 400 })
@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
       projectId: projectId || null,
       status: 'pending',
       priority: priority || 'P1',
-      assignees: [agent],
-      assignedAgent: agent,
+      assignees: Array.isArray(assignees) && assignees.length > 0 ? assignees : [agent],
+      assignedAgent: Array.isArray(assignees) && assignees.length > 0 ? assignees[0] : agent,
       creator: agent,
       progress: 0,
       dependencies: dependencies || [],
@@ -125,9 +125,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    // Check agent is in assignees
-    if (!found.task.assignees.includes(agent)) {
-      return NextResponse.json({ error: 'Agent is not assigned to this task' }, { status: 403 })
+    // Check agent is in assignees or is the creator
+    if (!found.task.assignees.includes(agent) && found.task.creator !== agent) {
+      return NextResponse.json({ error: 'Agent is not assigned to or creator of this task' }, { status: 403 })
     }
 
     // Dependency check: cannot start if dependencies not complete

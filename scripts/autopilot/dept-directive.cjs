@@ -190,9 +190,12 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-w
 
 ### 📋 任务追踪
 分配任务前，**先通过任务 API 创建任务**，再发 peer-send。
+- \`agent\` = 你自己的 ID（创建者）
+- \`assignees\` = **实际执行任务的 agent ID 列表**（⚠️ 不是你自己！）
+
 \`\`\`bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
-  -d '{"agent":"${config.head}","name":"任务名","projectId":"${deptId}","type":"dept-work","assignees":["目标agent"]}' \\
+  -d '{"agent":"${config.head}","name":"任务名","projectId":"${deptId}","type":"dept-work","assignees":["实际执行的agent-id"]}' \\
   "http://127.0.0.1:3100/api/agent-tasks"
 \`\`\`
 peer-send 消息中引用任务 ID：\`[Task: task-xxx] 具体指令...\`

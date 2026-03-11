@@ -299,7 +299,7 @@ export async function GET(request: NextRequest) {
 
     // Extract peer-send messages from direct session histories
     const directSessionsWithPeerMsgs = new Set<string>()
-    for (const [key, { agentId, msgs: histMsgs }] of directHistMap) {
+    for (const [key, { agentId, msgs: histMsgs }] of Array.from(directHistMap)) {
       for (let i = 0; i < histMsgs.length; i++) {
         const m = histMsgs[i]
         if (m.role !== 'user') continue
