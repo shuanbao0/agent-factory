@@ -43,6 +43,14 @@ function readCeoWorkspaceFile(filename) {
   return readWorkspaceFile(CEO_WORKSPACE, filename)
 }
 
+/** Normalize task statuses in project meta (e.g. 'running' → 'in_progress') */
+function normalizeTasks(meta) {
+  if (!Array.isArray(meta.tasks)) return
+  for (const t of meta.tasks) {
+    if (t.status === 'running') t.status = 'in_progress'
+  }
+}
+
 function readProjectTasks() {
   const results = []
   try {
@@ -55,6 +63,7 @@ function readProjectTasks() {
       if (existsSync(metaPath)) {
         try {
           const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+          normalizeTasks(meta)
           results.push({ id: dir.name, ...meta })
         } catch (err) {
           logger.warn('readers', `Failed to parse project meta: ${dir.name}`, err)
@@ -70,6 +79,7 @@ function readProjectTasks() {
             try {
               const subId = `${dir.name}/${sd.name}`
               const meta = JSON.parse(readFileSync(subMetaPath, 'utf-8'))
+              normalizeTasks(meta)
               results.push({ id: subId, ...meta })
             } catch (err) {
               logger.warn('readers', `Failed to parse sub-project meta: ${dir.name}/${sd.name}`, err)
