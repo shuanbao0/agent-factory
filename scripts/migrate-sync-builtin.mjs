@@ -275,6 +275,36 @@ for (const agentId of agentDirs) {
     }
   }
 
+  // ── 3b. Append Peers 职责 section to AGENTS.md ──
+  const agentPeers = agent.peers || [];
+  if (agentPeers.length > 0) {
+    const agentsMdPath = join(AGENTS_DIR, agentId, 'AGENTS.md');
+    const agentsMdContent = readText(agentsMdPath) || '';
+    // Strip existing Peers 职责 section before re-generating (idempotent)
+    const stripped = agentsMdContent.replace(/\n### Peers 职责\n[\s\S]*?(?=\n### |\n## |\n<!-- |$)/, '');
+    const peerLines = [];
+    for (const peerId of agentPeers) {
+      const peerMetaPath = join(AGENTS_DIR, peerId, 'agent.json');
+      try {
+        if (existsSync(peerMetaPath)) {
+          const peerData = JSON.parse(readFileSync(peerMetaPath, 'utf-8'));
+          if (peerData.description) {
+            peerLines.push(`- **${peerId}**: ${peerData.description}`);
+          }
+        }
+      } catch { /* skip */ }
+    }
+    if (peerLines.length > 0) {
+      const section = `\n### Peers 职责\n\n以下是你可以通信的同事及其职责，请将超出你职责范围的工作交给对应的同事：\n\n${peerLines.join('\n')}\n`;
+      if (!dryRun) {
+        writeFileSync(agentsMdPath, stripped + section);
+      }
+      if (!agentsMdContent.includes('### Peers 职责') || agentsMdContent !== stripped + section) {
+        changes.push('AGENTS.md:  peers 职责 section updated');
+      }
+    }
+  }
+
   // ── 4. Sync SOUL.md (replace, preserve base-soul blocks) ──
   const tplSoulMd = readText(join(tplDir, 'SOUL.md'));
   if (tplSoulMd) {

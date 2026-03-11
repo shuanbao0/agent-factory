@@ -4,7 +4,7 @@
 const { join } = require('path')
 const { readFileSync, existsSync } = require('fs')
 const { DEPARTMENTS_DIR, PROJECTS_DIR } = require('./constants.cjs')
-const { readAgentActivity, readProjectTasks, readDeptMission, readBaseMission } = require('./readers.cjs')
+const { readAgentActivity, readProjectTasks, readDeptMission, readBaseMission, readAgentMeta } = require('./readers.cjs')
 const { buildMemoryContext } = require('./memory.cjs')
 const logger = require('./logger.cjs')
 
@@ -31,11 +31,13 @@ function buildTeamStatus(agentIds, agentActivity) {
   let result = ''
   for (const agentId of agentIds) {
     const a = agentActivity[agentId]
+    const meta = readAgentMeta(agentId)
+    const roleSuffix = meta && meta.description ? ` | 职责: ${meta.description}` : ''
     if (a) {
       const status = a.idleMins < 5 ? '🔴 忙碌' : a.idleMins < 30 ? '🟡 刚完成' : '🟢 空闲'
-      result += `- ${agentId}: ${status}（${a.idleMins}分钟无活动, ${a.totalTokens} tokens）\n`
+      result += `- ${agentId}: ${status}（${a.idleMins}分钟无活动, ${a.totalTokens} tokens）${roleSuffix}\n`
     } else {
-      result += `- ${agentId}: ⚪ 无记录\n`
+      result += `- ${agentId}: ⚪ 无记录${roleSuffix}\n`
     }
   }
   return result

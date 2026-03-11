@@ -309,6 +309,25 @@ function readMemorySummary(agentId) {
   return null
 }
 
+/**
+ * Read agent metadata (description, role, name) from agent.json
+ *
+ * @param {string} agentId
+ * @returns {{ description: string, role: string, name: string } | null}
+ */
+function readAgentMeta(agentId) {
+  const metaPath = join(AGENTS_DIR, agentId, 'agent.json')
+  try {
+    if (existsSync(metaPath)) {
+      const data = JSON.parse(readFileSync(metaPath, 'utf-8'))
+      return { description: data.description || '', role: data.role || agentId, name: data.name || agentId }
+    }
+  } catch (err) {
+    logger.debug('readers', `Failed to read agent.json for ${agentId}`, err)
+  }
+  return null
+}
+
 module.exports = {
   readMission,
   readBaseMission,
@@ -326,4 +345,5 @@ module.exports = {
   readDeptMission,
   getSessionTokenInfo,
   readMemorySummary,
+  readAgentMeta,
 }

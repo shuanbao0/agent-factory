@@ -247,7 +247,7 @@ async function ensureSessionHealth(headAgent, sessionKey, deptId) {
  * for MAX_CONSECUTIVE_FAILURES cycles, directly send tasks to idle workers.
  */
 async function fallbackDispatch(deptId, config) {
-  const { readProjectTasks } = require('./readers.cjs')
+  const { readProjectTasks, readAgentMeta } = require('./readers.cjs')
   const { execFile } = require('child_process')
   const { promisify } = require('util')
   const execFileAsync = promisify(execFile)
@@ -298,7 +298,9 @@ async function fallbackDispatch(deptId, config) {
     if (agentTask) {
       message = `[Fallback Dispatch from department-loop]\n\n你有一个待办任务需要继续：\n- 项目: ${agentTask.projectName}\n- 任务: [${agentTask.id}] ${agentTask.name}\n${agentTask.description ? `- 描述: ${agentTask.description}` : ''}\n\n请立即开始工作。`
     } else {
-      message = `[Fallback Dispatch from department-loop]\n\n你当前处于空闲状态。请检查你的工作空间和任务列表，继续推进未完成的工作。如果没有明确任务，请回顾之前的产出并进行改进或扩展。`
+      const meta = readAgentMeta(agentId)
+      const roleDesc = meta && meta.description ? meta.description : agentId
+      message = `[Fallback Dispatch from department-loop]\n\n你当前处于空闲状态。你的职责是：${roleDesc}。请严格在你的职责范围内行动。\n请检查你的工作空间和任务列表，继续推进你职责范围内未完成的工作。\n\n⚠️ 重要：不要创建或接手超出你职责范围的任务。如果发现需要其他角色完成的工作，请通过 peer-send 通知部门主管 ${head}，由主管负责分配。`
     }
 
     try {

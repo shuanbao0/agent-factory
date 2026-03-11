@@ -338,7 +338,20 @@ export async function POST(req: NextRequest) {
       writeFileSync(join(agentDir, 'AGENTS.md'), generateAgentsMd({ id, role: finalRole, name, description: finalDescription, peers: finalPeers }))
     }
 
-    // 2.5. Create skill symlinks (must happen before TOOLS.md generation)
+    // 2.5. Append peers roles section to AGENTS.md (for template-based agents)
+    if (finalPeers.length > 0) {
+      const peersSection = buildPeersRolesSection(finalPeers)
+      if (peersSection) {
+        const agentsMdPath = join(agentDir, 'AGENTS.md')
+        const existing = readFileSync(agentsMdPath, 'utf-8')
+        // Only append if not already present (idempotent)
+        if (!existing.includes('### Peers 职责')) {
+          writeFileSync(agentsMdPath, existing + peersSection)
+        }
+      }
+    }
+
+    // 2.6. Create skill symlinks (must happen before TOOLS.md generation)
     syncSkillSymlinks(id, finalSkills)
 
     // 3. Materialize TOOLS.md
@@ -632,6 +645,25 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
+// ── Helper: Build peers roles section ────────────────────────────
+function buildPeersRolesSection(peers: string[]): string {
+  if (!peers || peers.length === 0) return ''
+  const lines: string[] = []
+  for (const peerId of peers) {
+    const metaPath = join(AGENTS_DIR, peerId, 'agent.json')
+    try {
+      if (existsSync(metaPath)) {
+        const data = JSON.parse(readFileSync(metaPath, 'utf-8'))
+        if (data.description) {
+          lines.push(`- **${peerId}**: ${data.description}`)
+        }
+      }
+    } catch { /* skip */ }
+  }
+  if (lines.length === 0) return ''
+  return `\n### Peers 职责\n\n以下是你可以通信的同事及其职责，请将超出你职责范围的工作交给对应的同事：\n\n${lines.join('\n')}\n`
+}
+
 // ── Helper: Generate default AGENTS.md ──────────────────────────
 function generateAgentsMd({ id, role, name, description, peers }: {
   id: string; role: string; name: string; description: string; peers?: string[]
@@ -674,6 +706,8 @@ ${peers.map(p => `| ${p} | \`node skills/peer-status/scripts/peer-send.mjs --fro
 
 使用 \`peer-send\` 脚本发送跨 Agent 消息。**禁止**使用 \`sessions_send\` 跨 Agent 发消息。
 `
+    // Append peers roles section
+    md += buildPeersRolesSection(peers)
   }
 
   return md
