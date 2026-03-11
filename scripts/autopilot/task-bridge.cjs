@@ -91,4 +91,34 @@ async function completeCycleTask(agentId, taskId, result) {
   }
 }
 
-module.exports = { createCycleTask, completeCycleTask }
+/**
+ * Create a work task for an agent (used by department-loop auto-dispatch).
+ * Fire-and-forget: silently returns null if Dashboard is unavailable.
+ *
+ * @param {string} assignee - Agent ID to assign the task to
+ * @param {string} taskName - Task name/summary
+ * @param {string} [deptId] - Department/project ID
+ * @param {object} [options] - Additional options (type, priority)
+ * @returns {Promise<string|null>} - Task ID or null
+ */
+async function createWorkTask(assignee, taskName, deptId, options = {}) {
+  try {
+    const result = await apiRequest('POST', '/api/agent-tasks', {
+      agent: assignee,
+      name: taskName,
+      projectId: deptId || undefined,
+      type: options.type || 'dept-work',
+      priority: options.priority || 'P1',
+    })
+    const taskId = result?.task?.id || null
+    if (taskId) {
+      logger.info('task-bridge', `Created work task ${taskId} for ${assignee}: ${taskName}`)
+    }
+    return taskId
+  } catch (e) {
+    logger.debug('task-bridge', `Failed to create work task for ${assignee}`, e)
+    return null
+  }
+}
+
+module.exports = { createCycleTask, completeCycleTask, createWorkTask }

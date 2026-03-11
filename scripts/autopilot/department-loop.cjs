@@ -20,12 +20,41 @@ const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
-const { createCycleTask, completeCycleTask } = require('./task-bridge.cjs')
+const { createCycleTask, completeCycleTask, createWorkTask } = require('./task-bridge.cjs')
 const logger = require('./logger.cjs')
 
 // Cooldown: skip session health check if recently reset
 const sessionResetCooldowns = new Map()  // sessionKey → timestamp
 const RESET_COOLDOWN_MS = 120_000
+
+/**
+ * Parse task assignments from the chief's structured response.
+ * Extracts [任务分配] section and returns agent-task pairs.
+ *
+ * @param {string} text - Chief's response text
+ * @returns {Array<{agentId: string, summary: string}>}
+ */
+function parseTaskAssignments(text) {
+  if (!text) return []
+  const match = text.match(/\[任务分配\]\s*\n([\s\S]*?)(?=\n\[|$)/)
+  if (!match) return []
+
+  const lines = match[1].split('\n')
+  const assignments = []
+  for (const line of lines) {
+    // Match: - agent-id: 任务摘要 (peer-send 已发送)
+    // Or:    - agent-id：任务摘要
+    const m = line.match(/^[-*]\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
+    if (!m) continue
+    const [, agentId, summary] = m
+    // Skip "无需分配" and similar
+    if (/无需分配|不需要|跳过/.test(summary)) continue
+    // Skip lines that already contain a task ID (chief created it)
+    if (/task-[a-z0-9]/.test(line)) continue
+    assignments.push({ agentId, summary: summary.trim() })
+  }
+  return assignments
+}
 
 /**
  * Run a single department cycle.
@@ -91,6 +120,20 @@ async function runDepartmentCycle(deptId) {
 
     if (result.ok) {
       logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} completed in ${elapsed}s`)
+
+      // ── Auto-create tasks from chief's response ──
+      const assignments = parseTaskAssignments(result.text)
+      if (assignments.length > 0) {
+        const taskPromises = assignments.map(({ agentId, summary }) =>
+          createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
+        )
+        Promise.allSettled(taskPromises).then(results => {
+          const created = results.filter(r => r.status === 'fulfilled' && r.value).length
+          if (created > 0) {
+            logger.info('dept-loop', `Auto-created ${created} tasks from chief response in dept ${deptId}`)
+          }
+        })
+      }
 
       // ── Response validation: token check ──
       const responseLength = (result.text || '').trim().length
@@ -296,11 +339,17 @@ async function fallbackDispatch(deptId, config) {
 
     let message
     if (agentTask) {
-      message = `[Fallback Dispatch from department-loop]\n\n你有一个待办任务需要继续：\n- 项目: ${agentTask.projectName}\n- 任务: [${agentTask.id}] ${agentTask.name}\n${agentTask.description ? `- 描述: ${agentTask.description}` : ''}\n\n请立即开始工作。`
+      // Existing task — reference its ID in the message
+      message = `[Fallback Dispatch from department-loop]\n\n[Task: ${agentTask.id}] 你有一个待办任务需要继续：\n- 项目: ${agentTask.projectName}\n- 任务: [${agentTask.id}] ${agentTask.name}\n${agentTask.description ? `- 描述: ${agentTask.description}` : ''}\n\n请立即开始工作。`
     } else {
+      // No existing task — create one before dispatching
       const meta = readAgentMeta(agentId)
       const roleDesc = meta && meta.description ? meta.description : agentId
-      message = `[Fallback Dispatch from department-loop]\n\n你当前处于空闲状态。你的职责是：${roleDesc}。请严格在你的职责范围内行动。\n请检查你的工作空间和任务列表，继续推进你职责范围内未完成的工作。\n\n⚠️ 重要：不要创建或接手超出你职责范围的任务。如果发现需要其他角色完成的工作，请通过 peer-send 通知部门主管 ${head}，由主管负责分配。`
+      const taskId = await createWorkTask(agentId, `[${deptId}] ${agentId} 空闲派发`, deptId, {
+        type: 'fallback-dispatch',
+      })
+      const taskRef = taskId ? `[Task: ${taskId}] ` : ''
+      message = `[Fallback Dispatch from department-loop]\n\n${taskRef}你当前处于空闲状态。你的职责是：${roleDesc}。请严格在你的职责范围内行动。\n请检查你的工作空间和任务列表，继续推进你职责范围内未完成的工作。\n\n⚠️ 重要：不要创建或接手超出你职责范围的任务。如果发现需要其他角色完成的工作，请通过 peer-send 通知部门主管 ${head}，由主管负责分配。`
     }
 
     try {
@@ -527,4 +576,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch }
+module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments }

@@ -274,6 +274,11 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 
 ### 任务先行协议
 
+> **三条铁律**：
+> 1. 收到工作 → 确认/创建任务 → `curl -X PUT ... status: "in_progress"`
+> 2. 完成工作 → `curl -X PUT ... status: "completed", output: "产出路径"`
+> 3. 没有 Task ID 的工作指令 → 自己创建任务再开始
+
 > **[ENFORCE] 硬性规则。所有工作必须通过任务系统追踪，禁止"隐形工作"。**
 
 **核心原则**：没有任务，不做事情。Dashboard 任务面板是团队唯一的工作真相来源。所有可追踪的工作必须在任务系统中体现。

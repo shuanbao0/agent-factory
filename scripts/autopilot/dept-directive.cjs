@@ -188,6 +188,17 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <目标
 node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-writer --message "请继续写作第3章，参考 projects/novel/ 下的大纲" --no-wait
 \`\`\`
 
+### 📋 任务追踪
+分配任务前，**先通过任务 API 创建任务**，再发 peer-send。
+\`\`\`bash
+curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"agent":"${config.head}","name":"任务名","projectId":"${deptId}","type":"dept-work","assignees":["目标agent"]}' \\
+  "http://127.0.0.1:3100/api/agent-tasks"
+\`\`\`
+peer-send 消息中引用任务 ID：\`[Task: task-xxx] 具体指令...\`
+
+> 即使你忘记创建任务，department-loop 会自动从你的响应中补建。但主动创建可提供更准确的描述。
+
 ### 其他行动
 1. **检查进行中任务的产出质量** — 确保输出符合标准
 2. **向 CEO 汇报关键进展** — 将重要信息写入部门报告
