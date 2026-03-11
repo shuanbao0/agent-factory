@@ -287,13 +287,26 @@ export interface TasksResult {
 export async function fetchTasksData(): Promise<TasksResult> {
   const tasks: Record<string, unknown>[] = []
 
-  // 1. Read project tasks from projects/*/.project-meta.json
+  // 1. Read project tasks from projects/*/.project-meta.json and projects/*/*/.project-meta.json
   const projectsDir = join(PROJECT_ROOT, 'projects')
   try {
     if (existsSync(projectsDir)) {
-      const dirs = readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory())
-      for (const dir of dirs) {
-        const metaPath = join(projectsDir, dir.name, '.project-meta.json')
+      // Collect candidate directories: both projects/{name} and projects/{dept}/{name}
+      const candidates: { dirPath: string; projectId: string }[] = []
+      const topDirs = readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory())
+      for (const dir of topDirs) {
+        const topPath = join(projectsDir, dir.name)
+        candidates.push({ dirPath: topPath, projectId: dir.name })
+        // Check for nested projects (projects/{dept}/{project})
+        try {
+          const subDirs = readdirSync(topPath, { withFileTypes: true }).filter(d => d.isDirectory())
+          for (const sub of subDirs) {
+            candidates.push({ dirPath: join(topPath, sub.name), projectId: `${dir.name}/${sub.name}` })
+          }
+        } catch { /* skip */ }
+      }
+      for (const { dirPath, projectId } of candidates) {
+        const metaPath = join(dirPath, '.project-meta.json')
         if (!existsSync(metaPath)) continue
         try {
           const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
@@ -303,7 +316,7 @@ export async function fetchTasksData(): Promise<TasksResult> {
               : t.assignedAgent ? [t.assignedAgent] : []
             let status = t.status || 'pending'
             if (status === 'running') status = 'in_progress'
-            tasks.push({ ...t, projectId: dir.name, assignees, status, priority: t.priority || 'P1', creator: t.creator || 'user' })
+            tasks.push({ ...t, projectId, assignees, status, priority: t.priority || 'P1', creator: t.creator || 'user' })
           }
         } catch { /* skip */ }
       }

@@ -95,7 +95,7 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
             </div>
             <p className="text-xs text-muted-foreground mt-1 truncate">{agent.description}</p>
             {agent.currentTask && (
-              <p className="text-xs text-primary mt-2 truncate">▸ {agent.currentTask}</p>
+              <p className="text-xs text-primary mt-2 truncate">▸ {agent.currentTask}{agent.currentProject && ` · ${agent.currentProject}`}</p>
             )}
             <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1"><Zap className="w-3 h-3" />{formatNumber(agent.tokensUsed)} {t('common.tokens')}</span>

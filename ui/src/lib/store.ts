@@ -379,7 +379,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
           a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
           const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
-          if (inProgressTask) a.currentTask = inProgressTask.name
+          if (inProgressTask) {
+            a.currentTask = inProgressTask.name
+            a.currentProject = inProgressTask.projectId || undefined
+          }
         }
         set({ agents, connected: true, dataSource: 'gateway' })
       }
@@ -529,7 +532,10 @@ export const useAppStore = create<AppState>((set, get) => ({
             a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
             a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
             const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
-            if (inProgressTask) a.currentTask = inProgressTask.name
+            if (inProgressTask) {
+              a.currentTask = inProgressTask.name
+              a.currentProject = inProgressTask.projectId || undefined
+            }
           }
           set({ agents, connected: true, dataSource: 'gateway' })
         }
@@ -614,7 +620,13 @@ export const useAppStore = create<AppState>((set, get) => ({
             a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
             a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
             const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
-            if (inProgressTask) a.currentTask = inProgressTask.name
+            if (inProgressTask) {
+              a.currentTask = inProgressTask.name
+              a.currentProject = inProgressTask.projectId || undefined
+            } else {
+              a.currentTask = undefined
+              a.currentProject = undefined
+            }
           }
           set({ agents })
         }

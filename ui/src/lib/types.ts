@@ -43,6 +43,7 @@ export interface Agent {
   name: string
   status: 'online' | 'busy'
   currentTask?: string
+  currentProject?: string
   currentTool?: string | null
   tokensUsed: number
   messagesCount: number
