@@ -15,15 +15,16 @@ const {
   DEFAULT_INTERVAL_SEC, MAX_HISTORY_ENTRIES, MAX_CYCLE_RESULT_LENGTH, MAX_HISTORY_RESULT_LENGTH,
   DEPARTMENTS_DIR, AGENTS_DIR,
   CEO_COORDINATION_INTERVAL_SEC, CEO_STRATEGY_INTERVAL_SEC, DEFAULT_DEPT_INTERVAL_SEC,
+  IDLE_COMPLETE_MINS, STALE_TASK_MINS,
 } = require('./constants.cjs')
 const { loadState, saveState } = require('./state.cjs')
 const { sendToCeo } = require('./gateway.cjs')
-const { fetchSessionTokens } = require('./readers.cjs')
+const { fetchSessionTokens, readProjectTasks, readStandaloneTasks, readAgentActivity } = require('./readers.cjs')
 const { buildDirective } = require('./directive.cjs')
 const { syncProjects } = require('./sync.cjs')
 const { buildMemoryContext, compressMemory } = require('./memory.cjs')
-const { runDepartmentCycle } = require('./department-loop.cjs')
-const { createCycleTask, completeCycleTask } = require('./task-bridge.cjs')
+const { runDepartmentCycle, autoTransitionTasks } = require('./department-loop.cjs')
+const { createCycleTask, completeCycleTask, updateTaskStatus } = require('./task-bridge.cjs')
 const logger = require('./logger.cjs')
 
 const MAX_HISTORY = 50
@@ -334,6 +335,51 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
   }
 }
 
+// ── Global task sweep: clean up stale tasks across ALL agents ────
+async function sweepStaleTasks() {
+  const agentActivity = readAgentActivity()
+
+  // Gather all non-terminal tasks from projects + standalone
+  const allTasks = []
+  for (const proj of readProjectTasks()) {
+    for (const t of (proj.tasks || [])) allTasks.push(t)
+  }
+  for (const t of readStandaloneTasks()) allTasks.push(t)
+
+  const activeStatuses = ['in_progress', 'rework', 'assigned', 'review']
+  const staleTasks = allTasks.filter(t => activeStatuses.includes(t.status))
+  if (staleTasks.length === 0) return
+
+  let transitioned = 0
+  for (const task of staleTasks) {
+    const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
+    if (!assignee) continue
+    const activity = agentActivity[assignee]
+    const idleMins = activity ? activity.idleMins : 9999
+
+    let newStatus = null
+    if (task.status === 'assigned' && idleMins >= STALE_TASK_MINS) {
+      newStatus = 'failed'
+    } else if (task.status === 'review' && idleMins >= IDLE_COMPLETE_MINS) {
+      newStatus = 'completed'
+    } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
+      newStatus = 'failed'
+    } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= IDLE_COMPLETE_MINS) {
+      newStatus = 'completed'
+    }
+
+    if (newStatus) {
+      updateTaskStatus(assignee, task.id, newStatus)
+      transitioned++
+      logger.info('main', `Sweep: task ${task.id} (${task.status}) → ${newStatus} (agent ${assignee} idle ${idleMins}m)`)
+    }
+  }
+
+  if (transitioned > 0) {
+    logger.info('main', `Sweep completed: ${transitioned} stale tasks transitioned`)
+  }
+}
+
 // ── Start all: CEO cycles + department cycles ───────────────────
 async function startAll() {
   await killExistingAutopilot()
@@ -357,6 +403,11 @@ async function startAll() {
   }
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)
+
+  // 0. Sweep stale tasks from previous runs
+  await sweepStaleTasks().catch(e =>
+    logger.warn('main', 'Stale task sweep failed', e)
+  )
 
   // 1. Run initial CEO coordination cycle
   await runCeoCycleForAll('coordination')

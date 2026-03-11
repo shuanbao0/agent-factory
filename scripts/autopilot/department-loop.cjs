@@ -14,8 +14,9 @@ const {
   COMPACT_TOKEN_RATIO, DEFAULT_CONTEXT_TOKENS, HEALTH_CHECK_INTERVAL,
   SESSIONS_DIR, SESSION_RESET_INPUT_TOKENS, SESSION_FORCE_COMPACT_TOKENS,
   MIN_EFFECTIVE_RESPONSE_LENGTH, MAX_CONSECUTIVE_FAILURES,
+  IDLE_COMPLETE_MINS, STALE_TASK_MINS,
 } = require('./constants.cjs')
-const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo, readAgentActivity } = require('./readers.cjs')
+const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo, readAgentActivity, readProjectTasks, readStandaloneTasks } = require('./readers.cjs')
 const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
@@ -54,6 +55,136 @@ function parseTaskAssignments(text) {
     assignments.push({ agentId, summary: summary.trim() })
   }
   return assignments
+}
+
+/**
+ * Parse task completions from the chief's structured response.
+ * Extracts [任务完成] section (priority) and [进展汇报] section,
+ * looking for task IDs with completion keywords.
+ *
+ * @param {string} text - Chief's response text
+ * @returns {string[]} - Deduplicated list of completed task IDs
+ */
+function parseTaskCompletions(text) {
+  if (!text) return []
+
+  const completedIds = new Set()
+  const completionKeywords = /完成|已完成|已交付|done|finished|completed|100%/i
+
+  // Parse [任务完成] section (priority)
+  const completionMatch = text.match(/\[任务完成\]\s*\n([\s\S]*?)(?=\n\[|$)/)
+  if (completionMatch) {
+    const lines = completionMatch[1].split('\n')
+    for (const line of lines) {
+      const m = line.match(/(task-[a-z0-9-]+)/i)
+      if (m && !/无/.test(line.trim())) {
+        completedIds.add(m[1])
+      }
+    }
+  }
+
+  // Parse [进展汇报] section for completion keywords
+  const progressMatch = text.match(/\[进展汇报\]\s*\n([\s\S]*?)(?=\n\[|$)/)
+  if (progressMatch) {
+    const lines = progressMatch[1].split('\n')
+    for (const line of lines) {
+      const m = line.match(/(task-[a-z0-9-]+)/i)
+      if (m && completionKeywords.test(line)) {
+        completedIds.add(m[1])
+      }
+    }
+  }
+
+  return [...completedIds]
+}
+
+/**
+ * Auto-transition tasks based on agent activity and chief reports.
+ *
+ * Rules:
+ * - Chief reports task completed → completed
+ * - in_progress/rework + agent idle >= IDLE_COMPLETE_MINS → completed
+ * - in_progress/rework + agent idle >= STALE_TASK_MINS + progress < 50 → failed
+ * - assigned + agent active (idle < 5) → in_progress
+ * - assigned + agent idle >= STALE_TASK_MINS → failed (never picked up)
+ * - review + idle >= IDLE_COMPLETE_MINS → completed (auto-approve)
+ *
+ * @param {string} deptId
+ * @param {object} config - Department config
+ * @param {string} chiefResponseText - Chief's response text
+ */
+async function autoTransitionTasks(deptId, config, chiefResponseText) {
+  const agentActivity = readAgentActivity()
+  const agents = config.agents || []
+
+  // Collect all tasks assigned to department agents
+  const projects = readProjectTasks()
+  const allTasks = []
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      const assignees = [t.assignedAgent, ...(t.assignees || [])]
+      if (assignees.some(a => agents.includes(a))) {
+        allTasks.push(t)
+      }
+    }
+  }
+  const standalone = readStandaloneTasks()
+  for (const t of standalone) {
+    const assignees = [t.assignedAgent, ...(t.assignees || [])]
+    if (assignees.some(a => agents.includes(a))) {
+      allTasks.push(t)
+    }
+  }
+
+  if (allTasks.length === 0) return
+
+  // 1. Chief-reported completions
+  const chiefCompletions = parseTaskCompletions(chiefResponseText)
+  for (const taskId of chiefCompletions) {
+    const task = allTasks.find(t => t.id === taskId)
+    if (task && (task.status === 'in_progress' || task.status === 'rework')) {
+      const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
+      if (assignee) updateTaskStatus(assignee, taskId, 'completed')
+      logger.info('dept-loop', `Chief reported task ${taskId} completed in ${deptId}`)
+    }
+  }
+
+  // 2. Idle-based auto-complete / stale cleanup
+  for (const task of allTasks) {
+    if (!['in_progress', 'rework', 'assigned', 'review'].includes(task.status)) continue
+    if (chiefCompletions.includes(task.id)) continue
+
+    const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
+    if (!assignee) continue
+    const activity = agentActivity[assignee]
+    const idleMins = activity ? activity.idleMins : 9999
+
+    if (task.status === 'assigned') {
+      if (idleMins < 5) {
+        // Agent active → promote to in_progress
+        updateTaskStatus(assignee, task.id, 'in_progress')
+        logger.debug('dept-loop', `Auto-promoted assigned task ${task.id} to in_progress`)
+      } else if (idleMins >= STALE_TASK_MINS) {
+        // Agent never picked it up → failed
+        updateTaskStatus(assignee, task.id, 'failed')
+        logger.warn('dept-loop', `Assigned task ${task.id} never started, marked failed (agent ${assignee} idle ${idleMins}m)`)
+      }
+    } else if (task.status === 'review') {
+      if (idleMins >= IDLE_COMPLETE_MINS) {
+        // No one reviewed → auto-approve
+        updateTaskStatus(assignee, task.id, 'completed')
+        logger.info('dept-loop', `Review task ${task.id} auto-approved (idle ${idleMins}m)`)
+      }
+    } else if (task.status === 'in_progress' || task.status === 'rework') {
+      if (idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
+        updateTaskStatus(assignee, task.id, 'failed')
+        logger.warn('dept-loop', `Stale task ${task.id} marked failed (idle ${idleMins}m, progress ${task.progress || 0}%)`)
+      } else if (idleMins >= IDLE_COMPLETE_MINS) {
+        updateTaskStatus(assignee, task.id, 'completed')
+        logger.info('dept-loop', `Auto-completed task ${task.id} (agent ${assignee} idle ${idleMins}m)`)
+      }
+    }
+  }
 }
 
 /**
@@ -138,6 +269,11 @@ async function runDepartmentCycle(deptId) {
           }
         })
       }
+
+      // ── Auto-transition stale tasks ──
+      autoTransitionTasks(deptId, config, result.text).catch(e =>
+        logger.debug('dept-loop', `Auto-transition error for ${deptId}`, e)
+      )
 
       // ── Response validation: token check ──
       const responseLength = (result.text || '').trim().length
@@ -234,6 +370,10 @@ async function runDepartmentCycle(deptId) {
       return { ok: true, text: result.text }
     } else {
       logger.error('dept-loop', `Department ${deptId} cycle failed: ${result.error}`)
+      // Still run idle-based auto-transition even when chief fails
+      autoTransitionTasks(deptId, config, '').catch(e =>
+        logger.debug('dept-loop', `Auto-transition error for ${deptId} (on failure path)`, e)
+      )
       state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
       state.status = 'error'
       state.lastCycleResult = `Error: ${result.error}`
@@ -243,6 +383,8 @@ async function runDepartmentCycle(deptId) {
     }
   } catch (err) {
     logger.error('dept-loop', `Department ${deptId} cycle error`, err)
+    // Still run idle-based auto-transition even on exception
+    autoTransitionTasks(deptId, config, '').catch(() => {})
     state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
     state.status = 'error'
     state.lastCycleResult = `Error: ${err.message}`
@@ -584,4 +726,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments }
+module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, autoTransitionTasks }

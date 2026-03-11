@@ -48,6 +48,10 @@ const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000      // Max chars for domain knowledge f
 const SESSION_RESET_INPUT_TOKENS = 80000     // Reset session when inputTokens exceeds this
 const SESSION_FORCE_COMPACT_TOKENS = 50000   // Force compact when inputTokens exceeds this
 
+// Task auto-transition thresholds
+const IDLE_COMPLETE_MINS = 10               // Agent idle N minutes → in_progress task auto-completed
+const STALE_TASK_MINS = 30                  // Agent idle N minutes + low progress → task failed
+
 // Chief response validation
 const MIN_EFFECTIVE_RESPONSE_LENGTH = 50    // Below this char count = ineffective response
 const MAX_CONSECUTIVE_FAILURES = 3           // Trigger fallback dispatch after N consecutive failures
@@ -86,6 +90,8 @@ module.exports = {
   MAX_DOMAIN_KNOWLEDGE_CHARS,
   SESSION_RESET_INPUT_TOKENS,
   SESSION_FORCE_COMPACT_TOKENS,
+  IDLE_COMPLETE_MINS,
+  STALE_TASK_MINS,
   MIN_EFFECTIVE_RESPONSE_LENGTH,
   MAX_CONSECUTIVE_FAILURES,
 }
