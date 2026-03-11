@@ -4,7 +4,7 @@
 
 Agent Factory 是一个自包含的多 Agent 协作平台，内置 OpenClaw 引擎，提供 Dashboard UI 进行管理。
 
-- 版本: 0.4.28
+- 版本: 0.4.29
 - 仓库: https://github.com/shuanbao0/agent-factory
 - 运行时: Node.js >= 22
 - 许可: GPL-3.0
