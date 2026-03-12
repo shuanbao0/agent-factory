@@ -4,7 +4,7 @@ import { useTranslation } from '@/lib/i18n'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PhaseProgress } from '@/components/phase-progress'
-import { FolderKanban, Clock, Zap, Plus, Trash2, Loader2, FolderOpen, FileText, FolderTree, Code2, ListChecks, AlertTriangle, Play, Square, ExternalLink, Monitor } from 'lucide-react'
+import { FolderKanban, Clock, Zap, Plus, Trash2, Loader2, FolderOpen, FileText, FolderTree, Code2, ListChecks, AlertTriangle, Play, Square, ExternalLink, Monitor, ChevronRight, ChevronDown, Bot } from 'lucide-react'
 import { formatNumber, formatDate } from '@/lib/utils'
 import { Task } from '@/lib/types'
 
@@ -37,12 +37,18 @@ interface FsProject {
   blockers?: string[]
 }
 
-interface FileEntry {
+interface DirEntry {
   name: string
   type: 'file' | 'directory'
   size?: number
   path: string
-  source: 'project' | 'code'
+  childCount?: number
+}
+
+interface AgentWorkspace {
+  agentId: string
+  fileCount: number
+  totalSize: number
 }
 
 const statusVariant = {
@@ -67,43 +73,11 @@ function ProjectDetail({
 }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<DetailTab>('overview')
-  const [files, setFiles] = useState<FileEntry[]>([])
-  const [loadingFiles, setLoadingFiles] = useState(false)
-  const [fileContent, setFileContent] = useState<{ name: string; path: string; content: string; source: string } | null>(null)
-  const [loadingContent, setLoadingContent] = useState(false)
-
-  const fetchFiles = useCallback(async () => {
-    setLoadingFiles(true)
-    try {
-      const res = await fetch(`/api/projects/${project.id}/files`)
-      const data = await res.json()
-      setFiles(data.files ?? [])
-    } catch { setFiles([]) }
-    setLoadingFiles(false)
-  }, [project.id])
-
-  useEffect(() => {
-    if (tab === 'files' && files.length === 0) fetchFiles()
-  }, [tab, files.length, fetchFiles])
 
   // Reset when project changes
   useEffect(() => {
     setTab('overview')
-    setFiles([])
-    setFileContent(null)
   }, [project.id])
-
-  const fetchFileContent = async (path: string, name: string, source: string) => {
-    setLoadingContent(true)
-    try {
-      const res = await fetch(`/api/projects/${project.id}/files?file=${encodeURIComponent(path)}&source=${source}`)
-      const data = await res.json()
-      setFileContent({ name, path, content: data.content ?? data.error ?? '', source })
-    } catch {
-      setFileContent({ name, path, content: '(Failed to load)', source })
-    }
-    setLoadingContent(false)
-  }
 
   const tabs: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: t('projects.overview') || 'Overview', icon: <ListChecks className="w-3.5 h-3.5" /> },
@@ -160,17 +134,7 @@ function ProjectDetail({
 
       <CardContent>
         {tab === 'overview' && <OverviewTab project={project} />}
-        {tab === 'files' && (
-          <FilesTab
-            files={files}
-            loading={loadingFiles}
-            fileContent={fileContent}
-            loadingContent={loadingContent}
-            onSelectFile={fetchFileContent}
-            onCloseFile={() => setFileContent(null)}
-            onRefresh={fetchFiles}
-          />
-        )}
+        {tab === 'files' && <FilesTab projectId={project.id} />}
         {tab === 'preview' && <PreviewTab projectId={project.id} />}
       </CardContent>
     </Card>
@@ -262,120 +226,359 @@ function OverviewTab({ project }: { project: FsProject }) {
   )
 }
 
-function FilesTab({
-  files,
-  loading,
-  fileContent,
-  loadingContent,
-  onSelectFile,
-  onCloseFile,
-  onRefresh,
-}: {
-  files: FileEntry[]
-  loading: boolean
-  fileContent: { name: string; path: string; content: string; source: string } | null
-  loadingContent: boolean
-  onSelectFile: (path: string, name: string, source: string) => void
-  onCloseFile: () => void
-  onRefresh: () => void
-}) {
-  const { t } = useTranslation()
+type FileSource = 'project' | 'workspaces'
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-      </div>
-    )
+function FilesTab({ projectId }: { projectId: string }) {
+  const { t } = useTranslation()
+  const [source, setSource] = useState<FileSource>('project')
+  const [entries, setEntries] = useState<DirEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [currentDir, setCurrentDir] = useState('')
+  const [breadcrumb, setBreadcrumb] = useState<string[]>([])
+  const [expandedDirs, setExpandedDirs] = useState<Record<string, DirEntry[]>>({})
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
+  const [truncated, setTruncated] = useState(false)
+
+  // Agent workspaces state
+  const [agents, setAgents] = useState<AgentWorkspace[]>([])
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const [agentEntries, setAgentEntries] = useState<DirEntry[]>([])
+  const [agentExpandedDirs, setAgentExpandedDirs] = useState<Record<string, DirEntry[]>>({})
+  const [agentLoadingDirs, setAgentLoadingDirs] = useState<Set<string>>(new Set())
+
+  // File preview
+  const [fileContent, setFileContent] = useState<{ path: string; content: string; source: FileSource; agentId?: string } | null>(null)
+  const [loadingContent, setLoadingContent] = useState(false)
+
+  // Reset all state when project changes
+  useEffect(() => {
+    setSource('project')
+    setEntries([])
+    setCurrentDir('')
+    setBreadcrumb([])
+    setExpandedDirs({})
+    setAgents([])
+    setSelectedAgent(null)
+    setAgentEntries([])
+    setAgentExpandedDirs({})
+    setFileContent(null)
+  }, [projectId])
+
+  // Fetch root entries for project files
+  const fetchDir = useCallback(async (dir = '') => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ source: 'project' })
+      if (dir) params.set('dir', dir)
+      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const data = await res.json()
+      setEntries(data.entries ?? [])
+      setCurrentDir(data.currentDir ?? dir)
+      setBreadcrumb(data.breadcrumb ?? [])
+      setTruncated(!!data.truncated)
+      setExpandedDirs({})
+    } catch { setEntries([]) }
+    setLoading(false)
+  }, [projectId])
+
+  // Fetch agent workspaces list
+  const fetchAgents = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/files?source=workspaces`)
+      const data = await res.json()
+      setAgents(data.agents ?? [])
+    } catch { setAgents([]) }
+    setLoading(false)
+  }, [projectId])
+
+  // Load on source change
+  useEffect(() => {
+    if (source === 'project') {
+      fetchDir('')
+    } else {
+      fetchAgents()
+      setSelectedAgent(null)
+      setAgentEntries([])
+      setAgentExpandedDirs({})
+    }
+  }, [source, fetchDir, fetchAgents])
+
+  // Toggle expand/collapse a directory in project tree
+  const toggleDir = async (dirPath: string) => {
+    if (expandedDirs[dirPath]) {
+      setExpandedDirs(prev => {
+        const next = { ...prev }
+        // Also collapse children
+        for (const key of Object.keys(next)) {
+          if (key === dirPath || key.startsWith(dirPath + '/')) delete next[key]
+        }
+        return next
+      })
+      return
+    }
+    setLoadingDirs(prev => new Set(prev).add(dirPath))
+    try {
+      const params = new URLSearchParams({ source: 'project', dir: dirPath })
+      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const data = await res.json()
+      setExpandedDirs(prev => ({ ...prev, [dirPath]: data.entries ?? [] }))
+    } catch { /* ignore */ }
+    setLoadingDirs(prev => { const s = new Set(prev); s.delete(dirPath); return s })
   }
 
-  if (files.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-        <p className="text-sm">{t('projects.noFiles') || 'No files found'}</p>
+  // Select agent workspace
+  const selectAgent = async (agentId: string) => {
+    if (selectedAgent === agentId) { setSelectedAgent(null); return }
+    setSelectedAgent(agentId)
+    setAgentExpandedDirs({})
+    setAgentLoadingDirs(new Set())
+    try {
+      const params = new URLSearchParams({ source: 'workspaces', agentId })
+      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const data = await res.json()
+      setAgentEntries(data.entries ?? [])
+    } catch { setAgentEntries([]) }
+  }
+
+  // Toggle expand/collapse directory in agent workspace
+  const toggleAgentDir = async (dirPath: string) => {
+    if (!selectedAgent) return
+    if (agentExpandedDirs[dirPath]) {
+      setAgentExpandedDirs(prev => {
+        const next = { ...prev }
+        for (const key of Object.keys(next)) {
+          if (key === dirPath || key.startsWith(dirPath + '/')) delete next[key]
+        }
+        return next
+      })
+      return
+    }
+    setAgentLoadingDirs(prev => new Set(prev).add(dirPath))
+    try {
+      const params = new URLSearchParams({ source: 'workspaces', agentId: selectedAgent, dir: dirPath })
+      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const data = await res.json()
+      setAgentExpandedDirs(prev => ({ ...prev, [dirPath]: data.entries ?? [] }))
+    } catch { /* ignore */ }
+    setAgentLoadingDirs(prev => { const s = new Set(prev); s.delete(dirPath); return s })
+  }
+
+  // Fetch file content for preview
+  const openFile = async (path: string, fileSrc: FileSource, agentId?: string) => {
+    setLoadingContent(true)
+    try {
+      const params = new URLSearchParams({ file: path, source: fileSrc })
+      if (agentId) params.set('agentId', agentId)
+      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const data = await res.json()
+      setFileContent({ path, content: data.content ?? data.error ?? '', source: fileSrc, agentId })
+    } catch {
+      setFileContent({ path, content: '(Failed to load)', source: fileSrc, agentId })
+    }
+    setLoadingContent(false)
+  }
+
+  const formatSize = (bytes: number) => {
+    if (bytes > 1_048_576) return `${(bytes / 1_048_576).toFixed(1)}M`
+    if (bytes > 1024) return `${(bytes / 1024).toFixed(1)}K`
+    return `${bytes}B`
+  }
+
+  // Recursive render for directory tree entries
+  const renderEntries = (
+    items: DirEntry[],
+    depth: number,
+    expanded: Record<string, DirEntry[]>,
+    loadingSet: Set<string>,
+    onToggle: (path: string) => void,
+    fileSrc: FileSource,
+    agentId?: string,
+  ): React.ReactNode => {
+    return items.map(entry => (
+      <div key={entry.path}>
+        <button
+          onClick={() => {
+            if (entry.type === 'directory') onToggle(entry.path)
+            else openFile(entry.path, fileSrc, agentId)
+          }}
+          className={`w-full flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors border-b border-border/50 last:border-0 ${
+            fileContent?.path === entry.path && fileContent?.source === fileSrc && fileContent?.agentId === agentId
+              ? 'bg-primary/10 text-foreground'
+              : 'hover:bg-muted/50'
+          }`}
+          style={{ paddingLeft: `${12 + depth * 16}px` }}
+        >
+          {entry.type === 'directory' ? (
+            loadingSet.has(entry.path) ? (
+              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground shrink-0" />
+            ) : expanded[entry.path] ? (
+              <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+            )
+          ) : (
+            <span className="w-3 shrink-0" />
+          )}
+          {entry.type === 'directory'
+            ? <FolderTree className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            : <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+          }
+          <span className="truncate">{entry.name}</span>
+          {entry.type === 'directory' && entry.childCount !== undefined && (
+            <span className="ml-auto text-[10px] text-muted-foreground shrink-0">({entry.childCount})</span>
+          )}
+          {entry.type === 'file' && entry.size !== undefined && (
+            <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{formatSize(entry.size)}</span>
+          )}
+        </button>
+        {entry.type === 'directory' && expanded[entry.path] && (
+          expanded[entry.path].length > 0
+            ? renderEntries(expanded[entry.path], depth + 1, expanded, loadingSet, onToggle, fileSrc, agentId)
+            : <div className="text-[10px] text-muted-foreground py-1" style={{ paddingLeft: `${28 + (depth + 1) * 16}px` }}>({t('projects.noFiles') || 'empty'})</div>
+        )}
       </div>
-    )
+    ))
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      {/* File tree */}
-      <div className="border border-border rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b border-border">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-            <FolderTree className="w-3.5 h-3.5" /> {files.filter(f => f.type === 'file').length} files
-          </span>
-          <button onClick={onRefresh} className="text-xs text-muted-foreground hover:text-foreground">
-            Refresh
-          </button>
-        </div>
-        <div className="max-h-[55vh] overflow-y-auto">
-          {files.map((f, i) => {
-            const depth = f.path.split('/').length - 1
-            const indent = depth * 16
-            return (
-              <button
-                key={`${f.source}-${f.path}-${i}`}
-                onClick={() => f.type === 'file' && onSelectFile(f.path, f.name, f.source)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors border-b border-border/50 last:border-0 ${
-                  fileContent?.path === f.path && fileContent?.source === f.source
-                    ? 'bg-primary/10 text-foreground'
-                    : f.type === 'file' ? 'hover:bg-muted/50 cursor-pointer' : 'text-muted-foreground'
-                }`}
-                style={{ paddingLeft: `${12 + indent}px` }}
-                disabled={f.type === 'directory'}
-              >
-                {f.type === 'directory'
-                  ? <FolderTree className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  : <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                }
-                <span className="truncate">{f.name}</span>
-                {f.source === 'project' && f.type === 'file' && (
-                  <span className="ml-auto text-[10px] text-emerald-500 shrink-0">doc</span>
-                )}
-                {f.size !== undefined && (
-                  <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
-                    {f.size > 1024 ? `${(f.size / 1024).toFixed(1)}K` : `${f.size}B`}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+    <div className="space-y-3">
+      {/* Sub-tabs: Project Files / Agent Outputs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setSource('project')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            source === 'project' ? 'bg-primary/10 text-primary border border-primary/30' : 'text-muted-foreground hover:text-foreground border border-border'
+          }`}
+        >
+          <FolderTree className="w-3.5 h-3.5" /> {t('projects.projectFiles') || 'Project Files'}
+        </button>
+        <button
+          onClick={() => setSource('workspaces')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            source === 'workspaces' ? 'bg-primary/10 text-primary border border-primary/30' : 'text-muted-foreground hover:text-foreground border border-border'
+          }`}
+        >
+          <Bot className="w-3.5 h-3.5" /> {t('projects.agentOutputs') || 'Agent Outputs'}
+        </button>
       </div>
 
-      {/* File preview */}
-      <div className="border border-border rounded-lg overflow-hidden">
-        <div className="px-3 py-2 bg-muted/30 border-b border-border">
-          {fileContent ? (
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-medium truncate">{fileContent.path}</span>
-              <button
-                onClick={onCloseFile}
-                className="text-xs text-muted-foreground hover:text-foreground ml-2 shrink-0"
-              >
-                &times;
-              </button>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Left: file tree */}
+        <div className="border border-border rounded-lg overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
+          ) : source === 'project' ? (
+            <>
+              {/* Breadcrumb */}
+              {breadcrumb.length > 0 && (
+                <div className="flex items-center gap-1 px-3 py-2 bg-muted/30 border-b border-border text-xs">
+                  <button onClick={() => fetchDir('')} className="text-primary hover:underline">{projectId}</button>
+                  {breadcrumb.map((seg, i) => (
+                    <span key={i} className="flex items-center gap-1">
+                      <span className="text-muted-foreground">/</span>
+                      <button
+                        onClick={() => fetchDir(breadcrumb.slice(0, i + 1).join('/'))}
+                        className={i === breadcrumb.length - 1 ? 'text-foreground' : 'text-primary hover:underline'}
+                      >
+                        {seg}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="max-h-[55vh] overflow-y-auto">
+                {entries.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">{t('projects.noFiles') || 'No files found'}</p>
+                  </div>
+                ) : (
+                  <>
+                    {renderEntries(entries, 0, expandedDirs, loadingDirs, toggleDir, 'project')}
+                    {truncated && (
+                      <div className="text-center py-2 text-[10px] text-muted-foreground">
+                        {t('projects.truncated') || 'Showing first 500 entries'}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           ) : (
-            <span className="text-xs text-muted-foreground">{t('agents.selectFile') || 'Select a file to preview'}</span>
+            /* Agent Outputs */
+            <div className="max-h-[55vh] overflow-y-auto">
+              {agents.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Bot className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">{t('projects.noFiles') || 'No agent outputs'}</p>
+                </div>
+              ) : (
+                agents.map(agent => (
+                  <div key={agent.agentId}>
+                    <button
+                      onClick={() => selectAgent(agent.agentId)}
+                      className={`w-full flex items-center gap-2 px-3 py-2.5 text-xs transition-colors border-b border-border/50 hover:bg-muted/50 ${
+                        selectedAgent === agent.agentId ? 'bg-primary/10' : ''
+                      }`}
+                    >
+                      {selectedAgent === agent.agentId ? (
+                        <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                      )}
+                      <span className="text-sm">{ROLE_EMOJI[agent.agentId] ?? '🤖'}</span>
+                      <span className="font-medium">{agent.agentId}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+                        {agent.fileCount} {t('projects.fileCount') || 'files'} · {formatSize(agent.totalSize)}
+                      </span>
+                    </button>
+                    {selectedAgent === agent.agentId && (
+                      agentEntries.length > 0
+                        ? renderEntries(agentEntries, 1, agentExpandedDirs, agentLoadingDirs, toggleAgentDir, 'workspaces', agent.agentId)
+                        : <div className="text-[10px] text-muted-foreground py-2 pl-10">({t('projects.noFiles') || 'empty'})</div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
-        <div className="max-h-[55vh] overflow-y-auto">
-          {loadingContent ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-            </div>
-          ) : fileContent ? (
-            <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 leading-relaxed">
-              {fileContent.content}
-            </pre>
-          ) : (
-            <div className="flex items-center justify-center py-12 text-muted-foreground">
-              <FileText className="w-8 h-8 opacity-20" />
-            </div>
-          )}
+
+        {/* Right: file preview */}
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="px-3 py-2 bg-muted/30 border-b border-border">
+            {fileContent ? (
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-medium truncate">{fileContent.path}</span>
+                <button
+                  onClick={() => setFileContent(null)}
+                  className="text-xs text-muted-foreground hover:text-foreground ml-2 shrink-0"
+                >
+                  &times;
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t('agents.selectFile') || 'Select a file to preview'}</span>
+            )}
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto">
+            {loadingContent ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : fileContent ? (
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 leading-relaxed">
+                {fileContent.content}
+              </pre>
+            ) : (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <FileText className="w-8 h-8 opacity-20" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

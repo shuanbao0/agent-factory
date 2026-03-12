@@ -189,7 +189,15 @@
     "assignedAgents": "参与智能体",
     "department": "部门",
     "selectDepartment": "选择部门",
-    "noDepartment": "无部门"
+    "noDepartment": "无部门",
+    "projectFiles": "项目文件",
+    "agentOutputs": "Agent 产出",
+    "fileCount": "个文件",
+    "totalSize": "总大小",
+    "noFiles": "暂无文件",
+    "truncated": "显示前 500 项",
+    "overview": "概览",
+    "files": "文件"
   },
   "skills": {
     "title": "技能商店",

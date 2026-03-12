@@ -6,60 +6,62 @@ export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
 
-interface FileEntry {
+const SKIP_DIRS = new Set(['node_modules', '.next', '.git', '__pycache__', '.turbo', '.vercel'])
+const MAX_ENTRIES = 500
+
+interface DirEntry {
   name: string
   type: 'file' | 'directory'
   size?: number
   path: string
-  source: 'project' | 'code'
+  childCount?: number
 }
 
 /**
  * GET /api/projects/[id]/files
  *
- * Without ?file= → list files from project dir + codeLocation
- * With ?file=path&source=project|code → return file content
+ * Query params:
+ *   ?dir=subdir          — list contents of a subdirectory (default: root)
+ *   ?source=project|workspaces  — project files or agent workspaces (default: project)
+ *   ?agentId=xxx         — when source=workspaces, browse a specific agent's workspace
+ *   ?file=path&source=project|workspaces  — return file content
  */
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { id } = params
-  if (!id || id.includes('..') || id.includes('/')) {
+
+  // Security: resolve the id-based path and verify it stays within PROJECTS_DIR
+  const projectDir = resolve(PROJECTS_DIR, id)
+  if (!projectDir.startsWith(PROJECTS_DIR + '/') && projectDir !== PROJECTS_DIR) {
     return NextResponse.json({ error: 'invalid id' }, { status: 400 })
   }
-
-  const projectDir = join(PROJECTS_DIR, id)
   if (!existsSync(projectDir)) {
-    return NextResponse.json({ error: 'Project not found', files: [] }, { status: 404 })
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
 
-  // Read meta for codeLocation (resolve from project root, fallback to project dir)
-  let codeDir: string | null = null
-  try {
-    const metaPath = join(projectDir, '.project-meta.json')
-    if (existsSync(metaPath)) {
-      const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-      if (meta.codeLocation) {
-        const fromRoot = resolve(PROJECT_ROOT, meta.codeLocation)
-        const fromProject = resolve(projectDir, meta.codeLocation)
-        if (existsSync(fromRoot)) codeDir = fromRoot
-        else if (existsSync(fromProject)) codeDir = fromProject
-      }
-    }
-  } catch { /* ignore */ }
-
   const fileParam = req.nextUrl.searchParams.get('file')
-  const sourceParam = req.nextUrl.searchParams.get('source') || 'code'
+  const sourceParam = req.nextUrl.searchParams.get('source') || 'project'
+  const dirParam = req.nextUrl.searchParams.get('dir') || ''
+  const agentIdParam = req.nextUrl.searchParams.get('agentId')
 
   // ── Return file content ────────────────────────────────────────
   if (fileParam) {
-    const baseDir = sourceParam === 'project' ? projectDir : (codeDir || projectDir)
-    const filePath = resolve(baseDir, fileParam)
+    let baseDir: string
+    if (sourceParam === 'workspaces' && agentIdParam) {
+      baseDir = resolve(WORKSPACES_DIR, agentIdParam)
+      if (!baseDir.startsWith(WORKSPACES_DIR + '/')) {
+        return NextResponse.json({ error: 'Invalid agent id' }, { status: 400 })
+      }
+    } else {
+      baseDir = projectDir
+    }
 
-    // Security: prevent path traversal
-    if (!filePath.startsWith(baseDir)) {
+    const filePath = resolve(baseDir, fileParam)
+    if (!filePath.startsWith(baseDir + '/') && filePath !== baseDir) {
       return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
     }
     if (!existsSync(filePath)) {
@@ -80,66 +82,124 @@ export async function GET(
     }
   }
 
-  // ── List files ─────────────────────────────────────────────────
-  try {
-    const files: FileEntry[] = []
+  // ── List agent workspaces overview ─────────────────────────────
+  if (sourceParam === 'workspaces' && !agentIdParam) {
+    try {
+      // Read project meta to get assignedAgents
+      const metaPath = join(projectDir, '.project-meta.json')
+      let assignedAgents: string[] = []
+      if (existsSync(metaPath)) {
+        try {
+          const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+          assignedAgents = meta.assignedAgents || []
+        } catch { /* ignore */ }
+      }
 
-    // 1. Project docs (from projects/{id}/)
-    const docsDir = join(projectDir, 'docs')
-    if (existsSync(docsDir)) {
-      const docFiles = listDir(docsDir, projectDir, 0, 'project')
-      if (docFiles.length > 0) {
-        files.push({ name: 'docs', type: 'directory', path: 'docs', source: 'project' })
-        files.push(...docFiles)
+      // If no assigned agents, scan all workspaces
+      if (assignedAgents.length === 0 && existsSync(WORKSPACES_DIR)) {
+        try {
+          assignedAgents = readdirSync(WORKSPACES_DIR, { withFileTypes: true })
+            .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+            .map(d => d.name)
+        } catch { /* ignore */ }
+      }
+
+      const agents: { agentId: string; fileCount: number; totalSize: number }[] = []
+      for (const agentId of assignedAgents) {
+        const wsDir = join(WORKSPACES_DIR, agentId)
+        if (!existsSync(wsDir)) continue
+        const { count, size } = countDirStats(wsDir)
+        if (count === 0) continue
+        agents.push({ agentId, fileCount: count, totalSize: size })
+      }
+
+      return NextResponse.json({ agents })
+    } catch (e) {
+      return NextResponse.json({ error: String(e), agents: [] }, { status: 500 })
+    }
+  }
+
+  // ── List directory entries (lazy, one level) ───────────────────
+  try {
+    let targetDir: string
+    if (sourceParam === 'workspaces' && agentIdParam) {
+      const agentWs = resolve(WORKSPACES_DIR, agentIdParam)
+      if (!agentWs.startsWith(WORKSPACES_DIR + '/')) {
+        return NextResponse.json({ error: 'Invalid agent id' }, { status: 400 })
+      }
+      targetDir = dirParam ? resolve(agentWs, dirParam) : agentWs
+      if (!targetDir.startsWith(agentWs)) {
+        return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+      }
+    } else {
+      targetDir = dirParam ? resolve(projectDir, dirParam) : projectDir
+      if (!targetDir.startsWith(projectDir)) {
+        return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
       }
     }
 
-    // 2. Code files (from codeLocation)
-    if (codeDir) {
-      const codeFiles = listDir(codeDir, codeDir, 0, 'code')
-      files.push(...codeFiles)
+    if (!existsSync(targetDir) || !statSync(targetDir).isDirectory()) {
+      return NextResponse.json({ entries: [], currentDir: dirParam, breadcrumb: [] })
     }
 
-    return NextResponse.json({ files, codeLocation: codeDir ? true : false })
+    const rawEntries = readdirSync(targetDir, { withFileTypes: true })
+    const filtered = rawEntries.filter(e => !e.name.startsWith('.') && !SKIP_DIRS.has(e.name))
+
+    // Sort: directories first, then files, alphabetical within each group
+    filtered.sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1
+      if (!a.isDirectory() && b.isDirectory()) return 1
+      return a.name.localeCompare(b.name)
+    })
+
+    const truncated = filtered.length > MAX_ENTRIES
+    const limited = truncated ? filtered.slice(0, MAX_ENTRIES) : filtered
+
+    const entries: DirEntry[] = limited.map(entry => {
+      const fullPath = join(targetDir, entry.name)
+      const relativePath = dirParam ? `${dirParam}/${entry.name}` : entry.name
+
+      if (entry.isDirectory()) {
+        let childCount = 0
+        try {
+          childCount = readdirSync(fullPath).filter(n => !n.startsWith('.') && !SKIP_DIRS.has(n)).length
+        } catch { /* permission denied etc */ }
+        return { name: entry.name, type: 'directory' as const, path: relativePath, childCount }
+      } else {
+        let size: number | undefined
+        try { size = statSync(fullPath).size } catch { /* ignore */ }
+        return { name: entry.name, type: 'file' as const, path: relativePath, size }
+      }
+    })
+
+    // Build breadcrumb
+    const breadcrumb = dirParam ? dirParam.split('/').filter(Boolean) : []
+
+    return NextResponse.json({ entries, currentDir: dirParam, breadcrumb, truncated })
   } catch (e) {
-    return NextResponse.json({ error: String(e), files: [] }, { status: 500 })
+    return NextResponse.json({ error: String(e), entries: [] }, { status: 500 })
   }
 }
 
-const SKIP_DIRS = new Set(['node_modules', '.next', '.git', '__pycache__', '.turbo', '.vercel'])
-
-/** Recursively list files (max depth 4) */
-function listDir(dir: string, root: string, depth: number, source: 'project' | 'code'): FileEntry[] {
-  if (depth > 4) return []
-  const entries = readdirSync(dir, { withFileTypes: true })
-  const result: FileEntry[] = []
-
-  // Sort: directories first, then files
-  const sorted = [...entries].sort((a, b) => {
-    if (a.isDirectory() && !b.isDirectory()) return -1
-    if (!a.isDirectory() && b.isDirectory()) return 1
-    return a.name.localeCompare(b.name)
-  })
-
-  for (const entry of sorted) {
-    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
-
-    const fullPath = join(dir, entry.name)
-    const relativePath = fullPath.slice(root.length + 1)
-
-    if (entry.isDirectory()) {
-      const children = listDir(fullPath, root, depth + 1, source)
-      result.push({ name: entry.name, type: 'directory', path: relativePath, source })
-      result.push(...children)
-    } else {
-      try {
-        const stat = statSync(fullPath)
-        result.push({ name: entry.name, type: 'file', size: stat.size, path: relativePath, source })
-      } catch {
-        result.push({ name: entry.name, type: 'file', path: relativePath, source })
+/** Count total files and size in a directory (recursive, capped for perf) */
+function countDirStats(dir: string, maxDepth = 6, depth = 0): { count: number; size: number } {
+  if (depth > maxDepth) return { count: 0, size: 0 }
+  let count = 0
+  let size = 0
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
+      const fullPath = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        const sub = countDirStats(fullPath, maxDepth, depth + 1)
+        count += sub.count
+        size += sub.size
+      } else {
+        count++
+        try { size += statSync(fullPath).size } catch { /* ignore */ }
       }
     }
-  }
-
-  return result
+  } catch { /* permission denied */ }
+  return { count, size }
 }

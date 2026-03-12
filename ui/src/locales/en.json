@@ -189,7 +189,15 @@
     "assignedAgents": "Assigned Agents",
     "department": "Department",
     "selectDepartment": "Select Department",
-    "noDepartment": "No department"
+    "noDepartment": "No department",
+    "projectFiles": "Project Files",
+    "agentOutputs": "Agent Outputs",
+    "fileCount": "files",
+    "totalSize": "Total size",
+    "noFiles": "No files found",
+    "truncated": "Showing first 500 entries",
+    "overview": "Overview",
+    "files": "Files"
   },
   "skills": {
     "title": "Skill Store",
