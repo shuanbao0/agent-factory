@@ -181,10 +181,17 @@ export default function AgentsPage() {
   const busy = agents.filter(a => a.status === 'busy').length
 
   useEffect(() => {
+    let cancelled = false
     fetchModels()
-    agents.forEach(a => {
-      useAppStore.getState().fetchAgentModel(a.id)
+    // Fix 3: only fetch models for agents not yet cached, stagger requests
+    const currentModels = useAppStore.getState().agentModels
+    const uncached = agents.filter(a => !currentModels[a.id])
+    uncached.forEach((a, i) => {
+      setTimeout(() => {
+        if (!cancelled) useAppStore.getState().fetchAgentModel(a.id)
+      }, i * 50)
     })
+    return () => { cancelled = true }
   }, [agents.length, fetchModels])
 
   // ── Fetch workspaces ──────────────────────────────────────────

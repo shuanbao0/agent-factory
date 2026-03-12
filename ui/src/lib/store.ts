@@ -6,6 +6,76 @@ import type { AgentMessage } from './data-fetchers'
 import type { BudgetSummary } from './types'
 import type { AutopilotState, DeptInfo } from './autopilot-shared'
 
+// === Agent enrichment scheduling (Fix 1: deferred merge to unblock event loop) ===
+let _enrichTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleAgentEnrichment(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+) {
+  if (_enrichTimer) return // already scheduled
+  _enrichTimer = setTimeout(() => {
+    _enrichTimer = null
+    const { agents, usageByAgent, tasks } = get()
+    if (!agents.length) return
+
+    // Build lookup maps — O(agents + tasks) instead of O(agents × tasks)
+    const usageMap = new Map<string, UsageByAgent>()
+    for (const u of usageByAgent) usageMap.set(u.agentId, u)
+
+    const tasksByAgent = new Map<string, Task[]>()
+    for (const t of tasks) {
+      const ids = [...(t.assignees || [])]
+      if (t.assignedAgent && !ids.includes(t.assignedAgent)) ids.push(t.assignedAgent)
+      for (const id of ids) {
+        let arr = tasksByAgent.get(id)
+        if (!arr) { arr = []; tasksByAgent.set(id, arr) }
+        arr.push(t)
+      }
+    }
+
+    const enriched: Agent[] = agents.map(a => {
+      const copy = { ...a }
+      // Usage
+      const usage = usageMap.get(a.id)
+        || (usageByAgent.find(u => a.id.includes(u.agentId)))
+      if (usage) {
+        copy.tokensUsed = usage.totals.totalTokens
+        copy.messagesCount = usage.totals.totalMessages || 0
+      }
+      // Tasks
+      const agentTasks = tasksByAgent.get(a.id) || []
+      copy.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
+      copy.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
+      const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
+      if (inProgressTask) {
+        copy.currentTask = inProgressTask.name
+        copy.currentProject = inProgressTask.projectId || undefined
+      } else if (a.status === 'busy') {
+        const pendingTask = agentTasks
+          .filter(t => t.status === 'pending' || t.status === 'assigned')
+          .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
+          [0]
+        if (pendingTask) {
+          copy.currentTask = pendingTask.name
+          copy.currentProject = pendingTask.projectId || undefined
+        } else {
+          copy.currentTask = undefined
+          copy.currentProject = undefined
+        }
+      } else {
+        copy.currentTask = a.currentTask
+        copy.currentProject = a.currentProject
+      }
+      return copy
+    })
+    set({ agents: enriched })
+  }, 0)
+}
+
+// === Fix 4: SSE connection cache ===
+let _activeEventSource: EventSource | null = null
+
 // === Real data types from Gateway ===
 export interface UsageDaily {
   date: string
@@ -347,53 +417,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!res.ok) throw new Error(`${res.status}`)
       const data = await res.json()
       if (data.source === 'gateway' && data.agents?.length) {
-        // Map gateway agents to the Agent interface
-        const agents: Agent[] = data.agents.map((a: Record<string, string>) => ({
-          id: a.id,
-          templateId: a.templateId || null,
-          role: a.role || 'pm',
-          name: a.name || a.id,
-          status: a.status || 'online',
-          description: a.description || '',
-          department: a.department || undefined,
-          tokensUsed: 0,
-          messagesCount: 0,
-          tasksCompleted: 0,
-          tasksInProgress: 0,
-          lastActive: new Date().toISOString(),
-          currentTask: a.isDefault ? 'Default agent' : undefined,
-        }))
-        // Merge token usage from usageByAgent
-        const byAgent = get().usageByAgent
-        for (const a of agents) {
-          const usage = byAgent.find(u => u.agentId === a.id || a.id.includes(u.agentId))
-          if (usage) {
-            a.tokensUsed = usage.totals.totalTokens
-            a.messagesCount = usage.totals.totalMessages || 0
+        // Preserve enriched fields from previous state to avoid flicker
+        const prev = new Map(get().agents.map(a => [a.id, a]))
+        const agents: Agent[] = data.agents.map((a: Record<string, string>) => {
+          const old = prev.get(a.id)
+          return {
+            id: a.id,
+            templateId: a.templateId || null,
+            role: a.role || 'pm',
+            name: a.name || a.id,
+            status: a.status || 'online',
+            description: a.description || '',
+            department: a.department || undefined,
+            tokensUsed: old?.tokensUsed || 0,
+            messagesCount: old?.messagesCount || 0,
+            tasksCompleted: old?.tasksCompleted || 0,
+            tasksInProgress: old?.tasksInProgress || 0,
+            lastActive: new Date().toISOString(),
+            currentTask: old?.currentTask ?? (a.isDefault ? 'Default agent' : undefined),
+            currentProject: old?.currentProject,
           }
-        }
-        // Merge task counts from tasks
-        const tasks = get().tasks
-        for (const a of agents) {
-          const agentTasks = tasks.filter(t => t.assignees?.includes(a.id) || t.assignedAgent === a.id)
-          a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
-          a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
-          const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
-          if (inProgressTask) {
-            a.currentTask = inProgressTask.name
-            a.currentProject = inProgressTask.projectId || undefined
-          } else if (a.status === 'busy') {
-            const pendingTask = agentTasks
-              .filter(t => t.status === 'pending' || t.status === 'assigned')
-              .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
-              [0]
-            if (pendingTask) {
-              a.currentTask = pendingTask.name
-              a.currentProject = pendingTask.projectId || undefined
-            }
-          }
-        }
+        })
         set({ agents, connected: true, dataSource: 'gateway' })
+        scheduleAgentEnrichment(get, set)
       }
     } catch {
       set({ dataSource: 'error' })
@@ -426,16 +472,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           connected: true,
           dataSource: 'gateway',
         })
-        // Update agent token counts and message counts
-        const agents = [...get().agents]
-        for (const a of agents) {
-          const usage = byAgent.find((u: UsageByAgent) => u.agentId === a.id || a.id.includes(u.agentId))
-          if (usage) {
-            a.tokensUsed = usage.totals.totalTokens
-            a.messagesCount = usage.totals.totalMessages || 0
-          }
-        }
-        set({ agents })
+        scheduleAgentEnrichment(get, set)
       }
     } catch {
       // API failed
@@ -486,7 +523,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   connectSSE: () => {
+    // Fix 4: reuse existing connection if still alive
+    if (_activeEventSource && _activeEventSource.readyState !== EventSource.CLOSED) {
+      return () => {} // no-op cleanup — connection already managed
+    }
+
     const es = new EventSource('/api/events')
+    _activeEventSource = es
 
     es.addEventListener('health', (e: MessageEvent) => {
       try {
@@ -511,51 +554,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const data = JSON.parse(e.data)
         if (data.source === 'gateway' && data.agents?.length) {
-          const agents: Agent[] = data.agents.map((a: Record<string, string>) => ({
-            id: a.id,
-            templateId: a.templateId || null,
-            role: a.role || 'pm',
-            name: a.name || a.id,
-            status: a.status || 'online',
-            description: a.description || '',
-            department: a.department || undefined,
-            tokensUsed: 0,
-            messagesCount: 0,
-            tasksCompleted: 0,
-            tasksInProgress: 0,
-            lastActive: new Date().toISOString(),
-            currentTask: a.isDefault ? 'Default agent' : undefined,
-          }))
-          const byAgent = get().usageByAgent
-          for (const a of agents) {
-            const usage = byAgent.find(u => u.agentId === a.id || a.id.includes(u.agentId))
-            if (usage) {
-              a.tokensUsed = usage.totals.totalTokens
-              a.messagesCount = usage.totals.totalMessages || 0
+          // Preserve enriched fields from previous state to avoid flicker
+          const prev = new Map(get().agents.map(a => [a.id, a]))
+          const agents: Agent[] = data.agents.map((a: Record<string, string>) => {
+            const old = prev.get(a.id)
+            return {
+              id: a.id,
+              templateId: a.templateId || null,
+              role: a.role || 'pm',
+              name: a.name || a.id,
+              status: a.status || 'online',
+              description: a.description || '',
+              department: a.department || undefined,
+              tokensUsed: old?.tokensUsed || 0,
+              messagesCount: old?.messagesCount || 0,
+              tasksCompleted: old?.tasksCompleted || 0,
+              tasksInProgress: old?.tasksInProgress || 0,
+              lastActive: new Date().toISOString(),
+              currentTask: old?.currentTask ?? (a.isDefault ? 'Default agent' : undefined),
+              currentProject: old?.currentProject,
             }
-          }
-          // Merge task counts
-          const tasks = get().tasks
-          for (const a of agents) {
-            const agentTasks = tasks.filter(t => t.assignees?.includes(a.id) || t.assignedAgent === a.id)
-            a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
-            a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
-            const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
-            if (inProgressTask) {
-              a.currentTask = inProgressTask.name
-              a.currentProject = inProgressTask.projectId || undefined
-            } else if (a.status === 'busy') {
-              const pendingTask = agentTasks
-                .filter(t => t.status === 'pending' || t.status === 'assigned')
-                .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
-                [0]
-              if (pendingTask) {
-                a.currentTask = pendingTask.name
-                a.currentProject = pendingTask.projectId || undefined
-              }
-            }
-          }
+          })
           set({ agents, connected: true, dataSource: 'gateway' })
+          scheduleAgentEnrichment(get, set)
         }
       } catch { /* ignore */ }
     })
@@ -593,15 +614,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             connected: true,
             dataSource: 'gateway',
           })
-          const agents = [...get().agents]
-          for (const a of agents) {
-            const usage = byAgent.find((u: UsageByAgent) => u.agentId === a.id || a.id.includes(u.agentId))
-            if (usage) {
-              a.tokensUsed = usage.totals.totalTokens
-              a.messagesCount = usage.totals.totalMessages || 0
-            }
-          }
-          set({ agents })
+          scheduleAgentEnrichment(get, set)
         }
       } catch { /* ignore */ }
     })
@@ -610,7 +623,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const data = JSON.parse(e.data)
         if (data.tasks) {
-          // Normalize legacy fields
           const tasks: Task[] = (data.tasks as Record<string, unknown>[]).map(t => ({
             id: t.id as string,
             name: t.name as string,
@@ -631,34 +643,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             completedAt: t.completedAt as string | undefined,
           }))
           set({ tasks })
-          // Re-merge task counts into agents
-          const agents = [...get().agents]
-          for (const a of agents) {
-            const agentTasks = tasks.filter(t => t.assignees?.includes(a.id) || t.assignedAgent === a.id)
-            a.tasksCompleted = agentTasks.filter(t => t.status === 'completed').length
-            a.tasksInProgress = agentTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length
-            const inProgressTask = agentTasks.find(t => t.status === 'in_progress')
-            if (inProgressTask) {
-              a.currentTask = inProgressTask.name
-              a.currentProject = inProgressTask.projectId || undefined
-            } else if (a.status === 'busy') {
-              const pendingTask = agentTasks
-                .filter(t => t.status === 'pending' || t.status === 'assigned')
-                .sort((x, y) => (y.updatedAt || y.createdAt || '').localeCompare(x.updatedAt || x.createdAt || ''))
-                [0]
-              if (pendingTask) {
-                a.currentTask = pendingTask.name
-                a.currentProject = pendingTask.projectId || undefined
-              } else {
-                a.currentTask = undefined
-                a.currentProject = undefined
-              }
-            } else {
-              a.currentTask = undefined
-              a.currentProject = undefined
-            }
-          }
-          set({ agents })
+          scheduleAgentEnrichment(get, set)
         }
       } catch { /* ignore */ }
     })
@@ -683,6 +668,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return () => {
       es.close()
+      if (_activeEventSource === es) _activeEventSource = null
     }
   },
 }))

@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -12,6 +12,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const fetchAutopilotDepts = useAppStore(s => s.fetchAutopilotDepts)
   const fetchBudget = useAppStore(s => s.fetchBudget)
   const tabVisible = useAppStore(s => s.tabVisible)
+
+  // Fix 2: use ref so interval callbacks read current value without
+  // causing useEffect to tear down / rebuild intervals on tab switch
+  const tabVisibleRef = useRef(tabVisible)
+  useEffect(() => { tabVisibleRef.current = tabVisible }, [tabVisible])
 
   // SSE connection
   useEffect(() => {
@@ -36,23 +41,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Autopilot polling — core state every 5s
   useEffect(() => {
     fetchAutopilot()
-    const t = setInterval(() => { if (tabVisible) fetchAutopilot() }, 5000)
+    const t = setInterval(() => { if (tabVisibleRef.current) fetchAutopilot() }, 5000)
     return () => clearInterval(t)
-  }, [fetchAutopilot, tabVisible])
+  }, [fetchAutopilot])
 
   // Autopilot departments polling — every 10s
   useEffect(() => {
     fetchAutopilotDepts()
-    const t = setInterval(() => { if (tabVisible) fetchAutopilotDepts() }, 10000)
+    const t = setInterval(() => { if (tabVisibleRef.current) fetchAutopilotDepts() }, 10000)
     return () => clearInterval(t)
-  }, [fetchAutopilotDepts, tabVisible])
+  }, [fetchAutopilotDepts])
 
   // Budget polling — every 15s
   useEffect(() => {
     fetchBudget()
-    const t = setInterval(() => { if (tabVisible) fetchBudget() }, 15000)
+    const t = setInterval(() => { if (tabVisibleRef.current) fetchBudget() }, 15000)
     return () => clearInterval(t)
-  }, [fetchBudget, tabVisible])
+  }, [fetchBudget])
 
   return <>{children}</>
 }
