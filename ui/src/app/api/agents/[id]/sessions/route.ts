@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { gwCall } from '@/lib/gateway-client'
+import { gwCallAsync } from '@/lib/gateway-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +19,7 @@ export async function GET(
   try {
     if (sessionKey) {
       // ── Fetch session history ────────────────────────────────
-      const result = gwCall('sessions.history', {
+      const result = await gwCallAsync('sessions.history', {
         sessionKey,
         limit: 50,
       }) as { messages?: Array<{ role: string; content: string; timestamp?: string }> }
@@ -37,7 +37,7 @@ export async function GET(
     }
 
     // ── List sessions for agent ──────────────────────────────
-    const result = gwCall('sessions.list', { agentId }) as {
+    const result = await gwCallAsync('sessions.list', { agentId }) as {
       sessions?: Array<{
         key: string
         agentId: string

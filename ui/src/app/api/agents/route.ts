@@ -352,7 +352,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2.6. Create skill symlinks (must happen before TOOLS.md generation)
-    syncSkillSymlinks(id, finalSkills)
+    await syncSkillSymlinks(id, finalSkills)
 
     // 3. Materialize TOOLS.md
     if (tmplDir && existsSync(join(tmplDir, 'TOOLS.md'))) {
@@ -567,7 +567,7 @@ export async function PUT(req: NextRequest) {
     // Regenerate TOOLS.md in agents/{id}/ when skills change
     if (skills !== undefined) {
       const finalSkills = (agentJson.skills as string[]) || []
-      syncSkillSymlinks(id, finalSkills)
+      await syncSkillSymlinks(id, finalSkills)
       writeFileSync(join(agentDir, 'TOOLS.md'), generateToolsMd(id, finalSkills, agentDir))
     }
 

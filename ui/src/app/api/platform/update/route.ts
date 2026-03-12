@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec as execCb } from 'child_process'
+import { promisify } from 'util'
 import { resolve } from 'path'
 import { readFileSync } from 'fs'
 
 export const dynamic = 'force-dynamic'
 
+const execAsync = promisify(execCb)
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 
 function getInstalledVersion(): string {
@@ -16,13 +18,13 @@ function getInstalledVersion(): string {
   }
 }
 
-function getLatestVersion(): string | null {
+async function getLatestVersion(): Promise<string | null> {
   try {
-    const response = execSync(
+    const { stdout } = await execAsync(
       'curl -fsSL https://api.github.com/repos/shuanbao0/agent-factory/releases/latest',
-      { encoding: 'utf-8', timeout: 15000, stdio: ['pipe', 'pipe', 'pipe'] }
+      { encoding: 'utf-8', timeout: 15000 }
     )
-    const data = JSON.parse(response)
+    const data = JSON.parse(stdout)
     return data.tag_name?.replace(/^v/, '') || null
   } catch {
     return null
@@ -32,7 +34,7 @@ function getLatestVersion(): string | null {
 // GET: check current + latest version
 export async function GET() {
   const current = getInstalledVersion()
-  const latest = getLatestVersion()
+  const latest = await getLatestVersion()
   const hasUpdate = !!(current && latest && current !== latest && current !== 'unknown')
 
   return NextResponse.json({
@@ -49,12 +51,11 @@ export async function POST(req: NextRequest) {
     const current = getInstalledVersion()
 
     // Use the CLI update command which handles download, rsync, migrations, base-rules
-    const output = execSync('node bin/agent-factory.mjs update', {
+    const { stdout } = await execAsync('node bin/agent-factory.mjs update', {
       cwd: PROJECT_ROOT,
       timeout: 300000, // 5 minutes for full update
       encoding: 'utf-8',
       env: { ...process.env, AGENT_FACTORY_DIR: PROJECT_ROOT },
-      stdio: ['pipe', 'pipe', 'pipe'],
     })
 
     const newVersion = getInstalledVersion()
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
       previousVersion: current,
       currentVersion: newVersion,
       updated,
-      output: output.slice(-2000),
+      output: stdout.slice(-2000),
     })
   } catch (e: any) {
     // The update may have partially succeeded (version bumped but restart needed)

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { execFile as execFileCb, exec as execCb } from 'child_process'
+import { promisify } from 'util'
 
 export const dynamic = 'force-dynamic'
+
+const execFileAsync = promisify(execFileCb)
+const execAsync = promisify(execCb)
 
 /**
  * POST /api/skills/install-bin — install a binary dependency via brew
@@ -17,18 +21,18 @@ export async function POST(req: NextRequest) {
 
     // Check if brew is available
     try {
-      execSync('which brew', { encoding: 'utf-8', timeout: 5000 })
+      await execFileAsync('which', ['brew'], { timeout: 5000 })
     } catch {
       return NextResponse.json({ ok: false, output: 'Homebrew is not installed. Visit https://brew.sh to install it.' }, { status: 400 })
     }
 
-    const output = execSync(`brew install ${bin} 2>&1`, {
+    const { stdout } = await execAsync(`brew install ${bin} 2>&1`, {
       encoding: 'utf-8',
       timeout: 120000,
       env: { ...process.env, HOMEBREW_NO_AUTO_UPDATE: '1' },
-    }).trim()
+    })
 
-    return NextResponse.json({ ok: true, output })
+    return NextResponse.json({ ok: true, output: stdout.trim() })
   } catch (e: any) {
     const output = e.stderr || e.stdout || e.message || 'Install failed'
     return NextResponse.json({ ok: false, output: String(output) }, { status: 500 })

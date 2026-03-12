@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { gwCall, gwCallAsync } from '@/lib/gateway-client'
+import { gwCallAsync } from '@/lib/gateway-client'
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 
@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
       agentFilter = new Set(agentsParam.split(',').map(s => s.trim()).filter(Boolean))
     }
 
-    const sessionsResult = gwCall('sessions.list', { limit: 100 }) as {
+    const sessionsResult = await gwCallAsync('sessions.list', { limit: 100 }, 15000) as {
       sessions?: GatewaySession[]
     }
 
@@ -377,7 +377,7 @@ export async function GET(request: NextRequest) {
     // ── Parse gateway logs for error events ─────────────────────
     if (!agentFilter) {
       try {
-        const logsResult = gwCall('logs.tail') as { lines?: string[] }
+        const logsResult = await gwCallAsync('logs.tail', undefined, 15000) as { lines?: string[] }
         const lines = logsResult.lines || []
         const seen = new Set<string>()
 

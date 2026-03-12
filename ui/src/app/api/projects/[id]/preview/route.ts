@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
-import { spawn, execSync } from 'child_process'
+import { spawn, execFile as execFileCb } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFileCb)
 import net from 'net'
 
 export const dynamic = 'force-dynamic'
@@ -115,9 +118,14 @@ export async function GET(
     if (listening) {
       // Verify it's our project by checking the process cwd
       try {
-        const pid = execSync(`lsof -i :${port} -t 2>/dev/null`).toString().trim().split('\n')[0]
+        const { stdout: pidOut } = await execFileAsync('lsof', ['-i', `:${port}`, '-t'], { timeout: 5000 })
+          .catch(() => ({ stdout: '' }))
+        const pid = pidOut.toString().trim().split('\n')[0]
         if (pid) {
-          const cwd = execSync(`lsof -p ${pid} 2>/dev/null | grep cwd | awk '{print $NF}'`).toString().trim()
+          const { stdout: lsofOut } = await execFileAsync('lsof', ['-p', pid], { timeout: 5000 })
+            .catch(() => ({ stdout: '' }))
+          const cwdLine = lsofOut.toString().split('\n').find(l => l.includes('cwd'))
+          const cwd = cwdLine ? cwdLine.trim().split(/\s+/).pop() || '' : ''
           if (cwd === codeDir) {
             runningServers.set(id, { pid: parseInt(pid), port })
             return NextResponse.json({

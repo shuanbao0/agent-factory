@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { gwCall } from '@/lib/gateway-client'
+import { gwCallAsync } from '@/lib/gateway-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
     if (searchParams.get('agentId')) params.agentId = searchParams.get('agentId')
     if (searchParams.get('limit')) params.limit = Number(searchParams.get('limit'))
 
-    const result = gwCall('sessions.list', Object.keys(params).length ? params : undefined)
+    const result = await gwCallAsync('sessions.list', Object.keys(params).length ? params : undefined)
     return NextResponse.json({ ...(result as object), source: 'gateway' })
   } catch (e) {
     return NextResponse.json({ error: String(e), source: 'error' }, { status: 502 })
@@ -24,7 +24,7 @@ export async function DELETE(req: Request) {
     if (!sessionKey) {
       return NextResponse.json({ error: 'sessionKey required' }, { status: 400 })
     }
-    const result = gwCall('sessions.kill', { sessionKey })
+    const result = await gwCallAsync('sessions.kill', { sessionKey })
     return NextResponse.json({ ...(result as object), ok: true })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 502 })

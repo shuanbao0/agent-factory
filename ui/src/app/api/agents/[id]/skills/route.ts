@@ -39,7 +39,7 @@ interface SkillInfo {
 }
 
 /** List all available skills from both builtin and project directories */
-function listAllSkills(): SkillInfo[] {
+async function listAllSkills(): Promise<SkillInfo[]> {
   const skills: SkillInfo[] = []
   const seen = new Set<string>()
 
@@ -59,7 +59,7 @@ function listAllSkills(): SkillInfo[] {
   }
 
   // Builtin skills
-  const builtinDir = findBuiltinSkillsDir()
+  const builtinDir = await findBuiltinSkillsDir()
   if (builtinDir) {
     for (const d of readdirSync(builtinDir, { withFileTypes: true })) {
       if (!d.isDirectory() || d.name.startsWith('.') || seen.has(d.name)) continue
@@ -105,7 +105,7 @@ export async function GET(
 
   const config = readAgentConfig(id)
   const enabledSlugs = new Set(config.skills || [])
-  const skills = listAllSkills().map(s => ({
+  const skills = (await listAllSkills()).map(s => ({
     ...s,
     enabled: enabledSlugs.has(s.slug),
   }))
@@ -136,13 +136,13 @@ export async function PUT(
   }
 
   // Validate all slugs exist
-  const allSlugs = new Set(listAllSkills().map(s => s.slug))
+  const allSlugs = new Set((await listAllSkills()).map(s => s.slug))
   const validSlugs = skills.filter(s => allSlugs.has(s))
 
   const config = readAgentConfig(id)
   config.skills = validSlugs
   writeAgentConfig(id, config)
-  syncSkillSymlinks(id, validSlugs)
+  await syncSkillSymlinks(id, validSlugs)
 
   return NextResponse.json({ skills: validSlugs, synced: true })
 }

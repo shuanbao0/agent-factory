@@ -244,8 +244,11 @@ export async function stopGateway(): Promise<{ ok: boolean; error?: string }> {
   // 2) If port is still open, kill whatever process holds it (externally started gateway)
   if (await isPortOpen(GW_PORT)) {
     try {
-      const { execSync } = await import('child_process')
-      const pids = execSync(`lsof -ti:${GW_PORT}`, { encoding: 'utf-8' }).trim()
+      const { execFile } = await import('child_process')
+      const { promisify } = await import('util')
+      const execFileAsync = promisify(execFile)
+      const { stdout } = await execFileAsync('lsof', ['-ti', `:${GW_PORT}`], { timeout: 5000 })
+      const pids = stdout.toString().trim()
       if (pids) {
         for (const pid of pids.split('\n')) {
           try { process.kill(parseInt(pid), 'SIGTERM') } catch { /* already gone */ }

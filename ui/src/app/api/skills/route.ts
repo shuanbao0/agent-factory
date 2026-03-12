@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { readdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { execSync } from 'child_process'
+import { execFile as execFileCb } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFileCb)
 import { cached } from '@/lib/api-cache'
 
 export const dynamic = 'force-dynamic'
@@ -10,11 +13,11 @@ const PROJECT_ROOT = process.env.AGENT_FACTORY_DIR || join(process.cwd(), '..')
 const PROJECT_SKILLS_DIR = join(PROJECT_ROOT, 'skills')
 
 /** Try to find OpenClaw's built-in skills directory */
-function findBuiltinSkillsDir(): string | null {
+async function findBuiltinSkillsDir(): Promise<string | null> {
   // Try to find openclaw via npm root
   try {
-    const openclawRoot = execSync('npm root -g', { encoding: 'utf-8', timeout: 5000 }).trim()
-    const dir = join(openclawRoot, 'openclaw', 'skills')
+    const { stdout } = await execFileAsync('npm', ['root', '-g'], { timeout: 5000 })
+    const dir = join(stdout.toString().trim(), 'openclaw', 'skills')
     if (existsSync(dir)) return dir
   } catch {}
 
@@ -82,7 +85,7 @@ function readSkillsFromDir(dir: string, source: SkillInfo['source']): SkillInfo[
 export async function GET() {
   try {
     const result = await cached('skills:local', 30000, async () => {
-      const builtinDir = findBuiltinSkillsDir()
+      const builtinDir = await findBuiltinSkillsDir()
       const builtinSkills = builtinDir ? readSkillsFromDir(builtinDir, 'builtin') : []
       const projectSkills = readSkillsFromDir(PROJECT_SKILLS_DIR, 'project')
 

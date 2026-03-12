@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { gwCall } from '@/lib/gateway-client'
+import { gwCallAsync } from '@/lib/gateway-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,25 +13,24 @@ export async function POST(req: Request) {
     const { maxAgeDays = 7 } = await req.json().catch(() => ({}))
     const cutoff = Date.now() - maxAgeDays * 86400_000
 
-    const list = gwCall('sessions.list') as { sessions?: SessionItem[] }
+    const list = await gwCallAsync('sessions.list') as { sessions?: SessionItem[] }
     const sessions = list.sessions || []
 
     let cleaned = 0
     const errors: string[] = []
 
-    for (const session of sessions) {
-      // Skip sessions without updatedAt (can't determine age)
-      if (!session.updatedAt) continue
-      // Skip if still active within the retention window
-      if (session.updatedAt > cutoff) continue
-      // Skip :main sessions (primary agent sessions)
-      if (session.key.endsWith(':main')) continue
+    const toKill = sessions.filter(s => s.updatedAt && s.updatedAt <= cutoff && !s.key.endsWith(':main'))
 
-      try {
-        gwCall('sessions.kill', { sessionKey: session.key })
-        cleaned++
-      } catch (e) {
-        errors.push(`${session.key}: ${String(e)}`)
+    // Kill in batches of 5 to avoid overwhelming gateway
+    const BATCH = 5
+    for (let i = 0; i < toKill.length; i += BATCH) {
+      const batch = toKill.slice(i, i + BATCH)
+      const results = await Promise.allSettled(
+        batch.map(s => gwCallAsync('sessions.kill', { sessionKey: s.key }))
+      )
+      for (let j = 0; j < results.length; j++) {
+        if (results[j].status === 'fulfilled') cleaned++
+        else errors.push(`${batch[j].key}: ${(results[j] as PromiseRejectedResult).reason}`)
       }
     }
 
