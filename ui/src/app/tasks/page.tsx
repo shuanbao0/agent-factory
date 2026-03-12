@@ -211,6 +211,48 @@ export default function TasksPage() {
     return Array.from(ids)
   }, [tasks])
 
+  const renderTaskRow = useCallback((task: Task) => (
+    <tr
+      key={task.id}
+      onClick={() => setDetailTask(task)}
+      className="hover:bg-muted/30 cursor-pointer transition-colors"
+    >
+      <td className="px-4 py-2.5">
+        <span className={cn('inline-block w-2.5 h-2.5 rounded-full', statusDot[task.status] || 'bg-zinc-400')} />
+      </td>
+      <td className="px-4 py-2.5 text-foreground font-medium truncate max-w-[200px]">{task.name}</td>
+      <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
+        {task.type ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.type}</span>
+        ) : '-'}
+      </td>
+      <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
+        {task.assignees?.join(', ') || '-'}
+      </td>
+      <td className="px-4 py-2.5 text-muted-foreground hidden lg:table-cell">
+        {task.projectId || t('tasks.standalone')}
+      </td>
+      <td className="px-4 py-2.5">
+        <span className={cn(
+          'text-[10px] font-bold px-1.5 py-0.5 rounded',
+          task.priority === 'P0' ? 'bg-red-500/20 text-red-400'
+            : task.priority === 'P1' ? 'bg-amber-500/20 text-amber-400'
+            : 'bg-blue-500/20 text-blue-400'
+        )}>
+          {task.priority}
+        </span>
+      </td>
+      <td className="px-4 py-2.5 hidden md:table-cell">
+        <div className="flex items-center gap-2">
+          <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+            <div className="h-full bg-primary rounded-full" style={{ width: `${task.progress}%` }} />
+          </div>
+          <span className="text-xs text-muted-foreground">{task.progress}%</span>
+        </div>
+      </td>
+    </tr>
+  ), [t])
+
   // Unique task types for filter
   const typeOptions = useMemo(() => {
     const types = new Set(tasks.map(t => t.type).filter(Boolean) as string[])
@@ -437,47 +479,7 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {activeTasks.map(task => (
-                <tr
-                  key={task.id}
-                  onClick={() => setDetailTask(task)}
-                  className="hover:bg-muted/30 cursor-pointer transition-colors"
-                >
-                  <td className="px-4 py-2.5">
-                    <span className={cn('inline-block w-2.5 h-2.5 rounded-full', statusDot[task.status] || 'bg-zinc-400')} />
-                  </td>
-                  <td className="px-4 py-2.5 text-foreground font-medium truncate max-w-[200px]">{task.name}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
-                    {task.type ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.type}</span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
-                    {task.assignees?.join(', ') || '-'}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground hidden lg:table-cell">
-                    {task.projectId || t('tasks.standalone')}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                      task.priority === 'P0' ? 'bg-red-500/20 text-red-400'
-                        : task.priority === 'P1' ? 'bg-amber-500/20 text-amber-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                    )}>
-                      {task.priority}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 hidden md:table-cell">
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full bg-primary rounded-full" style={{ width: `${task.progress}%` }} />
-                      </div>
-                      <span className="text-xs text-muted-foreground">{task.progress}%</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {activeTasks.map(renderTaskRow)}
             </tbody>
             {terminalTasks.length > 0 && (
               <>
@@ -498,47 +500,7 @@ export default function TasksPage() {
                 </tbody>
                 {showTerminal && (
                   <tbody className="divide-y divide-border opacity-60">
-                    {terminalTasks.map(task => (
-                      <tr
-                        key={task.id}
-                        onClick={() => setDetailTask(task)}
-                        className="hover:bg-muted/30 cursor-pointer transition-colors"
-                      >
-                        <td className="px-4 py-2.5">
-                          <span className={cn('inline-block w-2.5 h-2.5 rounded-full', statusDot[task.status] || 'bg-zinc-400')} />
-                        </td>
-                        <td className="px-4 py-2.5 text-foreground font-medium truncate max-w-[200px]">{task.name}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
-                          {task.type ? (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.type}</span>
-                          ) : '-'}
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
-                          {task.assignees?.join(', ') || '-'}
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground hidden lg:table-cell">
-                          {task.projectId || t('tasks.standalone')}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className={cn(
-                            'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                            task.priority === 'P0' ? 'bg-red-500/20 text-red-400'
-                              : task.priority === 'P1' ? 'bg-amber-500/20 text-amber-400'
-                              : 'bg-blue-500/20 text-blue-400'
-                          )}>
-                            {task.priority}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 hidden md:table-cell">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                              <div className="h-full bg-primary rounded-full" style={{ width: `${task.progress}%` }} />
-                            </div>
-                            <span className="text-xs text-muted-foreground">{task.progress}%</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {terminalTasks.map(renderTaskRow)}
                   </tbody>
                 )}
               </>
