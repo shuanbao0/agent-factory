@@ -262,7 +262,15 @@ async function runDepartmentCycle(deptId) {
       // ── Auto-create tasks from chief's response ──
       const assignments = parseTaskAssignments(result.text)
       if (assignments.length > 0) {
-        const taskPromises = assignments.map(({ agentId, summary }) =>
+        // Dedup: keep only the first assignment per agent to avoid TOCTOU race
+        // when Promise.allSettled runs parallel createWorkTask for the same agent
+        const seen = new Set()
+        const uniqueAssignments = assignments.filter(({ agentId }) => {
+          if (seen.has(agentId)) return false
+          seen.add(agentId)
+          return true
+        })
+        const taskPromises = uniqueAssignments.map(({ agentId, summary }) =>
           createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
             .then(taskId => ({ agentId, taskId }))
         )
