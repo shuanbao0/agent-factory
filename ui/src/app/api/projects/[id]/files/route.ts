@@ -128,12 +128,12 @@ export async function GET(
         return NextResponse.json({ error: 'Invalid agent id' }, { status: 400 })
       }
       targetDir = dirParam ? resolve(agentWs, dirParam) : agentWs
-      if (!targetDir.startsWith(agentWs)) {
+      if (!targetDir.startsWith(agentWs + '/') && targetDir !== agentWs) {
         return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
       }
     } else {
       targetDir = dirParam ? resolve(projectDir, dirParam) : projectDir
-      if (!targetDir.startsWith(projectDir)) {
+      if (!targetDir.startsWith(projectDir + '/') && targetDir !== projectDir) {
         return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
       }
     }
