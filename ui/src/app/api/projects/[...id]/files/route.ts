@@ -30,9 +30,9 @@ interface DirEntry {
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string[] } }
 ) {
-  const { id } = params
+  const id = params.id.join('/')
 
   // Security: resolve the id-based path and verify it stays within PROJECTS_DIR
   const projectDir = resolve(PROJECTS_DIR, id)

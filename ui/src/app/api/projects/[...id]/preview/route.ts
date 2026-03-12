@@ -79,10 +79,14 @@ async function findAvailablePort(start: number): Promise<number> {
  */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string[] } }
 ) {
-  const { id } = params
-  if (!id || id.includes('..') || id.includes('/')) {
+  const id = params.id.join('/')
+  if (!id || id.includes('..')) {
+    return NextResponse.json({ error: 'invalid id' }, { status: 400 })
+  }
+  const resolvedDir = resolve(PROJECTS_DIR, id)
+  if (!resolvedDir.startsWith(PROJECTS_DIR + '/')) {
     return NextResponse.json({ error: 'invalid id' }, { status: 400 })
   }
 
@@ -150,10 +154,14 @@ export async function GET(
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string[] } }
 ) {
-  const { id } = params
-  if (!id || id.includes('..') || id.includes('/')) {
+  const id = params.id.join('/')
+  if (!id || id.includes('..')) {
+    return NextResponse.json({ error: 'invalid id' }, { status: 400 })
+  }
+  const resolvedDir = resolve(PROJECTS_DIR, id)
+  if (!resolvedDir.startsWith(PROJECTS_DIR + '/')) {
     return NextResponse.json({ error: 'invalid id' }, { status: 400 })
   }
 

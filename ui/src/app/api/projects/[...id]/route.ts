@@ -9,16 +9,19 @@ const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string[] } }
 ) {
   try {
-    const { id } = params
-    // Security: no path traversal
-    if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
+    const id = params.id.join('/')
+    // Security: resolve and verify path stays within PROJECTS_DIR
+    if (!id || id.includes('..')) {
       return NextResponse.json({ error: 'invalid project id' }, { status: 400 })
     }
 
-    const projectDir = join(PROJECTS_DIR, id)
+    const projectDir = resolve(PROJECTS_DIR, id)
+    if (!projectDir.startsWith(PROJECTS_DIR + '/')) {
+      return NextResponse.json({ error: 'invalid project id' }, { status: 400 })
+    }
     if (!existsSync(projectDir)) {
       return NextResponse.json({ error: `Project not found: ${id}` }, { status: 404 })
     }
