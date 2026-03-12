@@ -103,6 +103,13 @@ async function completeCycleTask(agentId, taskId, result) {
  */
 async function createWorkTask(assignee, taskName, deptId, options = {}) {
   try {
+    // Dedup: skip creation if agent already has an active task in the same project
+    const existingId = await findActiveTaskForAgent(assignee, deptId)
+    if (existingId) {
+      logger.info('task-bridge', `Reusing active task ${existingId} for ${assignee} (skip create: ${taskName})`)
+      return existingId
+    }
+
     const result = await apiRequest('POST', '/api/agent-tasks', {
       agent: assignee,
       name: taskName,
@@ -141,4 +148,26 @@ async function updateTaskStatus(agentId, taskId, status) {
   }
 }
 
-module.exports = { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus }
+/**
+ * Find an active (non-terminal) task for a given agent, optionally scoped to a project.
+ * Returns the first matching task ID, or null.
+ *
+ * @param {string} assignee - Agent ID
+ * @param {string} [deptId] - Project/department ID (optional filter)
+ * @returns {Promise<string|null>}
+ */
+async function findActiveTaskForAgent(assignee, deptId) {
+  try {
+    const params = new URLSearchParams({ agent: assignee })
+    if (deptId) params.set('projectId', deptId)
+    const result = await apiRequest('GET', `/api/agent-tasks?${params.toString()}`)
+    if (!result || !Array.isArray(result.tasks)) return null
+    const activeStatuses = new Set(['pending', 'assigned', 'in_progress', 'rework'])
+    const active = result.tasks.find(t => activeStatuses.has(t.status))
+    return active ? active.id : null
+  } catch {
+    return null
+  }
+}
+
+module.exports = { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus, findActiveTaskForAgent }

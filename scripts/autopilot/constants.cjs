@@ -49,7 +49,7 @@ const SESSION_RESET_INPUT_TOKENS = 80000     // Reset session when inputTokens e
 const SESSION_FORCE_COMPACT_TOKENS = 50000   // Force compact when inputTokens exceeds this
 
 // Task auto-transition thresholds
-const IDLE_COMPLETE_MINS = 10               // Agent idle N minutes → in_progress task auto-completed
+const IDLE_COMPLETE_MINS = 8                // Agent idle N minutes → in_progress task auto-completed (2min margin vs 10min cycle)
 const STALE_TASK_MINS = 30                  // Agent idle N minutes + low progress → task failed
 
 // Chief response validation

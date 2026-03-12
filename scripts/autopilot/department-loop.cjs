@@ -234,6 +234,13 @@ async function runDepartmentCycle(deptId) {
     // ── Step 1: Session health check before sending ──
     await ensureSessionHealth(config.head, sessionKey, deptId)
 
+    // ── Step 1.5: Auto-transition stale tasks BEFORE sending ──
+    // Workers have been idle ~10min since last cycle; checking now ensures
+    // idle-based completion fires before sendToAgent resets idle timers.
+    await autoTransitionTasks(deptId, config, '').catch(e =>
+      logger.debug('dept-loop', `Pre-send auto-transition error for ${deptId}`, e)
+    )
+
     // Snapshot idle workers BEFORE sending to chief
     const workers = (config.agents || []).filter(id => id !== config.head)
     const activityBefore = readAgentActivity()
