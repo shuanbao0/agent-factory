@@ -542,7 +542,17 @@
     "validationErrors": "验证错误",
     "qualityGateBlocked": "质量门禁未通过",
     "qualityGatePassed": "质量门禁通过",
-    "maxReworksExceeded": "超过最大返工次数"
+    "maxReworksExceeded": "超过最大返工次数",
+    "stale": "停滞",
+    "staleTasks": "{count} 个停滞任务",
+    "staleMoveTodo": "移回待办",
+    "staleMarkFailed": "标记为失败",
+    "showMore": "显示更多 ({count})...",
+    "showLess": "收起",
+    "clearCompleted": "清除已完成",
+    "confirmClearCompleted": "删除所有已完成和失败的任务？",
+    "showCompleted": "显示 {count} 个已完成/失败",
+    "hideCompleted": "隐藏已完成"
   },
   "messages": {
     "title": "消息中心",

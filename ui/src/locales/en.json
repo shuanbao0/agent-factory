@@ -542,7 +542,17 @@
     "validationErrors": "Validation Errors",
     "qualityGateBlocked": "Quality gate blocked",
     "qualityGatePassed": "Quality gate passed",
-    "maxReworksExceeded": "Max reworks exceeded"
+    "maxReworksExceeded": "Max reworks exceeded",
+    "stale": "Stale",
+    "staleTasks": "{count} stale tasks",
+    "staleMoveTodo": "Move to To Do",
+    "staleMarkFailed": "Mark as Failed",
+    "showMore": "Show {count} more...",
+    "showLess": "Show less",
+    "clearCompleted": "Clear Completed",
+    "confirmClearCompleted": "Delete all completed and failed tasks?",
+    "showCompleted": "Show {count} completed/failed",
+    "hideCompleted": "Hide completed"
   },
   "messages": {
     "title": "Message Center",

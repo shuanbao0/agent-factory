@@ -3,13 +3,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from '@/lib/i18n'
 import { useAppStore } from '@/lib/store'
 import { Task } from '@/lib/types'
-import { TaskCard } from '@/components/task-card'
+import { TaskCard, isTaskStale } from '@/components/task-card'
 import { TaskForm } from '@/components/task-form'
 import { TaskPipeline } from '@/components/task-pipeline'
 import { TaskQuality } from '@/components/task-quality'
 import {
   CheckSquare, Plus, LayoutGrid, List, X,
-  ChevronRight, User, FolderKanban, Clock, Trash2, Edit3, Tag, Shield
+  ChevronRight, User, FolderKanban, Clock, Trash2, Edit3, Tag, Shield, AlertTriangle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -64,6 +64,8 @@ export default function TasksPage() {
   const [filterAgent, setFilterAgent] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterType, setFilterType] = useState('')
+  const [expandedCols, setExpandedCols] = useState<Set<string>>(new Set())
+  const [showTerminal, setShowTerminal] = useState(false)
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
   useEffect(() => { localStorage.setItem('af-task-view', view) }, [view])
@@ -88,6 +90,11 @@ export default function TasksPage() {
     }
     return result
   }, [tasks, filterProject, filterAgent, filterStatus, filterType])
+
+  const staleTasks = useMemo(() => filtered.filter(isTaskStale), [filtered])
+  const terminalStatuses = useMemo(() => new Set(['completed', 'failed']), [])
+  const activeTasks = useMemo(() => filtered.filter(t => !terminalStatuses.has(t.status)), [filtered, terminalStatuses])
+  const terminalTasks = useMemo(() => filtered.filter(t => terminalStatuses.has(t.status)), [filtered, terminalStatuses])
 
   // Group for kanban by status
   const kanbanGroups = useMemo(() => {
@@ -164,6 +171,40 @@ export default function TasksPage() {
     } catch { /* ignore */ }
   }, [fetchTasks, t])
 
+  const handleStaleMoveTodo = useCallback(async () => {
+    for (const task of staleTasks) {
+      await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, status: 'pending' }),
+      })
+    }
+    fetchTasks()
+  }, [staleTasks, fetchTasks])
+
+  const handleStaleMarkFailed = useCallback(async () => {
+    for (const task of staleTasks) {
+      await fetch('/api/tasks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, status: 'failed' }),
+      })
+    }
+    fetchTasks()
+  }, [staleTasks, fetchTasks])
+
+  const handleClearCompleted = useCallback(async () => {
+    if (!confirm(t('tasks.confirmClearCompleted'))) return
+    try {
+      await fetch('/api/tasks/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statuses: ['completed', 'failed'] }),
+      })
+      fetchTasks()
+    } catch { /* ignore */ }
+  }, [fetchTasks, t])
+
   // Unique project names for filter
   const projectOptions = useMemo(() => {
     const ids = new Set(tasks.map(t => t.projectId).filter(Boolean) as string[])
@@ -219,6 +260,15 @@ export default function TasksPage() {
               <List className="w-4 h-4" />
             </button>
           </div>
+          {terminalTasks.length > 0 && (
+            <button
+              onClick={handleClearCompleted}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-red-500/30 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              {t('tasks.clearCompleted')}
+            </button>
+          )}
           <button
             onClick={() => { setEditTask(null); setShowForm(true) }}
             className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:bg-primary/90 transition-colors"
@@ -278,6 +328,30 @@ export default function TasksPage() {
         </select>
       </div>
 
+      {/* Stale tasks banner */}
+      {staleTasks.length > 0 && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <div className="flex items-center gap-2 text-sm text-amber-400">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{t('tasks.staleTasks').replace('{count}', String(staleTasks.length))}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleStaleMoveTodo}
+              className="px-2.5 py-1 text-xs rounded-md bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+            >
+              {t('tasks.staleMoveTodo')}
+            </button>
+            <button
+              onClick={handleStaleMarkFailed}
+              className="px-2.5 py-1 text-xs rounded-md bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+            >
+              {t('tasks.staleMarkFailed')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Empty state */}
       {tasks.length === 0 && (
         <div className="text-center py-16 space-y-3">
@@ -309,9 +383,38 @@ export default function TasksPage() {
                 </span>
               </div>
               <div className="space-y-2 min-h-[200px] p-1.5 rounded-lg bg-muted/30 border border-border/50">
-                {(kanbanGroups[col.key] || []).map(task => (
-                  <TaskCard key={task.id} task={task} onClick={() => setDetailTask(task)} />
-                ))}
+                {(() => {
+                  const colTasks = kanbanGroups[col.key] || []
+                  const isTerminalCol = groupBy === 'status' && (col.key === 'completed' || col.key === 'failed')
+                  const maxCollapsed = 5
+                  const isExpanded = expandedCols.has(col.key)
+                  const visible = isTerminalCol && !isExpanded && colTasks.length > maxCollapsed
+                    ? colTasks.slice(0, maxCollapsed)
+                    : colTasks
+                  const remaining = colTasks.length - visible.length
+                  return (
+                    <>
+                      {visible.map(task => (
+                        <TaskCard key={task.id} task={task} onClick={() => setDetailTask(task)} />
+                      ))}
+                      {isTerminalCol && colTasks.length > maxCollapsed && (
+                        <button
+                          onClick={() => setExpandedCols(prev => {
+                            const next = new Set(prev)
+                            if (next.has(col.key)) next.delete(col.key)
+                            else next.add(col.key)
+                            return next
+                          })}
+                          className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1.5 transition-colors"
+                        >
+                          {isExpanded
+                            ? t('tasks.showLess')
+                            : t('tasks.showMore').replace('{count}', String(remaining))}
+                        </button>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           ))}
@@ -334,7 +437,7 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map(task => (
+              {activeTasks.map(task => (
                 <tr
                   key={task.id}
                   onClick={() => setDetailTask(task)}
@@ -376,6 +479,70 @@ export default function TasksPage() {
                 </tr>
               ))}
             </tbody>
+            {terminalTasks.length > 0 && (
+              <>
+                <tbody>
+                  <tr>
+                    <td colSpan={7} className="px-4 py-2">
+                      <button
+                        onClick={() => setShowTerminal(v => !v)}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ChevronRight className={cn('w-3.5 h-3.5 transition-transform', showTerminal && 'rotate-90')} />
+                        {showTerminal
+                          ? t('tasks.hideCompleted')
+                          : t('tasks.showCompleted').replace('{count}', String(terminalTasks.length))}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+                {showTerminal && (
+                  <tbody className="divide-y divide-border opacity-60">
+                    {terminalTasks.map(task => (
+                      <tr
+                        key={task.id}
+                        onClick={() => setDetailTask(task)}
+                        className="hover:bg-muted/30 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-2.5">
+                          <span className={cn('inline-block w-2.5 h-2.5 rounded-full', statusDot[task.status] || 'bg-zinc-400')} />
+                        </td>
+                        <td className="px-4 py-2.5 text-foreground font-medium truncate max-w-[200px]">{task.name}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
+                          {task.type ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{task.type}</span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground hidden md:table-cell">
+                          {task.assignees?.join(', ') || '-'}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground hidden lg:table-cell">
+                          {task.projectId || t('tasks.standalone')}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={cn(
+                            'text-[10px] font-bold px-1.5 py-0.5 rounded',
+                            task.priority === 'P0' ? 'bg-red-500/20 text-red-400'
+                              : task.priority === 'P1' ? 'bg-amber-500/20 text-amber-400'
+                              : 'bg-blue-500/20 text-blue-400'
+                          )}>
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 hidden md:table-cell">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full bg-primary rounded-full" style={{ width: `${task.progress}%` }} />
+                            </div>
+                            <span className="text-xs text-muted-foreground">{task.progress}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                )}
+              </>
+            )}
           </table>
         </div>
       )}

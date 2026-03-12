@@ -2,7 +2,7 @@
 import { Task } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-import { Clock, User, FolderKanban, Shield, Tag } from 'lucide-react'
+import { Clock, User, FolderKanban, Shield, Tag, AlertTriangle } from 'lucide-react'
 
 interface TaskCardProps {
   task: Task
@@ -25,6 +25,13 @@ const statusColors: Record<string, string> = {
   failed: 'bg-red-500/20 text-red-400',
 }
 
+const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000
+
+export function isTaskStale(task: Task): boolean {
+  if (!['in_progress', 'review', 'rework'].includes(task.status)) return false
+  return Date.now() - new Date(task.updatedAt).getTime() > STALE_THRESHOLD_MS
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
@@ -38,6 +45,7 @@ function timeAgo(dateStr: string): string {
 
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const { t } = useTranslation()
+  const stale = isTaskStale(task)
 
   return (
     <div
@@ -45,7 +53,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       className={cn(
         'p-3 rounded-lg border border-border bg-card/80 hover:bg-card',
         'cursor-pointer transition-all hover:shadow-md hover:border-primary/30',
-        'space-y-2'
+        'space-y-2',
+        stale && 'border-l-2 border-l-amber-500/60'
       )}
     >
       {/* Header: priority + status */}
@@ -53,9 +62,17 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', priorityColors[task.priority] || priorityColors.P1)}>
           {task.priority}
         </span>
-        <span className={cn('text-[10px] px-1.5 py-0.5 rounded', statusColors[task.status] || statusColors.pending)}>
-          {t(`tasks.col${task.status === 'pending' || task.status === 'assigned' ? 'Pending' : task.status === 'in_progress' ? 'InProgress' : task.status === 'review' ? 'Review' : task.status === 'rework' ? 'Rework' : task.status === 'completed' ? 'Completed' : 'Failed'}`)}
-        </span>
+        <div className="flex items-center gap-1">
+          <span className={cn('text-[10px] px-1.5 py-0.5 rounded', statusColors[task.status] || statusColors.pending)}>
+            {t(`tasks.col${task.status === 'pending' || task.status === 'assigned' ? 'Pending' : task.status === 'in_progress' ? 'InProgress' : task.status === 'review' ? 'Review' : task.status === 'rework' ? 'Rework' : task.status === 'completed' ? 'Completed' : 'Failed'}`)}
+          </span>
+          {stale && (
+            <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+              <AlertTriangle className="w-2.5 h-2.5" />
+              {t('tasks.stale')}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Task name + type badge */}
