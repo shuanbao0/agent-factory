@@ -237,6 +237,16 @@ agent-factory logs      # View real-time logs
 agent-factory doctor    # Check environment health
 ```
 
+## Star History
+
+<a href="https://star-history.com/#shuanbao0/agent-factory&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date" />
+ </picture>
+</a>
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.

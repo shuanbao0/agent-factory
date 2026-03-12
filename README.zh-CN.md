@@ -237,6 +237,16 @@ agent-factory logs      # 查看实时日志
 agent-factory doctor    # 检查环境健康状况
 ```
 
+## Star History
+
+<a href="https://star-history.com/#shuanbao0/agent-factory&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date" />
+ </picture>
+</a>
+
 ## 参与贡献
 
 查看 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解贡献指南。

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Factory — One Person + AI = A Complete Company</title>
+  <meta name="description" content="Open-source multi-agent collaboration platform. 64 autonomous AI agents. Run an entire AI-powered company from your terminal." />
+  <meta property="og:title" content="Agent Factory — One Person + AI = A Complete Company" />
+  <meta property="og:description" content="Open-source multi-agent collaboration platform with 64 autonomous AI agents that collaborate, communicate, and deliver real output." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/dashboard.png" />
+  <meta property="og:url" content="https://shuanbao0.github.io/agent-factory" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#0a0a0f',
+            surface: '#12121a',
+            border: '#1e1e2e',
+            accent: '#6366f1',
+            'accent-light': '#818cf8',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0a0a0f; }
+    .gradient-text {
+      background: linear-gradient(135deg, #6366f1 0%, #a78bfa 50%, #6366f1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card-glow:hover {
+      box-shadow: 0 0 30px rgba(99, 102, 241, 0.15);
+    }
+    .hero-glow {
+      background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent);
+    }
+    .copy-btn:active { transform: scale(0.95); }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fade-in 0.6s ease-out forwards; }
+    .animate-delay-1 { animation-delay: 0.1s; opacity: 0; }
+    .animate-delay-2 { animation-delay: 0.2s; opacity: 0; }
+    .animate-delay-3 { animation-delay: 0.3s; opacity: 0; }
+  </style>
+</head>
+<body class="text-gray-200 antialiased">
+
+  <!-- Hero -->
+  <section class="relative hero-glow min-h-screen flex flex-col items-center justify-center px-4 pt-16 pb-24">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="animate-fade-in">
+        <p class="text-sm font-medium text-accent-light tracking-widest uppercase mb-6">Open Source Multi-Agent Platform</p>
+        <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+          <span class="gradient-text">One Person</span> +<br/>Agent Factory =<br/>A Complete <span class="gradient-text">AI Company</span>
+        </h1>
+        <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
+          64 autonomous AI agents — PM, engineers, designers, testers, marketing, legal, finance — collaborating to deliver real output. All running locally from your terminal.
+        </p>
+      </div>
+
+      <!-- CTA -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 animate-fade-in animate-delay-1">
+        <a href="https://github.com/shuanbao0/agent-factory" target="_blank"
+           class="inline-flex items-center gap-2 bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3.5 rounded-lg transition-colors text-lg">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <div class="relative group">
+          <div class="flex items-center bg-surface border border-border rounded-lg overflow-hidden">
+            <code class="px-5 py-3.5 text-gray-300 font-mono text-lg">npx agent-factory start</code>
+            <button onclick="copyInstall(this)" class="copy-btn px-4 py-3.5 border-l border-border text-gray-400 hover:text-white transition-colors" title="Copy">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-center gap-6 text-sm text-gray-500 animate-fade-in animate-delay-2">
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-green-500"></span>
+          Self-contained
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          15+ LLM providers
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+          GPL-3.0
+        </span>
+      </div>
+    </div>
+
+    <!-- Demo GIF -->
+    <div class="mt-16 max-w-5xl w-full mx-auto animate-fade-in animate-delay-3">
+      <div class="rounded-xl border border-border overflow-hidden shadow-2xl">
+        <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/demo.gif" alt="Agent Factory Demo" class="w-full" loading="lazy" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="py-24 px-4">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Everything you need to run an AI company</h2>
+      <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">No cloud dependencies. No external orchestration. Just one command.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Feature 1 -->
+        <div class="bg-surface border border-border rounded-xl p-6 card-glow transition-all duration-300">
+          <div class="text-3xl mb-4">🤖</div>
+          <h3 class="text-lg font-semibold mb-2">64 Agent Templates</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Pre-built roles across 5 departments: Dev, Business, Content, Creative, and Quant. Each with specialized skills, memory, and communication protocols.</p>
+        </div>
+        <!-- Feature 2 -->
+        <div class="bg-surface border border-border rounded-xl p-6 card-glow transition-all duration-300">
+          <div class="text-3xl mb-4">🧠</div>
+          <h3 class="text-lg font-semibold mb-2">CEO-Driven Autopilot</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Give the CEO agent a mission. It auto-decomposes into tasks, assigns to the right agents, and drives parallel execution — no manual coordination.</p>
+        </div>
+        <!-- Feature 3 -->
+        <div class="bg-surface border border-border rounded-xl p-6 card-glow transition-all duration-300">
+          <div class="text-3xl mb-4">💬</div>
+          <h3 class="text-lg font-semibold mb-2">Agent Communication Matrix</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">N×N permission-controlled messaging. Agents collaborate, request reviews, share context, and escalate issues — just like a real team.</p>
+        </div>
+        <!-- Feature 4 -->
+        <div class="bg-surface border border-border rounded-xl p-6 card-glow transition-all duration-300">
+          <div class="text-3xl mb-4">🎮</div>
+          <h3 class="text-lg font-semibold mb-2">Dashboard UI</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Real-time dark-themed dashboard with pixel-art office, task board, message center, log monitor, and skill store. Bilingual (EN/中文).</p>
+        </div>
+        <!-- Feature 5 -->
+        <div class="bg-surface border border-border rounded-xl p-6 card-glow transition-all duration-300">
+          <div class="text-3xl mb-4">🔌</div>
+          <h3 class="text-lg font-semibold mb-2">15+ LLM Providers</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Anthropic, OpenAI, DeepSeek, MiniMax, Google, Mistral, Groq and more. Mix and match models per agent for cost optimization.</p>
+        </div>
+        <!-- Feature 6 -->
+        <div class="bg-surface border border-border rounded-xl p-6 card-glow transition-all duration-300">
+          <div class="text-3xl mb-4">📦</div>
+          <h3 class="text-lg font-semibold mb-2">Fully Self-Contained</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Built-in OpenClaw engine. No cloud. No external orchestration service. One <code class="text-accent-light">npx</code> command to start everything locally.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screenshots -->
+  <section id="screenshots" class="py-24 px-4 bg-surface/50">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">See it in action</h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <div class="rounded-xl border border-border overflow-hidden mb-3">
+            <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/dashboard.png" alt="Dashboard" class="w-full" loading="lazy" />
+          </div>
+          <p class="text-center text-gray-400 text-sm">Dashboard — Real-time overview of your AI company</p>
+        </div>
+        <div>
+          <div class="rounded-xl border border-border overflow-hidden mb-3">
+            <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/pixel-office.png" alt="Pixel Office" class="w-full" loading="lazy" />
+          </div>
+          <p class="text-center text-gray-400 text-sm">Pixel Office — Retro visualization of your AI org</p>
+        </div>
+        <div>
+          <div class="rounded-xl border border-border overflow-hidden mb-3">
+            <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/agents-list.png" alt="Agent List" class="w-full" loading="lazy" />
+          </div>
+          <p class="text-center text-gray-400 text-sm">Agent Management — Create, configure, and monitor agents</p>
+        </div>
+        <div>
+          <div class="rounded-xl border border-border overflow-hidden mb-3">
+            <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/autopilot-mission.png" alt="Autopilot" class="w-full" loading="lazy" />
+          </div>
+          <p class="text-center text-gray-400 text-sm">Autopilot — CEO-driven autonomous task execution</p>
+        </div>
+        <div>
+          <div class="rounded-xl border border-border overflow-hidden mb-3">
+            <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/task-board.png" alt="Task Board" class="w-full" loading="lazy" />
+          </div>
+          <p class="text-center text-gray-400 text-sm">Task Board — Kanban-style task management</p>
+        </div>
+        <div>
+          <div class="rounded-xl border border-border overflow-hidden mb-3">
+            <img src="https://raw.githubusercontent.com/shuanbao0/agent-factory/main/docs/img/skill-store.png" alt="Skill Store" class="w-full" loading="lazy" />
+          </div>
+          <p class="text-center text-gray-400 text-sm">Skill Store — Extend agents with installable skills</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Agent Roles -->
+  <section id="agents" class="py-24 px-4">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">64 Role Templates, 5 Departments</h2>
+      <p class="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Every role a company needs — from CEO to Security Engineer to Novel Writer.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <!-- Dev -->
+        <div class="bg-surface border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-blue-400 mb-3 flex items-center gap-2">
+            <span class="text-lg">💻</span> Development
+          </h3>
+          <ul class="text-sm text-gray-400 space-y-1.5">
+            <li>PM</li>
+            <li>Researcher</li>
+            <li>Product</li>
+            <li>Designer</li>
+            <li>Frontend Dev</li>
+            <li>Backend Dev</li>
+            <li>DevOps</li>
+            <li>DBA</li>
+            <li>Security</li>
+            <li>Tester</li>
+            <li class="text-gray-500">+ more...</li>
+          </ul>
+        </div>
+        <!-- Business -->
+        <div class="bg-surface border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-emerald-400 mb-3 flex items-center gap-2">
+            <span class="text-lg">📊</span> Business
+          </h3>
+          <ul class="text-sm text-gray-400 space-y-1.5">
+            <li>CEO</li>
+            <li>CFO</li>
+            <li>COO</li>
+            <li>Marketing</li>
+            <li>Sales Director</li>
+            <li>Legal Director</li>
+            <li>HR Director</li>
+            <li>BD Manager</li>
+            <li class="text-gray-500">+ more...</li>
+          </ul>
+        </div>
+        <!-- Content -->
+        <div class="bg-surface border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-amber-400 mb-3 flex items-center gap-2">
+            <span class="text-lg">✍️</span> Content
+          </h3>
+          <ul class="text-sm text-gray-400 space-y-1.5">
+            <li>Copywriter</li>
+            <li>SEO Specialist</li>
+            <li>Social Media</li>
+            <li>Content Strategist</li>
+            <li>Technical Writer</li>
+            <li>Editor</li>
+            <li class="text-gray-500">+ more...</li>
+          </ul>
+        </div>
+        <!-- Creative -->
+        <div class="bg-surface border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-pink-400 mb-3 flex items-center gap-2">
+            <span class="text-lg">🎨</span> Creative
+          </h3>
+          <ul class="text-sm text-gray-400 space-y-1.5">
+            <li>Novel Chief</li>
+            <li>Plot Architect</li>
+            <li>Worldbuilder</li>
+            <li>Anime Director</li>
+            <li>Character Designer</li>
+            <li>Storyboard Artist</li>
+            <li class="text-gray-500">+ more...</li>
+          </ul>
+        </div>
+        <!-- Quant -->
+        <div class="bg-surface border border-border rounded-xl p-5">
+          <h3 class="font-semibold text-violet-400 mb-3 flex items-center gap-2">
+            <span class="text-lg">📈</span> Quant
+          </h3>
+          <ul class="text-sm text-gray-400 space-y-1.5">
+            <li>Quant Chief</li>
+            <li>Researcher</li>
+            <li>Developer</li>
+            <li>Risk Manager</li>
+            <li>Execution</li>
+            <li>Data Engineer</li>
+            <li class="text-gray-500">+ more...</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture" class="py-24 px-4 bg-surface/50">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Architecture</h2>
+      <div class="bg-bg border border-border rounded-xl p-8 font-mono text-sm leading-relaxed overflow-x-auto">
+<pre class="text-gray-300">
+┌─────────────────────────────────────────────────┐
+│        Dashboard UI (Next.js, port 3100)        │
+│    Dark theme  │  Bilingual  │  Pixel Office    │
+├─────────────────────────────────────────────────┤
+│               Agent Factory                     │
+│   ├── 64 Agent Role Templates                   │
+│   ├── CEO-driven Autopilot                      │
+│   ├── Skill System (ClawHub)                    │
+│   ├── N×N Communication Matrix                  │
+│   ├── Task & Project Management                 │
+│   └── Shared Project Workspace                  │
+├─────────────────────────────────────────────────┤
+│     Built-in OpenClaw Engine (port 19100)       │
+│   ├── LLM Router (15+ providers)               │
+│   ├── Tool System (exec/browser/search)         │
+│   └── Session & Memory Management               │
+└─────────────────────────────────────────────────┘
+</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section id="install" class="py-24 px-4">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-4">Get started in one command</h2>
+      <p class="text-gray-400 mb-10">Requires Node.js 22+. macOS or Linux.</p>
+
+      <div class="space-y-4">
+        <div class="bg-surface border border-border rounded-xl p-6">
+          <p class="text-xs text-gray-500 uppercase tracking-wider mb-3">Quick Start (npx)</p>
+          <div class="flex items-center justify-center gap-3">
+            <code class="text-xl font-mono text-gray-200">npx agent-factory start</code>
+            <button onclick="copyText(this, 'npx agent-factory start')" class="copy-btn text-gray-400 hover:text-white transition-colors p-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-surface border border-border rounded-xl p-6">
+          <p class="text-xs text-gray-500 uppercase tracking-wider mb-3">Or install globally</p>
+          <div class="text-left font-mono text-sm text-gray-300 space-y-2">
+            <div class="flex items-center justify-between">
+              <code>curl -fsSL https://raw.githubusercontent.com/shuanbao0/agent-factory/main/scripts/install.sh | bash</code>
+              <button onclick="copyText(this, 'curl -fsSL https://raw.githubusercontent.com/shuanbao0/agent-factory/main/scripts/install.sh | bash')" class="copy-btn text-gray-400 hover:text-white transition-colors p-2 shrink-0 ml-3">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div><code class="text-gray-500">agent-factory start</code></div>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-gray-500 text-sm mt-6">Then open <code class="text-accent-light">http://localhost:3100</code> in your browser</p>
+    </div>
+  </section>
+
+  <!-- Star History -->
+  <section class="py-24 px-4 bg-surface/50">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-12">Star History</h2>
+      <a href="https://star-history.com/#shuanbao0/agent-factory&Date" target="_blank">
+        <img src="https://api.star-history.com/svg?repos=shuanbao0/agent-factory&type=Date&theme=dark" alt="Star History Chart" class="w-full rounded-xl" loading="lazy" />
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-border py-12 px-4">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🏭</span>
+        <span class="font-semibold text-lg">Agent Factory</span>
+      </div>
+      <div class="flex items-center gap-6 text-sm text-gray-400">
+        <a href="https://github.com/shuanbao0/agent-factory" target="_blank" class="hover:text-white transition-colors">GitHub</a>
+        <a href="https://github.com/shuanbao0/agent-factory/discussions" target="_blank" class="hover:text-white transition-colors">Discussions</a>
+        <a href="https://github.com/shuanbao0/agent-factory/releases" target="_blank" class="hover:text-white transition-colors">Releases</a>
+        <span class="text-gray-600">GPL-3.0</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function copyInstall(btn) {
+      navigator.clipboard.writeText('npx agent-factory start');
+      btn.innerHTML = '<svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+      setTimeout(() => {
+        btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
+      }, 2000);
+    }
+    function copyText(btn, text) {
+      navigator.clipboard.writeText(text);
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+      setTimeout(() => { btn.innerHTML = orig; }, 2000);
+    }
+  </script>
+</body>
+</html>
