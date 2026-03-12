@@ -3,20 +3,30 @@
  *
  * Uses the `clawhub` CLI binary. All operations are run against the project's
  * skills directory (agent-factory/skills/).
+ *
+ * All CLI calls use async execFile (non-blocking).
  */
-import { execSync } from 'child_process'
+import { execFile as execFileCb } from 'child_process'
+import { promisify } from 'util'
 import { resolve } from 'path'
+
+const execFile = promisify(execFileCb)
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const SKILLS_DIR = resolve(PROJECT_ROOT, 'skills')
 const CLAWHUB_BIN = resolve(PROJECT_ROOT, 'node_modules', '.bin', 'clawhub')
 
-function run(args: string, timeoutMs = 30000): string {
-  return execSync(`"${CLAWHUB_BIN}" ${args} --workdir "${PROJECT_ROOT}" --dir skills --no-input`, {
-    timeout: timeoutMs,
-    encoding: 'utf-8',
-    env: { ...process.env, NO_COLOR: '1' },
-  }).trim()
+async function run(args: string[], timeoutMs = 30000): Promise<string> {
+  const { stdout } = await execFile(
+    CLAWHUB_BIN,
+    [...args, '--workdir', PROJECT_ROOT, '--dir', 'skills', '--no-input'],
+    {
+      timeout: timeoutMs,
+      encoding: 'utf-8',
+      env: { ...process.env, NO_COLOR: '1' },
+    },
+  )
+  return stdout.trim()
 }
 
 // ── Search ───────────────────────────────────────────────────────
@@ -27,8 +37,8 @@ export interface SearchResult {
   score: number
 }
 
-export function search(query: string, limit = 20): SearchResult[] {
-  const raw = run(`search "${query}" --limit ${limit}`)
+export async function search(query: string, limit = 20): Promise<SearchResult[]> {
+  const raw = await run(['search', query, '--limit', String(limit)])
   return parseSearchResults(raw)
 }
 
@@ -43,8 +53,8 @@ export interface ExploreResult {
   stars?: number
 }
 
-export function explore(limit = 20): ExploreResult[] {
-  const raw = run(`explore --limit ${limit}`)
+export async function explore(limit = 20): Promise<ExploreResult[]> {
+  const raw = await run(['explore', '--limit', String(limit)])
   // Format: "slug  vX.Y.Z  time-ago  Description..."
   const lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('-'))
   return lines.map(line => {
@@ -59,9 +69,9 @@ export function explore(limit = 20): ExploreResult[] {
   }).filter(Boolean) as ExploreResult[]
 }
 
-export function exploreJson(limit = 20): ExploreResult[] {
+export async function exploreJson(limit = 20): Promise<ExploreResult[]> {
   try {
-    const raw = run(`explore --limit ${limit} --json`, 60000)
+    const raw = await run(['explore', '--limit', String(limit), '--json'], 60000)
     const data = JSON.parse(raw)
     const items = Array.isArray(data) ? data : (data.items || data.skills || data.results || [])
     return items.map((item: Record<string, unknown>) => {
@@ -97,9 +107,9 @@ export interface SkillDetail {
   tags: string
 }
 
-export function inspect(slug: string): SkillDetail | null {
+export async function inspect(slug: string): Promise<SkillDetail | null> {
   try {
-    const raw = run(`inspect ${slug}`)
+    const raw = await run(['inspect', slug])
     const lines = raw.split('\n')
 
     // First line: "slug  Name"
@@ -137,9 +147,9 @@ export interface InstalledSkill {
   status: string
 }
 
-export function listInstalled(): InstalledSkill[] {
+export async function listInstalled(): Promise<InstalledSkill[]> {
   try {
-    const raw = run('list')
+    const raw = await run(['list'])
     if (raw.includes('No installed skills')) return []
     // Parse list output
     const lines = raw.split('\n').filter(l => l.trim() && !l.startsWith('-'))
@@ -154,10 +164,12 @@ export function listInstalled(): InstalledSkill[] {
 }
 
 // ── Install ──────────────────────────────────────────────────────
-export function install(slug: string, version?: string): { ok: boolean; output: string } {
+export async function install(slug: string, version?: string): Promise<{ ok: boolean; output: string }> {
   try {
-    const versionFlag = version ? ` --version ${version}` : ''
-    const output = run(`install ${slug}${versionFlag} --force`, 60000)
+    const args = ['install', slug]
+    if (version) args.push('--version', version)
+    args.push('--force')
+    const output = await run(args, 60000)
     return { ok: true, output }
   } catch (e: any) {
     return { ok: false, output: e.message || 'Install failed' }
@@ -165,10 +177,10 @@ export function install(slug: string, version?: string): { ok: boolean; output: 
 }
 
 // ── Update ───────────────────────────────────────────────────────
-export function update(slug?: string): { ok: boolean; output: string } {
+export async function update(slug?: string): Promise<{ ok: boolean; output: string }> {
   try {
-    const target = slug ? slug : '--all'
-    const output = run(`update ${target} --force`, 60000)
+    const args = ['update', slug || '--all', '--force']
+    const output = await run(args, 60000)
     return { ok: true, output }
   } catch (e: any) {
     return { ok: false, output: e.message || 'Update failed' }

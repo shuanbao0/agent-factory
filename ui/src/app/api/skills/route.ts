@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { readdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
+import { cached } from '@/lib/api-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,35 +81,39 @@ function readSkillsFromDir(dir: string, source: SkillInfo['source']): SkillInfo[
 
 export async function GET() {
   try {
-    const builtinDir = findBuiltinSkillsDir()
-    const builtinSkills = builtinDir ? readSkillsFromDir(builtinDir, 'builtin') : []
-    const projectSkills = readSkillsFromDir(PROJECT_SKILLS_DIR, 'project')
+    const result = await cached('skills:local', 30000, async () => {
+      const builtinDir = findBuiltinSkillsDir()
+      const builtinSkills = builtinDir ? readSkillsFromDir(builtinDir, 'builtin') : []
+      const projectSkills = readSkillsFromDir(PROJECT_SKILLS_DIR, 'project')
 
-    // Deduplicate: project skills override builtin
-    const seen = new Set<string>()
-    const all: SkillInfo[] = []
+      // Deduplicate: project skills override builtin
+      const seen = new Set<string>()
+      const all: SkillInfo[] = []
 
-    for (const s of projectSkills) {
-      seen.add(s.id)
-      all.push(s)
-    }
-    for (const s of builtinSkills) {
-      if (!seen.has(s.id)) {
+      for (const s of projectSkills) {
         seen.add(s.id)
         all.push(s)
       }
-    }
+      for (const s of builtinSkills) {
+        if (!seen.has(s.id)) {
+          seen.add(s.id)
+          all.push(s)
+        }
+      }
 
-    // Sort alphabetically
-    all.sort((a, b) => a.name.localeCompare(b.name))
+      // Sort alphabetically
+      all.sort((a, b) => a.name.localeCompare(b.name))
 
-    return NextResponse.json({
-      skills: all,
-      builtinCount: builtinSkills.length,
-      projectCount: projectSkills.length,
-      builtinDir,
-      source: 'filesystem',
+      return {
+        skills: all,
+        builtinCount: builtinSkills.length,
+        projectCount: projectSkills.length,
+        builtinDir,
+        source: 'filesystem' as const,
+      }
     })
+
+    return NextResponse.json(result)
   } catch (e) {
     return NextResponse.json({ error: String(e), skills: [], source: 'error' }, { status: 500 })
   }

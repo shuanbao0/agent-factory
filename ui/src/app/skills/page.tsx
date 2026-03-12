@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -57,6 +57,24 @@ type Tab = 'installed' | 'builtin' | 'browse' | 'search'
 
 const OFFICIAL_OWNERS = new Set(['openclaw', 'anthropic'])
 
+// ── Error Banner ─────────────────────────────────────────────────
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-2 p-3 rounded-lg border bg-destructive/10 border-destructive/30">
+      <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+      <p className="text-sm flex-1">{message}</p>
+      <button
+        onClick={onRetry}
+        className="flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+      >
+        <RefreshCw className="w-3 h-3" />
+        {t('common.retry')}
+      </button>
+    </div>
+  )
+}
+
 // ── Skill Detail Dialog ──────────────────────────────────────────
 function SkillDetailDialog({ slug, onClose, installedSlugs, onInstall }: {
   slug: string
@@ -70,11 +88,13 @@ function SkillDetailDialog({ slug, onClose, installedSlugs, onInstall }: {
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/skills/online?action=inspect&slug=${encodeURIComponent(slug)}`)
+    const controller = new AbortController()
+    fetch(`/api/skills/online?action=inspect&slug=${encodeURIComponent(slug)}`, { signal: controller.signal })
       .then(r => r.json())
       .then(d => setDetail(d.skill))
       .catch(() => {})
       .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [slug])
 
   return (
@@ -153,78 +173,142 @@ export default function SkillsPage() {
   const [searchResults, setSearchResults] = useState<OnlineSkill[]>([])
   const [exploreResults, setExploreResults] = useState<OnlineSkill[]>([])
   const [installedFromHub, setInstalledFromHub] = useState<InstalledSkill[]>([])
-  const [loading, setLoading] = useState(false)
   const [installing, setInstalling] = useState<string | null>(null)
   const [installResult, setInstallResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [detailSlug, setDetailSlug] = useState<string | null>(null)
   const [browsePage, setBrowsePage] = useState(1)
   const [searchPage, setSearchPage] = useState(1)
   const [builtinSkills, setBuiltinSkills] = useState<BuiltinSkill[]>([])
-  const [builtinLoading, setBuiltinLoading] = useState(false)
   const [builtinPage, setBuiltinPage] = useState(1)
   const [configSkill, setConfigSkill] = useState<BuiltinSkill | null>(null)
   const PAGE_SIZE = 12
 
+  // Per-section loading & error states
+  const [localLoading, setLocalLoading] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [installedLoading, setInstalledLoading] = useState(false)
+  const [installedError, setInstalledError] = useState<string | null>(null)
+  const [exploreLoading, setExploreLoading] = useState(false)
+  const [exploreError, setExploreError] = useState<string | null>(null)
+  const [builtinLoading, setBuiltinLoading] = useState(false)
+  const [builtinError, setBuiltinError] = useState<string | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  // Track which tabs have been loaded
+  const loadedTabs = useRef(new Set<string>())
+  const abortRef = useRef<AbortController | null>(null)
+
+  // ── Fetch helpers with abort support ────────────────────────────
+  const makeFetchSignal = useCallback(() => {
+    const timeoutSignal = AbortSignal.timeout(30000)
+    if (abortRef.current) {
+      return AbortSignal.any([abortRef.current.signal, timeoutSignal])
+    }
+    return timeoutSignal
+  }, [])
+
+  const errorMessage = useCallback((e: unknown): string => {
+    if (e instanceof DOMException && e.name === 'AbortError') return ''
+    if (e instanceof DOMException && e.name === 'TimeoutError') return t('skills.fetchTimeout')
+    return t('skills.fetchFailed')
+  }, [t])
+
   // ── Fetch local filesystem skills ────────────────────────────────
   const fetchLocalSkills = useCallback(async () => {
+    setLocalLoading(true)
+    setLocalError(null)
     try {
-      const res = await fetch('/api/skills')
+      const res = await fetch('/api/skills', { signal: makeFetchSignal() })
       if (res.ok) {
         const data = await res.json()
         setSkills(data.skills || [])
+      } else {
+        setLocalError(t('skills.fetchFailed'))
       }
-    } catch {}
-  }, [setSkills])
+    } catch (e) {
+      const msg = errorMessage(e)
+      if (msg) setLocalError(msg)
+    } finally {
+      setLocalLoading(false)
+    }
+  }, [setSkills, makeFetchSignal, errorMessage, t])
 
   // ── Fetch installed from clawhub ───────────────────────────────
   const fetchInstalled = useCallback(async () => {
+    setInstalledLoading(true)
+    setInstalledError(null)
     try {
-      const res = await fetch('/api/skills/manage')
+      const res = await fetch('/api/skills/manage', { signal: makeFetchSignal() })
       if (res.ok) {
         const data = await res.json()
         setInstalledFromHub(data.installed || [])
+      } else {
+        setInstalledError(t('skills.fetchFailed'))
       }
-    } catch {}
-  }, [])
+    } catch (e) {
+      const msg = errorMessage(e)
+      if (msg) setInstalledError(msg)
+    } finally {
+      setInstalledLoading(false)
+    }
+  }, [makeFetchSignal, errorMessage, t])
 
   // ── Fetch explore ──────────────────────────────────────────────
   const fetchExplore = useCallback(async () => {
-    setLoading(true)
+    setExploreLoading(true)
+    setExploreError(null)
     try {
-      const res = await fetch('/api/skills/online?action=explore&limit=100')
+      const res = await fetch('/api/skills/online?action=explore&limit=100', { signal: makeFetchSignal() })
       if (res.ok) {
         const data = await res.json()
         setExploreResults(data.results || [])
         setBrowsePage(1)
+      } else {
+        setExploreError(t('skills.fetchFailed'))
       }
-    } catch {} finally { setLoading(false) }
-  }, [])
+    } catch (e) {
+      const msg = errorMessage(e)
+      if (msg) setExploreError(msg)
+    } finally {
+      setExploreLoading(false)
+      loadedTabs.current.add('browse')
+    }
+  }, [makeFetchSignal, errorMessage, t])
 
   // ── Fetch builtin skills ─────────────────────────────────────────
   const fetchBuiltinSkills = useCallback(async () => {
     setBuiltinLoading(true)
+    setBuiltinError(null)
     try {
-      const res = await fetch('/api/skills/builtin')
+      const res = await fetch('/api/skills/builtin', { signal: makeFetchSignal() })
       if (res.ok) {
         const data = await res.json()
         setBuiltinSkills(data.skills || [])
+      } else {
+        setBuiltinError(t('skills.fetchFailed'))
       }
-    } catch {} finally { setBuiltinLoading(false) }
-  }, [])
+    } catch (e) {
+      const msg = errorMessage(e)
+      if (msg) setBuiltinError(msg)
+    } finally {
+      setBuiltinLoading(false)
+      loadedTabs.current.add('builtin')
+    }
+  }, [makeFetchSignal, errorMessage, t])
 
   // ── Search ─────────────────────────────────────────────────────
   const handleSearch = async () => {
     if (!searchQuery.trim()) return
-    setLoading(true)
+    setSearchLoading(true)
     setTab('search')
     try {
-      const res = await fetch(`/api/skills/online?action=search&q=${encodeURIComponent(searchQuery)}&limit=20`)
+      const res = await fetch(`/api/skills/online?action=search&q=${encodeURIComponent(searchQuery)}&limit=20`, { signal: makeFetchSignal() })
       if (res.ok) {
         const data = await res.json()
         setSearchResults(data.results || [])
         setSearchPage(1)
       }
-    } catch {} finally { setLoading(false) }
+    } catch {} finally { setSearchLoading(false) }
   }
 
   // ── Install ────────────────────────────────────────────────────
@@ -242,7 +326,13 @@ export default function SkillsPage() {
         ok: data.ok,
         message: data.ok ? `${slug} ${t('skills.installSuccess')}` : (data.output || t('skills.installFailed')),
       })
-      if (data.ok) { fetchInstalled(); fetchLocalSkills() }
+      if (data.ok) {
+        // Reset loaded tabs to force refresh
+        loadedTabs.current.clear()
+        loadedTabs.current.add('installed')
+        fetchInstalled()
+        fetchLocalSkills()
+      }
     } catch (e: any) {
       setInstallResult({ ok: false, message: e.message })
     } finally { setInstalling(null) }
@@ -257,6 +347,8 @@ export default function SkillsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'uninstall', slug }),
       })
+      loadedTabs.current.clear()
+      loadedTabs.current.add('installed')
       fetchInstalled(); fetchLocalSkills()
     } catch {}
   }
@@ -282,12 +374,26 @@ export default function SkillsPage() {
     } finally { setInstalling(null) }
   }
 
+  // ── Lazy-load on tab switch ────────────────────────────────────
   useEffect(() => {
+    if (tab === 'browse' && !loadedTabs.current.has('browse')) {
+      fetchExplore()
+    } else if (tab === 'builtin' && !loadedTabs.current.has('builtin')) {
+      fetchBuiltinSkills()
+    }
+  }, [tab, fetchExplore, fetchBuiltinSkills])
+
+  // ── Initial load: only installed tab data ──────────────────────
+  useEffect(() => {
+    abortRef.current = new AbortController()
+    loadedTabs.current.add('installed')
     fetchLocalSkills()
     fetchInstalled()
-    fetchExplore()
-    fetchBuiltinSkills()
-  }, [fetchLocalSkills, fetchInstalled, fetchExplore, fetchBuiltinSkills])
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
+  }, [fetchLocalSkills, fetchInstalled])
 
   const installedSlugs = new Set([
     ...skills.map(s => s.name),
@@ -689,7 +795,7 @@ export default function SkillsPage() {
         </div>
         <button
           onClick={handleSearch}
-          disabled={loading || !searchQuery.trim()}
+          disabled={searchLoading || !searchQuery.trim()}
           className="px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
         >
           {t('skills.search')}
@@ -731,6 +837,17 @@ export default function SkillsPage() {
       {/* Tab Content */}
       {tab === 'installed' && (
         <div className="space-y-4">
+          {/* Error banners */}
+          {localError && <ErrorBanner message={localError} onRetry={fetchLocalSkills} />}
+          {installedError && <ErrorBanner message={installedError} onRetry={fetchInstalled} />}
+
+          {/* Loading state */}
+          {(localLoading || installedLoading) && skills.length === 0 && installedFromHub.length === 0 && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
           {/* Update all button */}
           {installedFromHub.length > 0 && (
             <div className="flex justify-end">
@@ -793,7 +910,7 @@ export default function SkillsPage() {
             ))}
           </div>
 
-          {skills.length === 0 && installedFromHub.length === 0 && (
+          {!localLoading && !installedLoading && skills.length === 0 && installedFromHub.length === 0 && !localError && !installedError && (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>{t('skills.noInstalled')}</p>
@@ -810,6 +927,9 @@ export default function SkillsPage() {
 
       {tab === 'builtin' && (
         <div className="space-y-4">
+          {/* Error banner */}
+          {builtinError && <ErrorBanner message={builtinError} onRetry={fetchBuiltinSkills} />}
+
           {/* Stats + refresh */}
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
@@ -847,18 +967,21 @@ export default function SkillsPage() {
                 onPageChange={setBuiltinPage}
               />
             </>
-          ) : (
+          ) : !builtinLoading && !builtinError ? (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>{t('skills.noBuiltin')}</p>
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
       {tab === 'browse' && (
         <div className="space-y-4">
-          {loading ? (
+          {/* Error banner */}
+          {exploreError && <ErrorBanner message={exploreError} onRetry={fetchExplore} />}
+
+          {exploreLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
@@ -876,7 +999,7 @@ export default function SkillsPage() {
               />
             </>
           )}
-          {!loading && exploreResults.length === 0 && (
+          {!exploreLoading && exploreResults.length === 0 && !exploreError && (
             <p className="text-center py-8 text-muted-foreground text-sm">{t('skills.noResults')}</p>
           )}
         </div>
@@ -884,7 +1007,7 @@ export default function SkillsPage() {
 
       {tab === 'search' && (
         <div className="space-y-4">
-          {loading ? (
+          {searchLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
@@ -902,7 +1025,7 @@ export default function SkillsPage() {
               />
             </>
           )}
-          {!loading && searchResults.length === 0 && searchQuery && (
+          {!searchLoading && searchResults.length === 0 && searchQuery && (
             <p className="text-center py-8 text-muted-foreground text-sm">
               {t('skills.noResults')} "{searchQuery}"
             </p>

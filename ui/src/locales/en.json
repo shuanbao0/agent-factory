@@ -39,7 +39,8 @@
     "saving": "Saving...",
     "edit": "Edit",
     "delete": "Delete",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "retry": "Retry"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -238,7 +239,9 @@
     "brewFailed": "Install failed",
     "noBrew": "Homebrew not available",
     "official": "Official",
-    "by": "by"
+    "by": "by",
+    "fetchFailed": "Failed to load skills, please retry",
+    "fetchTimeout": "Request timed out, server may be busy"
   },
   "logs": {
     "title": "Logs & Monitor",

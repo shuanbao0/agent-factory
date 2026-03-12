@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { install, update, uninstall, listInstalled } from '@/lib/clawhub'
+import { cached, invalidate } from '@/lib/api-cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,8 +9,11 @@ export const dynamic = 'force-dynamic'
  */
 export async function GET() {
   try {
-    const installed = listInstalled()
-    return NextResponse.json({ installed, source: 'clawhub' })
+    const result = await cached('skills:installed', 60000, async () => {
+      const installed = await listInstalled()
+      return { installed, source: 'clawhub' as const }
+    })
+    return NextResponse.json(result)
   } catch (e) {
     return NextResponse.json({ error: String(e), installed: [] }, { status: 500 })
   }
@@ -32,28 +36,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'action required' }, { status: 400 })
     }
 
+    let result: { ok: boolean; output?: string }
+
     switch (action) {
       case 'install': {
         if (!slug) return NextResponse.json({ error: 'slug required' }, { status: 400 })
-        const result = install(slug, version)
-        return NextResponse.json(result)
+        result = await install(slug, version)
+        break
       }
       case 'update': {
-        const result = update(slug)
-        return NextResponse.json(result)
+        result = await update(slug)
+        break
       }
       case 'update-all': {
-        const result = update()
-        return NextResponse.json(result)
+        result = await update()
+        break
       }
       case 'uninstall': {
         if (!slug) return NextResponse.json({ error: 'slug required' }, { status: 400 })
-        const result = uninstall(slug)
-        return NextResponse.json(result)
+        result = uninstall(slug)
+        break
       }
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     }
+
+    // Invalidate all skills caches after mutation
+    invalidate('skills:')
+
+    return NextResponse.json(result)
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }

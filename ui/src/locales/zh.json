@@ -39,7 +39,8 @@
     "saving": "保存中...",
     "edit": "编辑",
     "delete": "删除",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "retry": "重试"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -238,7 +239,9 @@
     "brewFailed": "安装失败",
     "noBrew": "未安装 Homebrew",
     "official": "官方",
-    "by": "由"
+    "by": "由",
+    "fetchFailed": "加载技能失败，请重试",
+    "fetchTimeout": "请求超时，服务器可能繁忙"
   },
   "logs": {
     "title": "日志与监控",
