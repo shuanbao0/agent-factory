@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readdirSync, readFileSync, existsSync, statSync } from 'fs'
 import { join, resolve } from 'path'
+import { decodeProjectId } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,9 +31,9 @@ interface DirEntry {
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string[] } }
+  { params }: { params: { id: string } }
 ) {
-  const id = params.id.join('/')
+  const id = decodeProjectId(params.id)
 
   // Security: resolve the id-based path and verify it stays within PROJECTS_DIR
   const projectDir = resolve(PROJECTS_DIR, id)

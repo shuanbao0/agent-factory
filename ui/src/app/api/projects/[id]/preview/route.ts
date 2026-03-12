@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { spawn, execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
+import { decodeProjectId } from '@/lib/utils'
 
 const execFileAsync = promisify(execFileCb)
 import net from 'net'
@@ -79,9 +80,9 @@ async function findAvailablePort(start: number): Promise<number> {
  */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string[] } }
+  { params }: { params: { id: string } }
 ) {
-  const id = params.id.join('/')
+  const id = decodeProjectId(params.id)
   if (!id || id.includes('..')) {
     return NextResponse.json({ error: 'invalid id' }, { status: 400 })
   }
@@ -154,9 +155,9 @@ export async function GET(
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string[] } }
+  { params }: { params: { id: string } }
 ) {
-  const id = params.id.join('/')
+  const id = decodeProjectId(params.id)
   if (!id || id.includes('..')) {
     return NextResponse.json({ error: 'invalid id' }, { status: 400 })
   }

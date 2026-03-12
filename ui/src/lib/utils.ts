@@ -22,3 +22,11 @@ export function timeAgo(d: Date | string): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
 }
+
+export function encodeProjectId(id: string): string {
+  return id.replace(/\//g, '~')
+}
+
+export function decodeProjectId(segment: string): string {
+  return segment.replace(/~/g, '/')
+}

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PhaseProgress } from '@/components/phase-progress'
 import { FolderKanban, Clock, Zap, Plus, Trash2, Loader2, FolderOpen, FileText, FolderTree, Code2, ListChecks, AlertTriangle, Play, Square, ExternalLink, Monitor, ChevronRight, ChevronDown, Bot } from 'lucide-react'
-import { formatNumber, formatDate } from '@/lib/utils'
+import { formatNumber, formatDate, encodeProjectId } from '@/lib/utils'
 import { Task } from '@/lib/types'
 
 const ROLE_EMOJI: Record<string, string> = {
@@ -270,7 +270,7 @@ function FilesTab({ projectId }: { projectId: string }) {
     try {
       const params = new URLSearchParams({ source: 'project' })
       if (dir) params.set('dir', dir)
-      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/files?${params}`)
       const data = await res.json()
       setEntries(data.entries ?? [])
       setCurrentDir(data.currentDir ?? dir)
@@ -285,7 +285,7 @@ function FilesTab({ projectId }: { projectId: string }) {
   const fetchAgents = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/files?source=workspaces`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/files?source=workspaces`)
       const data = await res.json()
       setAgents(data.agents ?? [])
     } catch { setAgents([]) }
@@ -320,7 +320,7 @@ function FilesTab({ projectId }: { projectId: string }) {
     setLoadingDirs(prev => new Set(prev).add(dirPath))
     try {
       const params = new URLSearchParams({ source: 'project', dir: dirPath })
-      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/files?${params}`)
       const data = await res.json()
       setExpandedDirs(prev => ({ ...prev, [dirPath]: data.entries ?? [] }))
     } catch { /* ignore */ }
@@ -335,7 +335,7 @@ function FilesTab({ projectId }: { projectId: string }) {
     setAgentLoadingDirs(new Set())
     try {
       const params = new URLSearchParams({ source: 'workspaces', agentId })
-      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/files?${params}`)
       const data = await res.json()
       setAgentEntries(data.entries ?? [])
     } catch { setAgentEntries([]) }
@@ -357,7 +357,7 @@ function FilesTab({ projectId }: { projectId: string }) {
     setAgentLoadingDirs(prev => new Set(prev).add(dirPath))
     try {
       const params = new URLSearchParams({ source: 'workspaces', agentId: selectedAgent, dir: dirPath })
-      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/files?${params}`)
       const data = await res.json()
       setAgentExpandedDirs(prev => ({ ...prev, [dirPath]: data.entries ?? [] }))
     } catch { /* ignore */ }
@@ -370,7 +370,7 @@ function FilesTab({ projectId }: { projectId: string }) {
     try {
       const params = new URLSearchParams({ file: path, source: fileSrc })
       if (agentId) params.set('agentId', agentId)
-      const res = await fetch(`/api/projects/${projectId}/files?${params}`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/files?${params}`)
       const data = await res.json()
       setFileContent({ path, content: data.content ?? data.error ?? '', source: fileSrc, agentId })
     } catch {
@@ -603,7 +603,7 @@ function PreviewTab({ projectId }: { projectId: string }) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/preview`)
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/preview`)
       const data = await res.json()
       setStatus(data)
     } catch {
@@ -625,7 +625,7 @@ function PreviewTab({ projectId }: { projectId: string }) {
   const handleStart = async () => {
     setStarting(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/preview`, {
+      const res = await fetch(`/api/projects/${encodeProjectId(projectId)}/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'start' }),
@@ -645,7 +645,7 @@ function PreviewTab({ projectId }: { projectId: string }) {
   const handleStop = async () => {
     setStopping(true)
     try {
-      await fetch(`/api/projects/${projectId}/preview`, {
+      await fetch(`/api/projects/${encodeProjectId(projectId)}/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' }),
@@ -798,7 +798,7 @@ export default function ProjectsPage() {
     if (!confirm(t('projects.confirmDelete'))) return
     setDeleting(true)
     try {
-      await fetch(`/api/projects/${id}`, { method: 'DELETE' })
+      await fetch(`/api/projects/${encodeProjectId(id)}`, { method: 'DELETE' })
       await fetchProjects()
       setSelected(null)
     } catch {}
