@@ -29,6 +29,27 @@ const sessionResetCooldowns = new Map()  // sessionKey → timestamp
 const RESET_COOLDOWN_MS = 120_000
 
 /**
+ * Notify agent about task status change via peer-send (fire-and-forget).
+ * Used to inform agents when their tasks are auto-failed or auto-transitioned.
+ */
+function notifyAgentTaskChange(headAgent, agentId, taskId, taskName, newStatus, reason) {
+  const { execFile } = require('child_process')
+  const { PROJECT_ROOT } = require('./constants.cjs')
+  const peerSendScript = join(PROJECT_ROOT, 'skills', 'peer-status', 'scripts', 'peer-send.mjs')
+
+  const statusLabels = { failed: '已失败', review: '待确认完成', completed: '已完成' }
+  const label = statusLabels[newStatus] || newStatus
+  const message = `[系统通知] 你的任务 [Task: ${taskId}] "${taskName}" 状态变更为「${label}」。\n原因: ${reason}\n${newStatus === 'failed' ? '如果你仍在进行此任务，请通过任务 API 重新更新状态。' : ''}`
+
+  execFile('node', [peerSendScript, '--from', headAgent, '--to', agentId, '--message', message, '--no-wait'], {
+    cwd: PROJECT_ROOT,
+    timeout: 15000,
+  }, (err) => {
+    if (err) logger.debug('dept-loop', `Failed to notify ${agentId} about task ${taskId}: ${err.message}`)
+  })
+}
+
+/**
  * Parse task assignments from the chief's structured response.
  * Extracts [任务分配] section and returns agent-task pairs.
  *
@@ -103,19 +124,23 @@ function parseTaskCompletions(text) {
  *
  * Rules:
  * - Chief reports task completed → completed
- * - in_progress/rework + agent idle >= IDLE_COMPLETE_MINS → completed
+ * - in_progress/rework + agent idle >= IDLE_COMPLETE_MINS → review (pending chief confirmation)
  * - in_progress/rework + agent idle >= STALE_TASK_MINS + progress < 50 → failed
  * - assigned + agent active (idle < 5) → in_progress
  * - assigned + agent idle >= STALE_TASK_MINS → failed (never picked up)
- * - review + idle >= IDLE_COMPLETE_MINS → completed (auto-approve)
+ * - review + idle >= IDLE_COMPLETE_MINS → completed (auto-approve after chief didn't act)
  *
  * @param {string} deptId
  * @param {object} config - Department config
  * @param {string} chiefResponseText - Chief's response text
+ * @param {object} [options] - Options
+ * @param {boolean} [options.idleOnly=false] - If true, skip chief-reported completions (for pre-send calls)
+ * @returns {Promise<Array<{taskId: string, taskName: string, agentId: string, from: string, to: string, reason: string}>>} - List of transitions made
  */
-async function autoTransitionTasks(deptId, config, chiefResponseText) {
+async function autoTransitionTasks(deptId, config, chiefResponseText, options = {}) {
   const agentActivity = readAgentActivity()
   const agents = config.agents || []
+  const transitions = []
 
   // Collect all tasks assigned to department agents
   const projects = readProjectTasks()
@@ -136,20 +161,30 @@ async function autoTransitionTasks(deptId, config, chiefResponseText) {
     }
   }
 
-  if (allTasks.length === 0) return
+  if (allTasks.length === 0) return transitions
 
-  // 1. Chief-reported completions
-  const chiefCompletions = parseTaskCompletions(chiefResponseText)
-  for (const taskId of chiefCompletions) {
-    const task = allTasks.find(t => t.id === taskId)
-    if (task && (task.status === 'in_progress' || task.status === 'rework')) {
-      const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
-      if (assignee) updateTaskStatus(assignee, taskId, 'completed')
-      logger.info('dept-loop', `Chief reported task ${taskId} completed in ${deptId}`)
+  // Helper to record transition
+  const transition = (task, assignee, from, to, reason) => {
+    updateTaskStatus(assignee, task.id, to)
+    transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from, to, reason })
+  }
+
+  // 1. Chief-reported completions (skip in idleOnly mode — pre-send has no response)
+  const chiefCompletions = options.idleOnly ? [] : parseTaskCompletions(chiefResponseText)
+  if (!options.idleOnly) {
+    for (const taskId of chiefCompletions) {
+      const task = allTasks.find(t => t.id === taskId)
+      if (task && ['in_progress', 'rework', 'review'].includes(task.status)) {
+        const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
+        if (assignee) {
+          transition(task, assignee, task.status, 'completed', 'chief 确认完成')
+          logger.info('dept-loop', `Chief reported task ${taskId} completed in ${deptId}`)
+        }
+      }
     }
   }
 
-  // 2. Idle-based auto-complete / stale cleanup
+  // 2. Idle-based transitions
   for (const task of allTasks) {
     if (!['in_progress', 'rework', 'assigned', 'review'].includes(task.status)) continue
     if (chiefCompletions.includes(task.id)) continue
@@ -161,30 +196,34 @@ async function autoTransitionTasks(deptId, config, chiefResponseText) {
 
     if (task.status === 'assigned') {
       if (idleMins < 5) {
-        // Agent active → promote to in_progress
-        updateTaskStatus(assignee, task.id, 'in_progress')
+        transition(task, assignee, 'assigned', 'in_progress', 'agent 活跃，自动提升')
         logger.debug('dept-loop', `Auto-promoted assigned task ${task.id} to in_progress`)
       } else if (idleMins >= STALE_TASK_MINS) {
-        // Agent never picked it up → failed
-        updateTaskStatus(assignee, task.id, 'failed')
+        transition(task, assignee, 'assigned', 'failed', `agent 空闲 ${idleMins}m 未开始`)
         logger.warn('dept-loop', `Assigned task ${task.id} never started, marked failed (agent ${assignee} idle ${idleMins}m)`)
       }
     } else if (task.status === 'review') {
+      // Review → in_progress revert is handled by peer-send autoClaimTasks
+      // when chief explicitly references [Task: xxx] in a message.
+      // Do NOT revert based on idle time — notifications can wake the agent.
       if (idleMins >= IDLE_COMPLETE_MINS) {
-        // No one reviewed → auto-approve
-        updateTaskStatus(assignee, task.id, 'completed')
+        // Chief didn't act within one cycle → auto-approve
+        transition(task, assignee, 'review', 'completed', `review 超时自动通过 (${idleMins}m)`)
         logger.info('dept-loop', `Review task ${task.id} auto-approved (idle ${idleMins}m)`)
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
       if (idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
-        updateTaskStatus(assignee, task.id, 'failed')
+        transition(task, assignee, task.status, 'failed', `agent 空闲 ${idleMins}m 且进度 <50%`)
         logger.warn('dept-loop', `Stale task ${task.id} marked failed (idle ${idleMins}m, progress ${task.progress || 0}%)`)
       } else if (idleMins >= IDLE_COMPLETE_MINS) {
-        updateTaskStatus(assignee, task.id, 'completed')
-        logger.info('dept-loop', `Auto-completed task ${task.id} (agent ${assignee} idle ${idleMins}m)`)
+        // Mark as review instead of completed — let chief confirm in next cycle
+        transition(task, assignee, task.status, 'review', `agent 空闲 ${idleMins}m, 待 chief 确认`)
+        logger.info('dept-loop', `Task ${task.id} moved to review (agent ${assignee} idle ${idleMins}m)`)
       }
     }
   }
+
+  return transitions
 }
 
 /**
@@ -237,20 +276,25 @@ async function runDepartmentCycle(deptId) {
     // ── Step 1.5: Auto-transition stale tasks BEFORE sending ──
     // Workers have been idle ~10min since last cycle; checking now ensures
     // idle-based completion fires before sendToAgent resets idle timers.
-    await autoTransitionTasks(deptId, config, '').catch(e =>
+    // idleOnly: skip chief completions (no response yet)
+    let preSendTransitions = []
+    try {
+      preSendTransitions = await autoTransitionTasks(deptId, config, '', { idleOnly: true }) || []
+      // Notify agents about auto-fail transitions (not review — notification would wake agent)
+      for (const t of preSendTransitions) {
+        if (t.to === 'failed') {
+          notifyAgentTaskChange(config.head, t.agentId, t.taskId, t.taskName, t.to, t.reason)
+        }
+      }
+    } catch (e) {
       logger.debug('dept-loop', `Pre-send auto-transition error for ${deptId}`, e)
-    )
+    }
 
-    // Snapshot idle workers BEFORE sending to chief
+    // Identify idle workers (no in_progress tasks + idle activity)
     const workers = (config.agents || []).filter(id => id !== config.head)
-    const activityBefore = readAgentActivity()
-    const idleWorkersBefore = workers.filter(id => {
-      const a = activityBefore[id]
-      return !a || a.idleMins >= 5
-    })
 
-    // Build directive for department head
-    const directive = buildDepartmentDirective(deptId, config, state)
+    // Build directive for department head (include transition info so chief sees what changed)
+    const directive = buildDepartmentDirective(deptId, config, state, preSendTransitions)
 
     // Send to department head
     const result = await sendToAgent(config.head, sessionKey, directive)
@@ -285,8 +329,15 @@ async function runDepartmentCycle(deptId) {
         })
       }
 
-      // ── Auto-transition stale tasks ──
-      autoTransitionTasks(deptId, config, result.text).catch(e =>
+      // ── Auto-transition stale tasks (with chief response for completion parsing) ──
+      autoTransitionTasks(deptId, config, result.text).then(postTransitions => {
+        if (!postTransitions) return
+        for (const t of postTransitions) {
+          if (t.to === 'failed') {
+            notifyAgentTaskChange(config.head, t.agentId, t.taskId, t.taskName, t.to, t.reason)
+          }
+        }
+      }).catch(e =>
         logger.debug('dept-loop', `Auto-transition error for ${deptId}`, e)
       )
 
@@ -300,27 +351,41 @@ async function runDepartmentCycle(deptId) {
         state.consecutiveFailures = 0
       }
 
-      // ── Dispatch verification: did chief actually send work to idle agents? ──
+      // ── Dispatch verification: did chief mention peer-send for idle agents? ──
       let dispatchNeeded = false
-      if (isEffective && idleWorkersBefore.length > 0) {
-        // Wait a moment for session files to be updated by gateway
-        await new Promise(r => setTimeout(r, 2000))
-        const activityAfter = readAgentActivity()
-        const stillIdle = idleWorkersBefore.filter(id => {
-          const a = activityAfter[id]
-          return !a || a.idleMins >= 3  // slight grace: 3min vs 5min
-        })
-        if (stillIdle.length === idleWorkersBefore.length) {
-          // Chief produced tokens but none of the idle agents received work
+      const activityNow = readAgentActivity()
+      const idleWorkers = workers.filter(id => {
+        const a = activityNow[id]
+        return !a || a.idleMins >= 5
+      })
+      if (isEffective && idleWorkers.length > 0) {
+        // Parse which agents were actually mentioned in peer-send commands
+        const peerSendTargets = new Set()
+        const peerSendRe = /peer-send\.mjs\s+--from\s+\S+\s+--to\s+(\S+)/g
+        let m
+        while ((m = peerSendRe.exec(result.text)) !== null) {
+          peerSendTargets.add(m[1])
+        }
+        // Also count agents listed in [任务分配] as dispatched
+        for (const a of assignments) {
+          if (/peer-send\s*已发送|已发送/.test(a.summary)) {
+            peerSendTargets.add(a.agentId)
+          }
+        }
+
+        const unDispatchedIdle = idleWorkers.filter(id => !peerSendTargets.has(id))
+        if (unDispatchedIdle.length > 0 && unDispatchedIdle.length === idleWorkers.length) {
+          // Chief responded effectively but didn't dispatch to ANY idle agent
           state.dispatchMisses = (state.dispatchMisses || 0) + 1
-          logger.warn('dept-loop', `Department ${deptId}: chief responded but ${stillIdle.length} idle agents still idle (miss #${state.dispatchMisses})`)
+          logger.warn('dept-loop', `Department ${deptId}: chief responded but ${unDispatchedIdle.length} idle agents not dispatched (miss #${state.dispatchMisses})`)
           if (state.dispatchMisses >= MAX_CONSECUTIVE_FAILURES) {
             dispatchNeeded = true
             state.dispatchMisses = 0
           }
         } else {
           state.dispatchMisses = 0
-          logger.debug('dept-loop', `Department ${deptId}: dispatch verified, ${idleWorkersBefore.length - stillIdle.length} agents activated`)
+          const dispatched = idleWorkers.length - unDispatchedIdle.length
+          logger.debug('dept-loop', `Department ${deptId}: dispatch verified, ${dispatched}/${idleWorkers.length} idle agents received work`)
         }
       }
 
@@ -346,13 +411,18 @@ async function runDepartmentCycle(deptId) {
           : `chief produced < ${MIN_EFFECTIVE_RESPONSE_LENGTH} chars for ${state.consecutiveFailures} cycles`
         logger.warn('dept-loop', `Department ${deptId} fallback dispatch triggered: ${reason}`)
         await fallbackDispatch(deptId, config)
-        // Reset session to clear bloated context that caused the failure
-        try {
-          await killSession(sessionKey)
-          sessionResetCooldowns.set(sessionKey, Date.now())
-          logger.info('dept-loop', `Reset chief session ${sessionKey} after fallback dispatch`)
-        } catch (e) {
-          logger.debug('dept-loop', `Failed to reset chief session after fallback`, e)
+        // Reset session to clear bloated context that caused the failure (respect cooldown)
+        const lastResetAt = sessionResetCooldowns.get(sessionKey)
+        if (!lastResetAt || Date.now() - lastResetAt >= RESET_COOLDOWN_MS) {
+          try {
+            await killSession(sessionKey)
+            sessionResetCooldowns.set(sessionKey, Date.now())
+            logger.info('dept-loop', `Reset chief session ${sessionKey} after fallback dispatch`)
+          } catch (e) {
+            logger.debug('dept-loop', `Failed to reset chief session after fallback`, e)
+          }
+        } else {
+          logger.debug('dept-loop', `Skipping session reset after fallback (cooldown active)`)
         }
         state.consecutiveFailures = 0
       }
@@ -374,7 +444,7 @@ async function runDepartmentCycle(deptId) {
         result: result.text.slice(0, 300),
         responseLength,
         effective: isEffective,
-        idleWorkers: idleWorkersBefore.length,
+        idleWorkers: idleWorkers.length,
       })
       if (state.history.length > MAX_HISTORY_ENTRIES) {
         state.history = state.history.slice(-MAX_HISTORY_ENTRIES)
@@ -386,7 +456,7 @@ async function runDepartmentCycle(deptId) {
     } else {
       logger.error('dept-loop', `Department ${deptId} cycle failed: ${result.error}`)
       // Still run idle-based auto-transition even when chief fails
-      autoTransitionTasks(deptId, config, '').catch(e =>
+      autoTransitionTasks(deptId, config, '', { idleOnly: true }).catch(e =>
         logger.debug('dept-loop', `Auto-transition error for ${deptId} (on failure path)`, e)
       )
       state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
@@ -399,7 +469,7 @@ async function runDepartmentCycle(deptId) {
   } catch (err) {
     logger.error('dept-loop', `Department ${deptId} cycle error`, err)
     // Still run idle-based auto-transition even on exception
-    autoTransitionTasks(deptId, config, '').catch(() => {})
+    autoTransitionTasks(deptId, config, '', { idleOnly: true }).catch(() => {})
     state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
     state.status = 'error'
     state.lastCycleResult = `Error: ${err.message}`
@@ -461,21 +531,34 @@ async function fallbackDispatch(deptId, config) {
   const agents = config.agents || []
   const head = config.head
 
-  // Find idle workers (not the head)
+  // Find pending/in_progress tasks for this department
+  const projects = readProjectTasks()
+
+  // Count in_progress tasks per agent (to skip agents already working)
+  const inProgressByAgent = {}
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      if (t.status !== 'in_progress') continue
+      const assignees = [t.assignedAgent, ...(t.assignees || [])].filter(Boolean)
+      for (const a of assignees) {
+        inProgressByAgent[a] = (inProgressByAgent[a] || 0) + 1
+      }
+    }
+  }
+
+  // Find idle workers (not the head) WITHOUT in_progress tasks
   const idleAgents = agents.filter(id => {
     if (id === head) return false
+    if (inProgressByAgent[id] > 0) return false  // Has active work, skip
     const a = agentActivity[id]
     if (!a) return true  // No activity record = idle
     return a.idleMins >= 5  // 5+ minutes idle
   })
 
   if (idleAgents.length === 0) {
-    logger.info('dept-loop', `Fallback dispatch for ${deptId}: no idle agents found`)
+    logger.info('dept-loop', `Fallback dispatch for ${deptId}: no idle agents without active tasks found`)
     return
   }
-
-  // Find pending tasks for this department
-  const projects = readProjectTasks()
   const pendingTasks = []
   for (const proj of projects) {
     for (const t of (proj.tasks || [])) {

@@ -365,7 +365,7 @@ async function sweepStaleTasks() {
     } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
       newStatus = 'failed'
     } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= IDLE_COMPLETE_MINS) {
-      newStatus = 'completed'
+      newStatus = 'review'  // Mark as review instead of completed — let chief confirm
     }
 
     if (newStatus) {
@@ -413,15 +413,30 @@ async function startAll() {
   await runCeoCycleForAll('coordination')
 
   // 2. Schedule recurring CEO coordination cycles
+  // Use a shared lock to prevent coordination and strategy from overlapping
+  let ceoCycleLock = false
+  const runCeoCycleGuarded = async (cycleType) => {
+    if (ceoCycleLock) {
+      logger.warn('main', `CEO ${cycleType} cycle skipped: another CEO cycle is running`)
+      return
+    }
+    ceoCycleLock = true
+    try {
+      await runCeoCycleForAll(cycleType)
+    } finally {
+      ceoCycleLock = false
+    }
+  }
+
   const ceoCoordLoop = async () => {
-    await runCeoCycleForAll('coordination')
+    await runCeoCycleGuarded('coordination')
     setTimeout(ceoCoordLoop, CEO_COORDINATION_INTERVAL_SEC * 1000)
   }
   setTimeout(ceoCoordLoop, CEO_COORDINATION_INTERVAL_SEC * 1000)
 
   // 3. Schedule CEO strategy cycle (daily)
   const ceoStrategyLoop = async () => {
-    await runCeoCycleForAll('strategy')
+    await runCeoCycleGuarded('strategy')
     setTimeout(ceoStrategyLoop, CEO_STRATEGY_INTERVAL_SEC * 1000)
   }
   setTimeout(ceoStrategyLoop, CEO_STRATEGY_INTERVAL_SEC * 1000)

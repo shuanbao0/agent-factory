@@ -162,6 +162,7 @@ async function findActiveTaskForAgent(assignee, deptId) {
     if (deptId) params.set('projectId', deptId)
     const result = await apiRequest('GET', `/api/agent-tasks?${params.toString()}`)
     if (!result || !Array.isArray(result.tasks)) return null
+    // review tasks are waiting for chief confirmation, agent is free for new work
     const activeStatuses = new Set(['pending', 'assigned', 'in_progress', 'rework'])
     const active = result.tasks.find(t => activeStatuses.has(t.status))
     return active ? active.id : null

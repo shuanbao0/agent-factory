@@ -160,6 +160,13 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
             return
           }
 
+          // If still empty after retry, treat as error
+          if (!text.trim() && retried) {
+            logger.error('gateway', `Empty response from ${agentId} after retry, treating as error`)
+            finish({ ok: false, error: 'Empty response after session reset retry', usage: p.usage })
+            return
+          }
+
           finish({ ok: true, text, usage: p.usage })
         } else if (p.state === 'error') {
           finish({ ok: false, error: p.errorMessage || 'Agent error' })
