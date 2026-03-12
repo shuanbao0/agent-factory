@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAppStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
@@ -14,7 +14,15 @@ import { Users, FolderKanban, Zap, Activity, AlertTriangle, X, RefreshCw } from 
 import { formatNumber } from '@/lib/utils'
 
 export default function DashboardPage() {
-  const { agents, projects, logs, mode, dataSource, totalTokens: realTotalTokens, totalCost, connected, fetchAgents, fetchLogs, fetchUsage } = useAppStore()
+  const agents = useAppStore(s => s.agents)
+  const projects = useAppStore(s => s.projects)
+  const dataSource = useAppStore(s => s.dataSource)
+  const realTotalTokens = useAppStore(s => s.totalTokens)
+  const totalCost = useAppStore(s => s.totalCost)
+  const connected = useAppStore(s => s.connected)
+  const fetchAgents = useAppStore(s => s.fetchAgents)
+  const fetchLogs = useAppStore(s => s.fetchLogs)
+  const fetchUsage = useAppStore(s => s.fetchUsage)
   const { t } = useTranslation()
   const [showBanner, setShowBanner] = useState(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
@@ -40,10 +48,10 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [])
 
-  const totalTokens = realTotalTokens > 0 ? realTotalTokens : agents.reduce((s, a) => s + a.tokensUsed, 0)
+  const totalTokens = useMemo(() => realTotalTokens > 0 ? realTotalTokens : agents.reduce((s, a) => s + a.tokensUsed, 0), [realTotalTokens, agents])
   const onlineAgents = agents.length
-  const activeProjects = projects.filter(p => p.status !== 'completed').length
-  const runningTasks = projects.flatMap(p => p.tasks).filter(t => t.status === 'in_progress' || (t.status as string) === 'running').length
+  const activeProjects = useMemo(() => projects.filter(p => p.status !== 'completed').length, [projects])
+  const runningTasks = useMemo(() => projects.flatMap(p => p.tasks).filter(t => t.status === 'in_progress' || (t.status as string) === 'running').length, [projects])
 
   return (
     <div className="space-y-6">

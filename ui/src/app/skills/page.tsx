@@ -165,7 +165,8 @@ function SkillDetailDialog({ slug, onClose, installedSlugs, onInstall }: {
 
 // ── Main Page ────────────────────────────────────────────────────
 export default function SkillsPage() {
-  const { skills, setSkills } = useAppStore()
+  const skills = useAppStore(s => s.skills)
+  const setSkills = useAppStore(s => s.setSkills)
   const { t } = useTranslation()
 
   const [tab, setTab] = useState<Tab>('installed')

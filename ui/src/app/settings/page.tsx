@@ -166,7 +166,7 @@ function AddProviderDialog({ onAdd, onClose }: { onAdd: (p: { name: string; entr
 }
 
 function AddModelDialog({ provider, onAdd, onClose }: { provider: string; onAdd: (alias: string, modelId: string) => void; onClose: () => void }) {
-  const { providers: storeProviders } = useAppStore()
+  const storeProviders = useAppStore(s => s.providers)
   const [alias, setAlias] = useState('')
   const [modelId, setModelId] = useState('')
   const [isCustom, setIsCustom] = useState(false)
@@ -1731,7 +1731,15 @@ function OpenClawToolsTab() {
 }
 
 export default function SettingsPage() {
-  const { mode, setMode, settings, updateSettings, modelsList, providers, defaultModel, fetchModels, setDefaultModel } = useAppStore()
+  const mode = useAppStore(s => s.mode)
+  const setMode = useAppStore(s => s.setMode)
+  const settings = useAppStore(s => s.settings)
+  const updateSettings = useAppStore(s => s.updateSettings)
+  const modelsList = useAppStore(s => s.modelsList)
+  const providers = useAppStore(s => s.providers)
+  const defaultModel = useAppStore(s => s.defaultModel)
+  const fetchModels = useAppStore(s => s.fetchModels)
+  const setDefaultModel = useAppStore(s => s.setDefaultModel)
   const { t, locale, setLocale } = useTranslation()
   const [showAddProvider, setShowAddProvider] = useState(false)
   const [addModelTo, setAddModelTo] = useState<string | null>(null)

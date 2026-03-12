@@ -9,7 +9,9 @@ import { useState } from 'react'
 import type { LogEntry } from '@/lib/types'
 
 export default function LogsPage() {
-  const { logs, agents, fetchLogs } = useAppStore()
+  const logs = useAppStore(s => s.logs)
+  const agents = useAppStore(s => s.agents)
+  const fetchLogs = useAppStore(s => s.fetchLogs)
   const { t } = useTranslation()
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [agentFilter, setAgentFilter] = useState<string>('all')

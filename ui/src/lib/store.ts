@@ -69,7 +69,17 @@ function scheduleAgentEnrichment(
       }
       return copy
     })
-    set({ agents: enriched })
+    // Shallow compare: skip set() if enriched data hasn't actually changed
+    const changed = enriched.some((e, i) => {
+      const o = agents[i]
+      return e.tokensUsed !== o.tokensUsed
+        || e.messagesCount !== o.messagesCount
+        || e.tasksCompleted !== o.tasksCompleted
+        || e.tasksInProgress !== o.tasksInProgress
+        || e.currentTask !== o.currentTask
+        || e.currentProject !== o.currentProject
+    })
+    if (changed) set({ agents: enriched })
   }, 0)
 }
 

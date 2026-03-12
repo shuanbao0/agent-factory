@@ -38,7 +38,7 @@ const ROLE_EMOJI: Record<string, string> = {
 // ── Main Page ────────────────────────────────────────────────────
 export default function MessagesPage() {
   const { t } = useTranslation()
-  const { agents } = useAppStore()
+  const agents = useAppStore(s => s.agents)
 
   // Messages state
   const [messages, setMessages] = useState<AgentMessage[]>([])

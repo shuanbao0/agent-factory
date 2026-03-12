@@ -1,11 +1,12 @@
 'use client'
+import React from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { useAppStore } from '@/lib/store'
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#14b8a6']
 
-export function AgentTokenChart() {
-  const { usageByAgent } = useAppStore()
+export const AgentTokenChart = React.memo(function AgentTokenChart() {
+  const usageByAgent = useAppStore(s => s.usageByAgent)
 
   const data = usageByAgent
     .filter(a => a.totals.totalTokens > 0)
@@ -40,4 +41,4 @@ export function AgentTokenChart() {
       </PieChart>
     </ResponsiveContainer>
   )
-}
+})

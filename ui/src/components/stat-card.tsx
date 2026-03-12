@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { Card, CardContent } from './ui/card'
 import { cn } from '@/lib/utils'
 import { LucideIcon } from 'lucide-react'
@@ -12,7 +13,7 @@ interface StatCardProps {
   className?: string
 }
 
-export function StatCard({ title, value, subtitle, icon: Icon, trend, className }: StatCardProps) {
+export const StatCard = React.memo(function StatCard({ title, value, subtitle, icon: Icon, trend, className }: StatCardProps) {
   return (
     <Card className={cn('', className)}>
       <CardContent className="p-5">
@@ -34,4 +35,4 @@ export function StatCard({ title, value, subtitle, icon: Icon, trend, className 
       </CardContent>
     </Card>
   )
-}
+})

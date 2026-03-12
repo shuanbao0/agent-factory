@@ -1,9 +1,10 @@
 'use client'
+import React from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useAppStore } from '@/lib/store'
 
-export function TokenChart() {
-  const { usageDaily } = useAppStore()
+export const TokenChart = React.memo(function TokenChart() {
+  const usageDaily = useAppStore(s => s.usageDaily)
 
   const data = usageDaily.map(d => ({
     date: d.date.replace(/^\d{4}-/, '').replace('-', '/'),
@@ -34,4 +35,4 @@ export function TokenChart() {
       </BarChart>
     </ResponsiveContainer>
   )
-}
+})

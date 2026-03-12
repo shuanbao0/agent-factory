@@ -38,7 +38,10 @@ const statusDot: Record<string, string> = {
 
 export default function TasksPage() {
   const { t } = useTranslation()
-  const { tasks, agents, projects, fetchTasks } = useAppStore()
+  const tasks = useAppStore(s => s.tasks)
+  const agents = useAppStore(s => s.agents)
+  const projects = useAppStore(s => s.projects)
+  const fetchTasks = useAppStore(s => s.fetchTasks)
 
   const [view, setView] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
@@ -412,7 +415,7 @@ function TaskDetailPanel({
   onStatusChange: (t: Task, s: Task['status']) => void
 }) {
   const { t } = useTranslation()
-  const { projects } = useAppStore()
+  const projects = useAppStore(s => s.projects)
   const project = projects.find(p => p.id === task.projectId)
 
   const statusFlow: Task['status'][] = ['pending', 'assigned', 'in_progress', 'review', 'rework', 'completed']

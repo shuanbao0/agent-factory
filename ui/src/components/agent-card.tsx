@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Agent } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { useAppStore } from '@/lib/store'
@@ -26,9 +26,9 @@ interface AgentCardProps {
   onDelete?: () => void
 }
 
-export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
+export const AgentCard = React.memo(function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
   const { t } = useTranslation()
-  const { templates } = useAppStore()
+  const templates = useAppStore(s => s.templates)
   const [mounted, setMounted] = useState(false)
   const [syncing, setSyncing] = useState(false)
   useEffect(() => { setMounted(true) }, [])
@@ -121,4 +121,4 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
       </CardContent>
     </Card>
   )
-}
+})

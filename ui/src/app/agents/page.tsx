@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
@@ -150,7 +150,16 @@ function AgentGroupedList({ agents, templates, departments, collapsedGroups, onT
 }
 
 export default function AgentsPage() {
-  const { agents, modelsList, agentModels, defaultModel, fetchModels, setAgentModel, fetchAgents, templates, departments, fetchDepartments } = useAppStore()
+  const agents = useAppStore(s => s.agents)
+  const modelsList = useAppStore(s => s.modelsList)
+  const agentModels = useAppStore(s => s.agentModels)
+  const defaultModel = useAppStore(s => s.defaultModel)
+  const fetchModels = useAppStore(s => s.fetchModels)
+  const setAgentModel = useAppStore(s => s.setAgentModel)
+  const fetchAgents = useAppStore(s => s.fetchAgents)
+  const templates = useAppStore(s => s.templates)
+  const departments = useAppStore(s => s.departments)
+  const fetchDepartments = useAppStore(s => s.fetchDepartments)
   const { t, locale } = useTranslation()
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
@@ -177,8 +186,8 @@ export default function AgentsPage() {
   const [previewFile, setPreviewFile] = useState<{ source: string; path: string; content: string } | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
 
-  const online = agents.filter(a => a.status === 'online').length
-  const busy = agents.filter(a => a.status === 'busy').length
+  const online = useMemo(() => agents.filter(a => a.status === 'online').length, [agents])
+  const busy = useMemo(() => agents.filter(a => a.status === 'busy').length, [agents])
 
   useEffect(() => {
     let cancelled = false
@@ -211,7 +220,28 @@ export default function AgentsPage() {
     if (tab === 'workspaces') fetchWorkspaces()
   }, [tab, fetchWorkspaces])
 
-  const handleDelete = async (id: string) => {
+  const handleToggleGroup = useCallback((g: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(g)) next.delete(g)
+      else next.add(g)
+      return next
+    })
+  }, [])
+
+  const handleEdit = useCallback((a: Agent) => {
+    setEditAgent({
+      id: a.id,
+      role: a.role,
+      name: a.name,
+      description: a.description,
+      model: agentModels[a.id],
+      templateId: a.templateId,
+      department: a.department,
+    })
+  }, [agentModels])
+
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm(t('agents.confirmDelete'))) return
     try {
       await fetch('/api/agents', {
@@ -221,7 +251,7 @@ export default function AgentsPage() {
       })
       fetchAgents()
     } catch {}
-  }
+  }, [t, fetchAgents])
 
   const handleSaved = (createdAgentId?: string, skipAutoInit?: boolean) => {
     fetchAgents()
@@ -651,24 +681,9 @@ export default function AgentsPage() {
               templates={templates}
               departments={departments}
               collapsedGroups={collapsedGroups}
-              onToggleGroup={(g) => {
-                setCollapsedGroups(prev => {
-                  const next = new Set(prev)
-                  if (next.has(g)) next.delete(g)
-                  else next.add(g)
-                  return next
-                })
-              }}
-              onEdit={(a) => setEditAgent({
-                id: a.id,
-                role: a.role,
-                name: a.name,
-                description: a.description,
-                model: agentModels[a.id],
-                templateId: a.templateId,
-                department: a.department,
-              })}
-              onDelete={(id) => handleDelete(id)}
+              onToggleGroup={handleToggleGroup}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               t={t}
               locale={locale}
             />

@@ -25,7 +25,11 @@ interface AgentFormProps {
 
 export function AgentForm({ editAgent, onClose, onSaved }: AgentFormProps) {
   const { t, locale } = useTranslation()
-  const { modelsList, defaultModel, templates, agents, departments } = useAppStore()
+  const modelsList = useAppStore(s => s.modelsList)
+  const defaultModel = useAppStore(s => s.defaultModel)
+  const templates = useAppStore(s => s.templates)
+  const agents = useAppStore(s => s.agents)
+  const departments = useAppStore(s => s.departments)
   const isEdit = !!editAgent
 
   // Step: 'pick-template' or 'configure'

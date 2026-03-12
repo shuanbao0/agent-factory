@@ -21,7 +21,9 @@ interface TaskFormProps {
 
 export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
   const { t, locale } = useTranslation()
-  const { agents, projects, tasks } = useAppStore()
+  const agents = useAppStore(s => s.agents)
+  const projects = useAppStore(s => s.projects)
+  const tasks = useAppStore(s => s.tasks)
   const isEdit = !!editTask
 
   const [name, setName] = useState(editTask?.name || '')
