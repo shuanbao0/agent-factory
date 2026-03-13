@@ -123,7 +123,10 @@ ISSUES: <comma-separated list or "none">`
     const result = await sendToAgent(agentId, `agent:${agentId}:quality-check`, prompt, 60000)
     if (result.ok) {
       const score = parseInt(result.text.match(/SCORE:\s*(\d+)/)?.[1] || '50')
-      const passed = result.text.includes('PASSED: true') || score >= 60
+      const explicitPassed = result.text.match(/PASSED:\s*(true|false)/i)
+      const passed = explicitPassed
+        ? explicitPassed[1].toLowerCase() === 'true'
+        : score >= 60  // fallback: 无明确 PASSED 字段时按分数判
       return {
         passed,
         score,
@@ -211,7 +214,10 @@ COMMENTS: <your review comments>`
     const result = await sendToAgent(reviewerId, `agent:${reviewerId}:peer-review`, prompt, 60000)
     if (result.ok) {
       const score = parseInt(result.text.match(/SCORE:\s*(\d+)/)?.[1] || '50')
-      const passed = result.text.includes('PASSED: true') || score >= 60
+      const explicitPassed = result.text.match(/PASSED:\s*(true|false)/i)
+      const passed = explicitPassed
+        ? explicitPassed[1].toLowerCase() === 'true'
+        : score >= 60  // fallback: 无明确 PASSED 字段时按分数判
       const comments = result.text.match(/COMMENTS:\s*([\s\S]*?)$/)?.[1]?.trim() || ''
       return {
         reviewer: reviewerId,

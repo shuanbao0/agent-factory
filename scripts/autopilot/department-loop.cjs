@@ -29,6 +29,10 @@ const logger = require('./logger.cjs')
 const sessionResetCooldowns = new Map()  // sessionKey → timestamp
 const RESET_COOLDOWN_MS = 120_000
 
+// Quality gate error tracking: consecutive exceptions per task
+const gateErrorCounts = new Map()  // taskId → count
+const MAX_GATE_ERRORS = 3
+
 /**
  * Notify agent about task status change via peer-send (fire-and-forget).
  * Used to inform agents when their tasks are auto-failed or auto-transitioned.
@@ -175,7 +179,7 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
   if (!options.idleOnly) {
     for (const taskId of chiefCompletions) {
       const task = allTasks.find(t => t.id === taskId)
-      if (task && ['in_progress', 'rework', 'review'].includes(task.status)) {
+      if (task && ['in_progress', 'rework'].includes(task.status)) {
         const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
         if (assignee) {
           transition(task, assignee, task.status, 'completed', 'chief 确认完成')
@@ -212,6 +216,7 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
         try {
           const gate = await processQualityGate(deptId, task)
           if (gate.passed) {
+            gateErrorCounts.delete(task.id)
             transition(task, assignee, 'review', 'completed',
               `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
               { quality: task.quality })
@@ -225,6 +230,7 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
                 { quality: task.quality, reworkCount })
               logger.warn('dept-loop', `Task ${task.id} failed after ${reworkCount} rework rounds`)
             } else {
+              gateErrorCounts.delete(task.id)
               transition(task, assignee, 'review', 'rework',
                 `质量审核不通过 (第${reworkCount}次返工): ${gate.reason}`,
                 { quality: task.quality, reworkCount })
@@ -234,7 +240,14 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
           }
         } catch (gateErr) {
           logger.error('dept-loop', `Quality gate error for task ${task.id}`, gateErr)
-          // On error, don't auto-approve — leave in review for next cycle
+          const errCount = (gateErrorCounts.get(task.id) || 0) + 1
+          gateErrorCounts.set(task.id, errCount)
+          if (errCount >= MAX_GATE_ERRORS) {
+            transition(task, assignee, 'review', 'failed',
+              `质量审核连续异常 ${errCount} 次: ${gateErr.message}`)
+            gateErrorCounts.delete(task.id)
+          }
+          // else: leave in review for next cycle retry
         }
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
