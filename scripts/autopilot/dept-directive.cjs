@@ -52,7 +52,7 @@ function buildTeamStatus(agentIds, agentActivity, projects) {
     const taskSuffix = taskCount > 0 ? `, ${taskCount}个进行中任务` : ''
     if (a) {
       const status = a.idleMins < 5 ? '🔴 忙碌' : a.idleMins < 30 ? '🟡 刚完成' : '🟢 空闲'
-      result += `- ${agentId}: ${status}（${a.idleMins}分钟无活动, ${a.totalTokens} tokens${taskSuffix}）${roleSuffix}\n`
+      result += `- ${agentId}: ${status}（${a.idleMins}分钟无活动${taskSuffix}）${roleSuffix}\n`
     } else {
       result += `- ${agentId}: ⚪ 无记录${taskSuffix ? `（${taskSuffix.slice(2)}）` : ''}${roleSuffix}\n`
     }
