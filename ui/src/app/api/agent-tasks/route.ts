@@ -114,7 +114,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    let { agent, taskId, status, progress, output, quality } = body
+    let { agent, taskId, status, progress, output, quality, reworkCount } = body
 
     if (!agent || !taskId) {
       return NextResponse.json({ error: 'agent and taskId are required' }, { status: 400 })
@@ -161,6 +161,9 @@ export async function PUT(req: NextRequest) {
     if (output !== undefined) updates.output = output
     if (quality !== undefined) {
       updates.quality = { ...(found.task.quality || {}), ...quality }
+    }
+    if (reworkCount !== undefined) {
+      updates.reworkCount = reworkCount
     }
 
     // Quality gate check on completion

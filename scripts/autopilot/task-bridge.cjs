@@ -135,12 +135,14 @@ async function createWorkTask(assignee, taskName, deptId, options = {}) {
  * @param {string} agentId - Agent that owns the task
  * @param {string|null} taskId - Task ID to update
  * @param {string} status - New status (e.g. 'in_progress', 'completed')
+ * @param {object} [extras] - Additional fields to update (quality, reworkCount, etc.)
  */
-async function updateTaskStatus(agentId, taskId, status) {
+async function updateTaskStatus(agentId, taskId, status, extras) {
   if (!taskId) return
   try {
     await apiRequest('PUT', '/api/agent-tasks', {
       agent: agentId, taskId, status,
+      ...extras,
     })
     logger.debug('task-bridge', `Updated task ${taskId} status to ${status}`)
   } catch (e) {
@@ -162,8 +164,8 @@ async function findActiveTaskForAgent(assignee, deptId) {
     if (deptId) params.set('projectId', deptId)
     const result = await apiRequest('GET', `/api/agent-tasks?${params.toString()}`)
     if (!result || !Array.isArray(result.tasks)) return null
-    // review tasks are waiting for chief confirmation, agent is free for new work
-    const activeStatuses = new Set(['pending', 'assigned', 'in_progress', 'rework'])
+    // review tasks are now actively going through quality gate — treat as active to prevent duplicates
+    const activeStatuses = new Set(['pending', 'assigned', 'in_progress', 'rework', 'review'])
     const active = result.tasks.find(t => activeStatuses.has(t.status))
     return active ? active.id : null
   } catch {

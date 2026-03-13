@@ -4,9 +4,12 @@
  * Flow: self-check → peer review → head approval
  * Triggered when a task enters 'review' status.
  */
+const { existsSync, statSync, readFileSync } = require('fs')
+const { resolve } = require('path')
 const { sendToAgent } = require('./gateway.cjs')
 const { loadDeptConfig } = require('./readers.cjs')
 const { readAgentActivity } = require('./readers.cjs')
+const { PROJECT_ROOT } = require('./constants.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -31,12 +34,11 @@ async function processQualityGate(deptId, task) {
     task.quality.selfCheck = selfCheck
     if (!selfCheck.passed) {
       logger.info('quality-gate', `Self-check failed for task ${task.id}`)
-      task.status = 'in_progress'
       return { passed: false, reason: `Self-check failed: score ${selfCheck.score}/100` }
     }
   } catch (err) {
     logger.warn('quality-gate', `Self-check error for task ${task.id}`, err)
-    // Don't block on self-check failure
+    return { passed: false, reason: `Self-check exception: ${err.message}` }
   }
 
   // 2. Peer review: select a reviewer from the department
@@ -47,11 +49,11 @@ async function processQualityGate(deptId, task) {
       task.quality.peerReview = peerReview
       if (!peerReview.passed) {
         logger.info('quality-gate', `Peer review failed for task ${task.id} by ${reviewer}`)
-        task.status = 'in_progress'
         return { passed: false, reason: peerReview.comments || 'Peer review rejected' }
       }
     } catch (err) {
       logger.warn('quality-gate', `Peer review error for task ${task.id}`, err)
+      return { passed: false, reason: `Peer review exception: ${err.message}` }
     }
   }
 
@@ -61,17 +63,14 @@ async function processQualityGate(deptId, task) {
     task.quality.headApproval = headApproval
     if (!headApproval.passed) {
       logger.info('quality-gate', `Head rejected task ${task.id}`)
-      task.status = 'in_progress'
       return { passed: false, reason: 'Head rejected' }
     }
   } catch (err) {
     logger.warn('quality-gate', `Head approval error for task ${task.id}`, err)
-    // Don't block on head approval failure
+    return { passed: false, reason: `Head approval exception: ${err.message}` }
   }
 
-  // All gates passed
-  task.status = 'completed'
-  task.completedAt = new Date().toISOString()
+  // All gates passed (caller handles status transition)
   logger.info('quality-gate', `Task ${task.id} passed all quality gates`)
   return { passed: true }
 }
@@ -80,7 +79,28 @@ async function processQualityGate(deptId, task) {
  * Request self-check from the assigned agent.
  */
 async function requestSelfCheck(agentId, task) {
-  if (!agentId) return { passed: true, score: 100, checklist: [], at: new Date().toISOString() }
+  if (!agentId) return { passed: false, score: 0, checklist: ['无执行者'], at: new Date().toISOString() }
+
+  // Hard validation: check output file exists and meets minimum requirements
+  if (task.output) {
+    const outputPath = resolve(PROJECT_ROOT, task.output)
+    if (!existsSync(outputPath)) {
+      return { passed: false, score: 0, checklist: ['产出文件不存在: ' + task.output], at: new Date().toISOString() }
+    }
+    try {
+      const stat = statSync(outputPath)
+      if (stat.size < 500) {
+        return { passed: false, score: 0, checklist: [`文件仅 ${stat.size}B，最低要求 500B`], at: new Date().toISOString() }
+      }
+      // Check for unrendered template variables
+      const content = readFileSync(outputPath, 'utf8').slice(0, 5000)
+      if (/\$\{[^}]+\}/.test(content)) {
+        return { passed: false, score: 0, checklist: ['含未渲染模板变量 ${...}'], at: new Date().toISOString() }
+      }
+    } catch (err) {
+      logger.debug('quality-gate', `File validation error for ${outputPath}`, err)
+    }
+  }
 
   const prompt = `请检查你的任务产出质量：
 
@@ -115,8 +135,8 @@ ISSUES: <comma-separated list or "none">`
     logger.debug('quality-gate', `Self-check request failed for ${agentId}`, err)
   }
 
-  // Default: pass with neutral score
-  return { passed: true, score: 70, checklist: [], at: new Date().toISOString() }
+  // Default: fail on timeout/error — do not silently approve
+  return { passed: false, score: 0, checklist: ['self-check 超时或失败'], at: new Date().toISOString() }
 }
 
 /**
@@ -131,18 +151,32 @@ function selectReviewer(deptId, task, config) {
   const agents = config.agents || []
   const assignedAgent = task.assignedAgent || task.assignees?.[0]
 
-  // Filter out the assigned agent
+  // Preferred reviewers by task type (specialized review agents first)
+  const REVIEWER_MAP = {
+    'writing':       ['reader-analyst', 'style-editor', 'continuity-mgr'],
+    'editing':       ['reader-analyst', 'continuity-mgr'],
+    'worldbuilding': ['worldbuilder', 'continuity-mgr'],
+    'character':     ['character-designer', 'continuity-mgr'],
+    'plotting':      ['plot-architect', 'pacing-designer'],
+  }
+
+  // Filter out the assigned agent and the head
   const candidates = agents.filter(a => a !== assignedAgent && a !== config.head)
   if (candidates.length === 0) return null
 
-  // Get activity to find the most idle one
+  // Prioritize specialized reviewers for the task type
+  const preferredReviewers = REVIEWER_MAP[task.type] || []
+  const preferred = candidates.filter(a => preferredReviewers.includes(a))
+  const pool = preferred.length > 0 ? preferred : candidates
+
+  // Pick the most idle candidate from the pool
   const activity = readAgentActivity()
-  let bestCandidate = candidates[0]
+  let bestCandidate = pool[0]
   let maxIdle = -1
 
-  for (const candidate of candidates) {
+  for (const candidate of pool) {
     const a = activity[candidate]
-    const idle = a ? a.idleMins : 9999 // Assume very idle if no record
+    const idle = a ? a.idleMins : 9999
     if (idle > maxIdle) {
       maxIdle = idle
       bestCandidate = candidate
@@ -191,7 +225,8 @@ COMMENTS: <your review comments>`
     logger.debug('quality-gate', `Peer review request failed for ${reviewerId}`, err)
   }
 
-  return { reviewer: reviewerId, passed: true, score: 70, comments: '', at: new Date().toISOString() }
+  // Default: fail on timeout/error — do not silently approve
+  return { reviewer: reviewerId, passed: false, score: 0, comments: 'peer review 超时或失败', at: new Date().toISOString() }
 }
 
 /**
@@ -222,7 +257,8 @@ async function requestHeadApproval(headId, task) {
     logger.debug('quality-gate', `Head approval request failed for ${headId}`, err)
   }
 
-  return { approver: headId, passed: true, at: new Date().toISOString() }
+  // Default: fail on timeout/error — do not silently approve
+  return { approver: headId, passed: false, at: new Date().toISOString() }
 }
 
 /**

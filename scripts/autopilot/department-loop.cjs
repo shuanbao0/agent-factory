@@ -22,6 +22,7 @@ const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('./task-bridge.cjs')
+const { processQualityGate } = require('./quality-gate.cjs')
 const logger = require('./logger.cjs')
 
 // Cooldown: skip session health check if recently reset
@@ -163,9 +164,9 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
 
   if (allTasks.length === 0) return transitions
 
-  // Helper to record transition
-  const transition = (task, assignee, from, to, reason) => {
-    updateTaskStatus(assignee, task.id, to)
+  // Helper to record transition (extras: optional fields like quality, reworkCount)
+  const transition = (task, assignee, from, to, reason, extras) => {
+    updateTaskStatus(assignee, task.id, to, extras)
     transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from, to, reason })
   }
 
@@ -207,9 +208,34 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
       // when chief explicitly references [Task: xxx] in a message.
       // Do NOT revert based on idle time — notifications can wake the agent.
       if (idleMins >= IDLE_COMPLETE_MINS) {
-        // Chief didn't act within one cycle → auto-approve
-        transition(task, assignee, 'review', 'completed', `review 超时自动通过 (${idleMins}m)`)
-        logger.info('dept-loop', `Review task ${task.id} auto-approved (idle ${idleMins}m)`)
+        // Run quality gate instead of auto-approving
+        try {
+          const gate = await processQualityGate(deptId, task)
+          if (gate.passed) {
+            transition(task, assignee, 'review', 'completed',
+              `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
+              { quality: task.quality })
+            logger.info('dept-loop', `Task ${task.id} passed quality gate in ${deptId}`)
+          } else {
+            // Check rework count — fail after 3 rounds (use persisted reworkCount from API)
+            const reworkCount = (task.reworkCount || 0) + 1
+            if (reworkCount >= 3) {
+              transition(task, assignee, 'review', 'failed',
+                `质量审核不通过且已返工 ${reworkCount} 次: ${gate.reason}`,
+                { quality: task.quality, reworkCount })
+              logger.warn('dept-loop', `Task ${task.id} failed after ${reworkCount} rework rounds`)
+            } else {
+              transition(task, assignee, 'review', 'rework',
+                `质量审核不通过 (第${reworkCount}次返工): ${gate.reason}`,
+                { quality: task.quality, reworkCount })
+              logger.info('dept-loop', `Task ${task.id} sent to rework #${reworkCount}: ${gate.reason}`)
+              notifyAgentTaskChange(config.head, assignee, task.id, task.name || '', 'rework', gate.reason)
+            }
+          }
+        } catch (gateErr) {
+          logger.error('dept-loop', `Quality gate error for task ${task.id}`, gateErr)
+          // On error, don't auto-approve — leave in review for next cycle
+        }
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
       if (idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
