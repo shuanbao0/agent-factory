@@ -182,8 +182,8 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
       if (task && ['in_progress', 'rework'].includes(task.status)) {
         const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
         if (assignee) {
-          transition(task, assignee, task.status, 'completed', 'chief 确认完成')
-          logger.info('dept-loop', `Chief reported task ${taskId} completed in ${deptId}`)
+          transition(task, assignee, task.status, 'review', 'chief 确认完成，进入质量审核')
+          logger.info('dept-loop', `Chief reported task ${taskId} → review in ${deptId}`)
         }
       }
     }

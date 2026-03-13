@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { existsSync, readdirSync } from 'fs'
 import { join, resolve } from 'path'
 import {
+  findAllTasks,
   readStandaloneTasks,
   writeStandaloneTasks,
   readProjectMeta,
   writeProjectMeta,
+  updateTaskInPlace,
+  deleteProjectTask,
 } from '@/lib/task-storage'
 
 export const dynamic = 'force-dynamic'
@@ -69,6 +72,88 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true, deleted })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+// ── POST /api/tasks/batch ─────────────────────────────────────
+// Body: { action: 'cleanup' }
+// Cleans up:
+// 1. Duplicate rework tasks: same reworkFromId → keep only newest
+// 2. Orphan rework tasks: parent already completed/failed but rework still pending
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { action } = body as { action: string }
+
+    if (action !== 'cleanup') {
+      return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
+    }
+
+    const allTasks = findAllTasks()
+    let deletedDuplicates = 0
+    let closedOrphans = 0
+
+    // 1. Deduplicate rework tasks: group by reworkFromId, keep newest
+    const reworkGroups = new Map<string, typeof allTasks>()
+    for (const t of allTasks) {
+      if (!t.reworkFromId) continue
+      const group = reworkGroups.get(t.reworkFromId) || []
+      group.push(t)
+      reworkGroups.set(t.reworkFromId, group)
+    }
+
+    reworkGroups.forEach((group) => {
+      if (group.length <= 1) return
+      // Sort by createdAt descending, keep the newest
+      group.sort((a: { createdAt?: string }, b: { createdAt?: string }) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+      for (let i = 1; i < group.length; i++) {
+        const task = group[i]
+        // Only delete if not completed/failed (don't touch finished work)
+        if (['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(task.status)) {
+          deleteTask(task)
+          deletedDuplicates++
+        }
+      }
+    })
+
+    // 2. Close orphan rework tasks: parent is terminal but rework is still active
+    const freshTasks = findAllTasks() // re-read after deletions
+    for (const t of freshTasks) {
+      if (!t.reworkFromId) continue
+      if (!['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(t.status)) continue
+
+      const parent = freshTasks.find(p => p.id === t.reworkFromId)
+      if (parent && ['completed', 'failed'].includes(parent.status)) {
+        updateTaskInPlace(t.id, {
+          status: 'failed',
+          output: `Closed: parent task ${t.reworkFromId} already ${parent.status}`,
+        })
+        closedOrphans++
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      deletedDuplicates,
+      closedOrphans,
+      total: deletedDuplicates + closedOrphans,
+    })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+/** Delete a task from wherever it lives (standalone or project) */
+function deleteTask(task: { id: string; projectId?: string | null }) {
+  if (task.projectId) {
+    deleteProjectTask(task.projectId, task.id)
+  } else {
+    const standalone = readStandaloneTasks()
+    const filtered = standalone.filter(t => t.id !== task.id)
+    if (filtered.length !== standalone.length) {
+      writeStandaloneTasks(filtered)
+    }
   }
 }
 

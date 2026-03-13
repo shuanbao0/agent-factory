@@ -140,13 +140,17 @@ async function createWorkTask(assignee, taskName, deptId, options = {}) {
 async function updateTaskStatus(agentId, taskId, status, extras) {
   if (!taskId) return
   try {
-    await apiRequest('PUT', '/api/agent-tasks', {
+    const result = await apiRequest('PUT', '/api/agent-tasks', {
       agent: agentId, taskId, status,
       ...extras,
     })
-    logger.debug('task-bridge', `Updated task ${taskId} status to ${status}`)
+    if (result && result.error) {
+      logger.warn('task-bridge', `Task ${taskId} → ${status} rejected: ${result.error}`)
+    } else {
+      logger.debug('task-bridge', `Updated task ${taskId} → ${status}`)
+    }
   } catch (e) {
-    logger.debug('task-bridge', `Failed to update task ${taskId} status`, e)
+    logger.warn('task-bridge', `Failed to update task ${taskId} → ${status}`, e)
   }
 }
 

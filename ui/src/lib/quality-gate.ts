@@ -51,6 +51,17 @@ export function checkQualityGate(task: Task, workflow: DepartmentWorkflow): Qual
     validatorConfig: gateConfig?.validatorConfig ?? {},
   }
 
+  // If quality data was already populated by the async gate (processQualityGate),
+  // trust its pass/fail verdict for selfCheck and peerReview. The async gate
+  // conducted actual Agent conversations; re-checking the score against minScore
+  // here would create an inconsistent double-standard loop. Validators (wordCount,
+  // similarity, etc.) still run below — they provide checks the async gate doesn't.
+  // headApproval is ONLY set by the async gate (processQualityGate) when all
+  // three stages pass. Agents never submit headApproval via task-api skill.
+  // Using headApproval?.passed as discriminator prevents Agents from gaming
+  // the minScore bypass by including an `at` field in their selfCheck.
+  const asyncGatePopulated = task.quality?.headApproval?.passed === true
+
   // Check selfCheck
   if (gate.requireSelfCheck) {
     if (!task.quality?.selfCheck) {
@@ -59,7 +70,9 @@ export function checkQualityGate(task: Task, workflow: DepartmentWorkflow): Qual
     } else if (!task.quality.selfCheck.passed) {
       result.passed = false
       result.errors.push(`Self-check failed (score: ${task.quality.selfCheck.score})`)
-    } else if (task.quality.selfCheck.score < gate.minScore) {
+    } else if (!asyncGatePopulated && task.quality.selfCheck.score < gate.minScore) {
+      // Only enforce minScore for direct Agent PUT (path 1).
+      // Async gate (path 2) already validated with Agent conversation.
       result.passed = false
       result.errors.push(`Self-check score ${task.quality.selfCheck.score} below minimum ${gate.minScore}`)
     }
@@ -68,8 +81,12 @@ export function checkQualityGate(task: Task, workflow: DepartmentWorkflow): Qual
   // Check peerReview
   if (gate.requirePeerReview) {
     if (!task.quality?.peerReview) {
-      result.passed = false
-      result.errors.push('Peer review not performed')
+      // If async gate ran but no peer review was collected (e.g. no reviewer available),
+      // skip this check — the async gate already decided to pass.
+      if (!asyncGatePopulated) {
+        result.passed = false
+        result.errors.push('Peer review not performed')
+      }
     } else if (!task.quality.peerReview.passed) {
       result.passed = false
       result.errors.push('Peer review not passed')
@@ -166,7 +183,8 @@ export function createPipelineTask(completedTask: Task, workflow: DepartmentWork
     projectId: completedTask.projectId,
     status: 'pending',
     priority: completedTask.priority,
-    assignees: [],
+    assignees: completedTask.assignees?.length ? [...completedTask.assignees] : [],
+    assignedAgent: completedTask.assignedAgent,
     creator: 'pipeline',
     progress: 0,
     dependencies: [completedTask.id],

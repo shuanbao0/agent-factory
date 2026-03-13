@@ -140,6 +140,27 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Agent is not assigned to or creator of this task' }, { status: 403 })
     }
 
+    // State transition guard: only allow valid transitions
+    if (status) {
+      const VALID_TRANSITIONS: Record<string, string[]> = {
+        'pending':     ['assigned', 'in_progress', 'completed', 'failed'],
+        'assigned':    ['in_progress', 'completed', 'failed'],
+        'in_progress': ['review', 'completed', 'rework', 'failed'],
+        'review':      ['completed', 'rework', 'in_progress', 'failed'],
+        'rework':      ['in_progress', 'review', 'completed', 'failed'],
+        'completed':   [],  // terminal
+        'failed':      [],  // terminal
+      }
+      const allowed = VALID_TRANSITIONS[found.task.status] || []
+      if (!allowed.includes(status)) {
+        return NextResponse.json({
+          error: `Invalid transition: ${found.task.status} → ${status}`,
+          currentStatus: found.task.status,
+          allowedTransitions: allowed,
+        }, { status: 409 })
+      }
+    }
+
     // Dependency check: cannot start if dependencies not complete
     if (status === 'in_progress' && found.task.dependencies.length > 0) {
       const allTasks = findAllTasks()
@@ -183,17 +204,53 @@ export async function PUT(req: NextRequest) {
           updates.status = 'rework'
           updates.validationErrors = gate.errors
           const updated = updateTaskInPlace(taskId, updates)
-          const reworkTask = createReworkTask(updated!, gate.errors)
-          persistNewTask(reworkTask)
-          return NextResponse.json({ task: updated, reworkTask, qualityGate: gate, ok: true })
+          // Dedup: skip if there's already an active rework task from this task
+          const allTasks = findAllTasks()
+          const existingRework = allTasks.find(t =>
+            t.reworkFromId === taskId &&
+            ['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(t.status)
+          )
+          if (!existingRework) {
+            const reworkTask = createReworkTask(updated!, gate.errors)
+            persistNewTask(reworkTask)
+            return NextResponse.json({ task: updated, reworkTask, qualityGate: gate, ok: true })
+          }
+          return NextResponse.json({ task: updated, existingRework: existingRework.id, qualityGate: gate, ok: true })
         }
         return NextResponse.json({ error: 'Quality gate failed', qualityGate: gate }, { status: 422 })
       }
 
       updates.completedAt = new Date().toISOString()
       const updated = updateTaskInPlace(taskId, updates)
+
+      // Close parent chain: walk up reworkFromId links and close all rework ancestors
+      let ancestorId = found.task.reworkFromId
+      while (ancestorId) {
+        const ancestor = findTaskById(ancestorId)
+        if (ancestor && ancestor.task.status === 'rework') {
+          updateTaskInPlace(ancestorId, {
+            status: 'completed',
+            completedAt: new Date().toISOString(),
+          })
+          ancestorId = ancestor.task.reworkFromId
+        } else {
+          break
+        }
+      }
+
+      // Pipeline task dedup: skip if identical pipeline task already exists
       const pipelineTask = createPipelineTask(updated!, workflow)
-      if (pipelineTask) persistNewTask(pipelineTask)
+      if (pipelineTask) {
+        const allTasks = findAllTasks()
+        const existingPipeline = allTasks.find(t =>
+          t.type === pipelineTask.type &&
+          t.dependencies?.includes(taskId) &&
+          t.creator === 'pipeline'
+        )
+        if (!existingPipeline) {
+          persistNewTask(pipelineTask)
+        }
+      }
       return NextResponse.json({ task: updated, pipelineTask, ok: true })
     }
 

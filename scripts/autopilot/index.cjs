@@ -339,6 +339,16 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
 async function sweepStaleTasks() {
   const agentActivity = readAgentActivity()
 
+  // Build set of agents managed by active department-loops.
+  // Review tasks for these agents are handled by dept-loop's quality gate.
+  const deptAgents = new Set()
+  try {
+    const departments = discoverActiveDepartments()
+    for (const dept of departments) {
+      for (const a of (dept.config.agents || [])) deptAgents.add(a)
+    }
+  } catch { /* proceed without dept info — all review tasks will be auto-completed */ }
+
   // Gather all non-terminal tasks from projects + standalone
   const allTasks = []
   for (const proj of readProjectTasks()) {
@@ -361,7 +371,13 @@ async function sweepStaleTasks() {
     if (task.status === 'assigned' && idleMins >= STALE_TASK_MINS) {
       newStatus = 'failed'
     } else if (task.status === 'review' && idleMins >= IDLE_COMPLETE_MINS) {
-      newStatus = 'completed'
+      if (deptAgents.has(assignee)) {
+        // Department agent — skip, dept-loop's quality gate handles review tasks
+      } else {
+        // Non-department task: no dept-loop to process it.
+        // Send to completed — sync gate will validate quality if pipeline step exists.
+        newStatus = 'completed'
+      }
     } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
       newStatus = 'failed'
     } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= IDLE_COMPLETE_MINS) {

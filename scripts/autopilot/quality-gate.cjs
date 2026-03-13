@@ -26,7 +26,10 @@ async function processQualityGate(deptId, task) {
     return { passed: true } // Pass through if no config
   }
 
-  task.quality = task.quality || {}
+  // Clear stale quality data from previous runs. Each async gate assessment
+  // must start fresh — leftover headApproval from a prior pass would cause the
+  // sync gate to skip minScore enforcement (asyncGatePopulated = true).
+  task.quality = {}
 
   // 1. Self-check: ask the assigned agent to verify their own work
   try {
