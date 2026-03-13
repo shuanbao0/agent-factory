@@ -71,8 +71,8 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
     for (const proj of projects) {
       const tasks = proj.tasks || []
       const completed = tasks.filter(t => t.status === 'completed').length
-      const running = tasks.filter(t => t.status === 'running')
-      const pending = tasks.filter(t => t.status !== 'completed' && t.status !== 'running')
+      const running = tasks.filter(t => t.status === 'in_progress')
+      const pending = tasks.filter(t => !['completed', 'in_progress', 'review', 'failed'].includes(t.status))
 
       context += `\n### ${proj.name} (${proj.id})\n`
       context += `- 状态: ${proj.status} | 阶段: ${proj.currentPhase}/${proj.totalPhases}\n`

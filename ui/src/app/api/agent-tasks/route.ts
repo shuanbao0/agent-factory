@@ -114,10 +114,20 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { agent, taskId, status, progress, output, quality } = body
+    let { agent, taskId, status, progress, output, quality } = body
 
     if (!agent || !taskId) {
       return NextResponse.json({ error: 'agent and taskId are required' }, { status: 400 })
+    }
+
+    // Validate status value to prevent non-standard states
+    const VALID_STATUSES = ['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed', 'rework']
+    if (status && !VALID_STATUSES.includes(status)) {
+      if (status === 'running') {
+        status = 'in_progress'
+      } else {
+        return NextResponse.json({ error: `Invalid status: ${status}. Valid values: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
+      }
     }
 
     const found = findTaskById(taskId)

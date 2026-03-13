@@ -51,7 +51,7 @@ export default function DashboardPage() {
   const totalTokens = useMemo(() => realTotalTokens > 0 ? realTotalTokens : agents.reduce((s, a) => s + a.tokensUsed, 0), [realTotalTokens, agents])
   const onlineAgents = agents.length
   const activeProjects = useMemo(() => projects.filter(p => p.status !== 'completed').length, [projects])
-  const runningTasks = useMemo(() => projects.flatMap(p => p.tasks).filter(t => t.status === 'in_progress' || (t.status as string) === 'running').length, [projects])
+  const runningTasks = useMemo(() => projects.flatMap(p => p.tasks).filter(t => t.status === 'in_progress').length, [projects])
 
   return (
     <div className="space-y-6">

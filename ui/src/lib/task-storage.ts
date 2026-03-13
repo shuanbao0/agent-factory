@@ -150,9 +150,6 @@ export function updateProjectTask(projectId: string, taskId: string, updates: Pa
   if (updates.assignees && updates.assignees.length > 0) {
     merged.assignedAgent = updates.assignees[0]
   }
-  if ((merged as Record<string, unknown>).status === 'in_progress') {
-    (merged as Record<string, unknown>).status = 'running'
-  }
   tasks[idx] = merged
   meta.tasks = tasks
   writeProjectMeta(projectId, meta)

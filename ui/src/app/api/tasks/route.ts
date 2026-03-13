@@ -96,9 +96,7 @@ export async function POST(req: NextRequest) {
       }
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
       if (!meta.tasks) meta.tasks = []
-      const stored = { ...task }
-      if (stored.status === 'in_progress') (stored as Record<string, unknown>).status = 'running'
-      meta.tasks.push(stored)
+      meta.tasks.push({ ...task })
       writeProjectMeta(task.projectId, meta)
     } else {
       const tasks = readStandaloneTasks()

@@ -206,10 +206,8 @@ export function persistNewTask(task: Task): void {
   if (task.projectId) {
     const meta = readProjectMeta(task.projectId)
     if (meta) {
-      if (!meta.tasks) meta.tasks = []
-      const stored = { ...task }
-      if (stored.status === 'in_progress') (stored as Record<string, unknown>).status = 'running';
-      (meta.tasks as Record<string, unknown>[]).push(stored)
+      if (!meta.tasks) meta.tasks = [];
+      (meta.tasks as Record<string, unknown>[]).push({ ...task })
       writeProjectMeta(task.projectId, meta)
       return
     }
