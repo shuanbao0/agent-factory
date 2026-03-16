@@ -120,6 +120,71 @@ PUT    /api/tasks {id, ...updates}                 → updateTask(id, updates)
 DELETE /api/tasks?id                               → deleteTask(id)
 ```
 
+### `tools/route.ts` (35 行)
+
+```
+imports:
+  core                             ← @/lib/core-bridge
+
+GET  /api/tools         → core.repo.configRepo.getConfig() → config.tools
+PUT  /api/tools         → core.repo.configRepo.updateConfig(mutator)
+```
+
+### `memory-config/route.ts` (42 行)
+
+```
+imports:
+  core                             ← @/lib/core-bridge
+
+GET  /api/memory-config  → core.repo.configRepo.getConfig() → agents.defaults
+PUT  /api/memory-config  → core.repo.configRepo.updateConfig(mutator)
+```
+
+### `budget/route.ts` (52 行)
+
+```
+imports:
+  core                             ← @/lib/core-bridge
+
+GET  /api/budget         → core.observe.loadCompanyBudget()
+PUT  /api/budget         → validateBudgetConfig() + writeFileSync
+```
+
+### `models/route.ts` (397 行)
+
+```
+imports:
+  restartGateway, getStatus        ← @/lib/gateway-manager
+  PROVIDERS                        ← @/lib/providers
+  core                             ← @/lib/core-bridge
+
+GET  /api/models         → readModels() (models.json) + authProfiles
+PUT  /api/models         → writeModelsAndSync() → core.repo.configRepo.updateConfig()
+内部: syncOpenClawConfig() 使用 core.repo.configRepo.updateConfig() 原子写入
+```
+
+### `messages/route.ts` (425 行)
+
+```
+imports:
+  gwCallAsync                      ← @/lib/gateway-client
+  core                             ← @/lib/core-bridge
+
+GET  /api/messages       → sessions.list + chat.history + loadAllowAgents()
+内部: loadAllowAgents() 使用 core.repo.configRepo.getConfig() 读 agents.list
+```
+
+### `autopilot/departments/route.ts` (68 行)
+
+```
+imports:
+  getDepartments                   ← @/services/autopilot-api
+  core                             ← @/lib/core-bridge
+
+GET  /api/autopilot/departments   → getDepartments() (委托 autopilot-api)
+POST /api/autopilot/departments   → core.repo.deptConfigRepo.load/save()
+```
+
 ### `agent-tasks/route.ts` (267 行，通过 Facade 间接使用 core/)
 
 ```
@@ -231,8 +296,6 @@ imports:
 
 ```
 imports:
-  existsSync, readFileSync       ← fs
-  join, resolve                  ← path
   Task                           ← @/lib/types (type)
   readStandaloneTasks,            ← @/lib/task-storage
   writeStandaloneTasks,
@@ -245,6 +308,7 @@ imports:
   createReworkTask,
   persistNewTask,
   getWorkflowForTask
+  core                           ← @/lib/core-bridge
 
 导出:
   listTasks({projectId?, status?, assignee?, type?})
@@ -252,7 +316,9 @@ imports:
     → 过滤 → 按 priority + updatedAt 排序
 
   createTask(body) → {task, ok}
-    → 生成 ID → 构造 Task → 写入 project 或 standalone
+    → 生成 ID → 构造 Task
+    → core.repo.taskRepo.readProjectMeta() 验证项目存在
+    → 写入 project 或 standalone
 
   updateTask(id, updates) → {task, ok, qualityGate?, reworkTask?, pipelineTask?}
     → 查找任务 (standalone → project)
@@ -289,11 +355,15 @@ task-storage.ts  (薄 Facade，~53 行)
   └──→ core-bridge.ts          (core.repo.taskRepo.*)
 
 department-workflow.ts
-  └──→ fs                 (直接读 config/departments/*/config.json)
+  └──→ core-bridge.ts     (core.repo.deptConfigRepo.load)
 
 data-fetchers.ts
   ├──→ gateway-client.ts  (gwCallAsync)
-  └──→ core-bridge.ts     (core.repo.taskRepo.findAllTasks)
+  └──→ core-bridge.ts     (core.repo.taskRepo.findAllTasks,
+                            core.repo.configRepo.getConfig,
+                            core.common.loadState,
+                            core.observe.loadCompanyBudget,
+                            core.observe.queryCosts)
 
 gateway-manager.ts
   └──→ child_process      (Gateway 进程 spawn/kill)
@@ -302,17 +372,23 @@ gateway-client.ts
   └──→ child_process      (execFile gateway-chat.js)
 ```
 
-### `core-bridge.ts` — CJS↔TS 桥接 (~66 行)
+### `core-bridge.ts` — CJS↔TS 桥接 (~82 行)
 
 ```
 require('../../core') → 提供 typed 访问
-  core.repo.taskRepo      → 任务 CRUD
-  core.repo.configRepo    → openclaw.json 配置
-  core.repo.deptConfigRepo / deptStateRepo → 部门配置/状态
-  core.repo.missionRepo   → mission 文件读取
-  core.task.*             → 质量门、pipeline、rework
-  core.observe.*          → 预算汇总
-  core.common.*           → Autopilot 状态
+  core.repo.taskRepo        → 任务 CRUD (read/write/find/update/delete)
+  core.repo.configRepo      → openclaw.json 配置 (getConfig/updateConfig/addAgent/removeAgent)
+  core.repo.deptConfigRepo  → 部门配置 (load/save/updateConfig)
+  core.repo.deptStateRepo   → 部门状态 (load/save)
+  core.repo.agentMetaRepo   → Agent 元数据 (load/save)
+  core.repo.missionRepo     → mission 文件读取
+  core.task.*               → 质量门、pipeline、rework
+  core.observe.getBudgetSummary()    → 公司+部门预算汇总
+  core.observe.loadCompanyBudget()   → 公司预算配置 (budget.json)
+  core.observe.queryCosts(opts?)     → 成本记录查询 (autopilot-costs.jsonl)
+  core.observe.getDailySummary(days) → 按天+来源聚合成本
+  core.common.loadState()   → Autopilot 状态 (autopilot-state.json)
+  core.common.saveState()   → 保存 Autopilot 状态
 ```
 
 ### `quality-gate.ts` 导出函数 (Facade → core/)
@@ -815,7 +891,7 @@ Browser
       → getWorkflowForTask(task)              [Layer 3: quality-gate Facade]
         → readProjectMeta(projectId)          [Layer 3: → core.repo.taskRepo]
         → getDepartmentWorkflow(dept)         [Layer 3: department-workflow]
-          → fs 读 config/departments/{dept}/config.json
+          → core.repo.deptConfigRepo.load(dept) [Layer 6: core/]
       → checkQualityGate(task, workflow)      [Layer 3: quality-gate Facade]
         → 查找 pipeline step
         → core.task.checkQualityGate(task, step) [Layer 6: core/]
