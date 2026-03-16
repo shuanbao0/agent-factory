@@ -23,6 +23,12 @@ agent-factory/
 │   ├── models.json        # 模型别名定义（Anthropic/MiniMax）
 │   ├── base-rules.md      # 全局强制注入规则（注入到所有 Agent 的 AGENTS.md/SOUL.md）
 │   └── autopilot-state.json # Autopilot 运行状态
+├── core/                  # 核心模块（模块化分层）
+│   ├── repo/              # Repository Pattern — 数据访问层
+│   ├── task/              # State Machine + Strategy — 任务生命周期
+│   ├── llm/               # LLM 通信与决策
+│   ├── observe/           # 可观测性 — Event Bus + Cost + Reactors
+│   └── common/            # 通用工具（validators, agent-service）
 ├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿等）
 ├── libs/                  # 本地库（openclaw 源码，不提交）
 ├── scripts/
