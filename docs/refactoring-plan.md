@@ -1,7 +1,7 @@
 # Agent Factory 重构计划
 
 > 基于 5 份分析报告的综合重构路线图
-> 日期: 2026-03-15 (更新: 2026-03-16)
+> 日期: 2026-03-15 (更新: 2026-03-16, PR 15-19: 2026-03-16)
 > 原则: 设计模式优先 → 修复 bug → 重构架构 → 演进系统
 >
 > ⚠️ 工作量校正：原始预估偏乐观（30-42 天），实际所需约 80-100+ 天。
@@ -33,13 +33,18 @@
 | **PR 13: SSE 内存泄漏修复** | ✅ 已完成 | 2026-03-16 | store.ts EventSource 连接清理 + beforeunload 监听 |
 | **PR 14: 事件发射层** | ✅ 已完成 | 2026-03-16 | `event-bus.cjs` + cycle/ceo/cost 事件发射，零行为变更 |
 | Phase 3.2 Auth 中间件 | ⏸ 延后 | | 单用户本地系统，不紧急 |
-| Phase 4.1 完整 Event Bus + Reactor | 🔲 未开始 | | 发射层已就绪，待验证后扩展 Reactor |
-| Phase 4.2 LLM-as-Advisor | 🔲 未开始 | | 依赖 tool-use 在生产环境稳定运行的数据 |
+| **PR 15: 版本发布 + 死代码清理** | ✅ 已完成 | 2026-03-16 | 删除 task-service.cjs（死代码），bump v0.4.49 |
+| **PR 16: Anthropic Client 弹性增强** | ✅ 已完成 | 2026-03-16 | `retry.cjs`（指数退避 + 熔断器），anthropic-client 集成 |
+| **PR 17: Reactor 框架 + 首批 Reactor** | ✅ 已完成 | 2026-03-16 | cost-alert + cycle-monitor reactor，autopilot 启动注册 |
+| **PR 18: SSE 实时成本推送** | ✅ 已完成 | 2026-03-16 | costs 事件纳入 SSE 流，costs 页消除独立轮询 |
+| **PR 19: 预算硬执行** | ✅ 已完成 | 2026-03-16 | 部门级循环跳过 + agent 级任务分配阻断 + agentDailyLimit |
+| Phase 4.1 完整 Event Bus + Reactor | ✅ 已完成 | 2026-03-16 | 发射层 + 2 个 Reactor（cost-alert, cycle-monitor） |
+| Phase 4.2 LLM-as-Advisor | 🔲 未开始 | | 依赖 tool-use + Reactor 在生产环境稳定运行数据 |
 | Phase 4.3 Worker Tool Use | 🔲 未开始 | | 依赖 4.2 |
 
 ### Phase 0 实施详情
 
-**新建文件 (40 个, 含 PR 10-14 新增):**
+**新建文件 (45 个, 含 PR 10-19 新增):**
 - `shared/base-repository.cjs` — 通用 JSON 文件仓库基类（原子写入 + TTL 缓存）
 - `shared/config-repository.cjs` — openclaw.json 统一访问（getConfig/addAgent/removeAgent/getGatewayConfig）
 - `shared/dept-state-repository.cjs` — 部门状态 load/save
@@ -63,7 +68,12 @@
 - `shared/review-tools.cjs` — 质量门 review tool 定义（3 组 tools）（PR 11 新增）
 - `shared/event-bus.cjs` — 事件总线（EventEmitter 薄封装 + JSONL 持久化）（PR 14 新增）
 - `ui/src/app/costs/page.tsx` — 成本监控 Dashboard 页面（PR 12 新增）
-- 20 个测试文件，共 177 个测试用例
+- `shared/retry.cjs` — 指数退避重试 + 熔断器（PR 16 新增）
+- `shared/reactors/index.cjs` — Reactor 注册中心（PR 17 新增）
+- `shared/reactors/cost-alert.cjs` — 成本告警 Reactor（PR 17 新增）
+- `shared/reactors/cycle-monitor.cjs` — 循环耗时监控 Reactor（PR 17 新增）
+- ~~`shared/task-service.cjs`~~ — 已删除（PR 15，死代码清理）
+- 22 个测试文件，共 202 个测试用例
 
 **修改文件 (10+5 个):**
 - `package.json` — 添加 `"test"` script + `@anthropic-ai/sdk` 依赖
@@ -794,31 +804,86 @@ Phase 4 (演进层 — 架构升级) ◄── Phase 3
 
 ---
 
+### PR 15-19 生产加固 & Reactor & 弹性 (2026-03-16)
+
+> 核心原则: 生产加固 → 死代码清理 → 弹性基础设施 → Reactor 渐进接入
+
+**PR 15: 版本发布 + 死代码清理**
+- 删除 `shared/task-service.cjs` + `shared/task-service.test.cjs`（零生产引用，唯一的死代码模块）
+- Bump 版本至 `0.4.49`（`package.json` + `CLAUDE.md`）
+
+**PR 16: Anthropic Client 弹性增强**
+- `shared/retry.cjs` — 通用重试 + 指数退避 + 熔断器
+  - `withRetry(fn, opts)` — 最多 3 次重试，1s→2s→4s 退避，60s 总超时
+  - `isRetryableError(err)` — 429/500/529/ECONNRESET/ETIMEDOUT
+  - `CircuitBreaker` — 5 次连续失败后断路，60s 后 HALF_OPEN 试探
+- `shared/anthropic-client.cjs` — sendWithTools 集成 retry + circuit breaker
+- 14 个测试（重试逻辑 6 + 错误分类 6 + 熔断器 8）
+
+**PR 17: Event Bus Reactor 框架**
+- `shared/reactors/cost-alert.cjs` — 监听 `cost.tracked`，日成本超阈值发 `alert.cost_exceeded`
+- `shared/reactors/cycle-monitor.cjs` — 监听 `cycle.end`，耗时连续异常发 `alert.cycle_slowdown`
+- `shared/reactors/index.cjs` — `registerAll(eventBus)` 注册中心
+- `scripts/autopilot/index.cjs` — 启动时注册所有 Reactor
+- `shared/event-bus.cjs` — 新增 `listenerCount()` 方法
+- 10 个测试
+
+**PR 18: SSE 实时成本推送**
+- `ui/src/lib/data-fetchers.ts` — 新增 `fetchCostsData()` 读取 cost-tracker
+- `ui/src/app/api/events/route.ts` — 新增 `costs` 事件（30s 间隔）
+- `ui/src/lib/store.ts` — `CostData` 类型 + `costData` state + SSE `costs` 监听
+- `ui/src/app/costs/page.tsx` — 7d 期间使用 SSE 数据，消除独立轮询
+
+**PR 19: 预算硬执行 + Agent 级限额**
+- `scripts/autopilot/kpi.cjs` — 新增 `checkAgentBudget(agentId)` 基于 cost-tracker JSONL
+- `scripts/autopilot/department-loop.cjs` — assign_task 前 agent 级预算检查 + 部门阻断事件
+- `config/budget.json` — 新增 `agentDailyLimit: 5`（$5/agent/天）
+
+**统计：** 177 → 202 测试 (+30 新增, -5 删除), 5 新文件 + 2 新测试文件 - 2 删除, ~800 新增行
+
+---
+
 ## Phase 4: 演进层 — 架构升级
 
 > 优先级: **远期** | 预估: 10-14 天
 > 前置依赖: Phase 0-3 全部
 > 目标: 从 polling 演进到事件驱动，LLM 从决策者变为顾问
 
-### 4.1 Observer/Event Bus — 替代 Polling (发射层 ✅ / Reactor 🔲)
+### 4.1 Observer/Event Bus — 替代 Polling (发射层 ✅ / Reactor ✅)
 
 ```
-4.1 Event Bus (发射层已完成 PR 14, 2026-03-16)
+4.1 Event Bus (发射层 PR 14 + Reactor PR 17, 2026-03-16)
 ├── 4.1.0 发射层 ✅ (Phase 4.1 第一步 — 只发射不订阅)
 │   ├── ✅ shared/event-bus.cjs — EventEmitter 薄封装 + JSONL 持久化
-│   │   ├── EventBus 类: fire(type, payload) + on/off
+│   │   ├── EventBus 类: fire(type, payload) + on/off + listenerCount()
 │   │   ├── 错误隔离: listener error + persistence error 均 swallow
 │   │   ├── 持久化: 可选写入 config/autopilot-events.jsonl
 │   │   └── 单例 eventBus 实例 (persist=true)
 │   │
-│   ├── ✅ 事件发射点 (6 个):
+│   ├── ✅ 事件发射点 (8 个):
 │   │   ├── cycle.start — department-loop.cjs 循环开始
 │   │   ├── cycle.end — department-loop.cjs 循环结束
 │   │   ├── ceo.cycle.start — index.cjs CEO 循环开始
 │   │   ├── ceo.cycle.end — index.cjs CEO 循环结束
-│   │   └── cost.tracked — cost-tracker.cjs 成本记录后
+│   │   ├── cost.tracked — cost-tracker.cjs 成本记录后
+│   │   ├── alert.cost_exceeded — cost-alert reactor 触发
+│   │   ├── alert.cycle_slowdown — cycle-monitor reactor 触发
+│   │   └── budget.dept_blocked — department-loop 预算阻断时
 │   │
 │   └── ✅ 8 个测试 (emit/on/off + 持久化 + 错误隔离 + 目录创建)
+│
+├── 4.1.1-R Reactor 框架 ✅ (PR 17, 2026-03-16)
+│   ├── ✅ shared/reactors/index.cjs — registerAll(eventBus) 注册中心
+│   ├── ✅ shared/reactors/cost-alert.cjs — 成本告警 Reactor
+│   │   ├── 监听 cost.tracked → 累计当日成本
+│   │   ├── 超过阈值（默认 $10/天）→ 发 alert.cost_exceeded
+│   │   └── 每日只告警一次（去重）
+│   ├── ✅ shared/reactors/cycle-monitor.cjs — 循环耗时监控 Reactor
+│   │   ├── 监听 cycle.end → 记录部门循环耗时（最近 10 次）
+│   │   ├── 连续 3 次超过平均值 2x → 发 alert.cycle_slowdown
+│   │   └── 正常循环自动重置计数
+│   ├── ✅ scripts/autopilot/index.cjs — 启动时 registerAll(eventBus)
+│   └── ✅ 10 个测试 (cost-alert 5 + cycle-monitor 5)
 │
 ├── 4.1.1 设计事件体系
 │   ├── 任务事件:
@@ -1016,8 +1081,13 @@ PR 12: ✅ 成本 Dashboard (/costs 页面 + Sidebar + i18n)
 PR 13: ✅ SSE 内存泄漏修复 (store.ts EventSource cleanup, ~8 行)
 PR 14: ✅ 事件发射层 (event-bus.cjs + 5 个 emit 点, +8 测试)
    ─── 以上 PR 10-14 于 2026-03-16 完成，总计 177 个测试，40 个新文件 ───
-PR 15: 🔲 4.1 完整 Event Bus + Reactor (IdleReactor, ReviewReactor 等)
-PR 16: 🔲 4.2 + 4.3 LLM Advisor + Worker Tool Use (终极形态)
+PR 15: ✅ 版本发布 + 死代码清理 (task-service.cjs 删除, bump v0.4.49)
+PR 16: ✅ Anthropic Client 弹性增强 (retry.cjs 指数退避 + CircuitBreaker, +14 测试)
+PR 17: ✅ Reactor 框架 (cost-alert + cycle-monitor reactor, registerAll, +10 测试)
+PR 18: ✅ SSE 实时成本推送 (costs 事件纳入 SSE, costs 页消除独立轮询)
+PR 19: ✅ 预算硬执行 (checkAgentBudget + agent 级阻断 + agentDailyLimit $5)
+   ─── 以上 PR 15-19 于 2026-03-16 完成，总计 202 个测试 ───
+PR 20: 🔲 4.2 + 4.3 LLM Advisor + Worker Tool Use (终极形态)
 ```
 
 **路线图调整说明 (2026-03-15):**
@@ -1042,7 +1112,9 @@ PR 16: 🔲 4.2 + 4.3 LLM Advisor + Worker Tool Use (终极形态)
 | State Machine 转换表遗漏合法路径 | 中 | 合法操作被拒绝 | 先宽后严，初期记录 warning 不 reject | ✅ 已稳定 |
 | tool_use 增加 token 成本 | 低 | 预算超支 | tool 定义精简 + cost-tracker 追踪 + fallback 降级 | ✅ 已监控 |
 | 重构过程中 autopilot 不可用 | 高 | 业务中断 | tool-use 失败自动 fallback 到 Gateway regex 路径 | ✅ 已缓解 |
-| 4.x Event Bus 架构升级 | 中 | 改动面大 | 发射层已就绪 (PR 14)，渐进式引入 Reactor | ✅ 发射层就绪 |
+| 4.x Event Bus 架构升级 | 中 | 改动面大 | 发射层 + Reactor 框架已就绪 (PR 14+17) | ✅ 已完成 |
+| Anthropic API 不可用 | 中 | tool-use 决策失败 | retry + 熔断器 + Gateway fallback (PR 16) | ✅ 已解决 |
+| 预算超支 | 中 | 成本失控 | 部门级硬阻断 + agent 级限额 + 成本告警 (PR 19+17) | ✅ 已解决 |
 | 全部工作未提交丢失 | 高 | 全部工作丢失 | PR 10 提交了全部 60 文件 | ✅ 已解决 |
 | 质量门仍用 regex 解析 | 中 | 评审结果不稳定 | PR 11 改为 tool-use + regex fallback | ✅ 已解决 |
 | SSE EventSource 内存泄漏 | 低 | 浏览器内存增长 | PR 13 添加连接清理 | ✅ 已解决 |
