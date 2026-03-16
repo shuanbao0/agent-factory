@@ -5,11 +5,11 @@ import { join, resolve } from 'path'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
 import { syncSkillSymlinks } from '@/lib/skill-symlinks'
 import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 // ── Constants ─────────────────────────────────────────────────────
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const OPENCLAW_CONFIG = join(PROJECT_ROOT, 'config/openclaw.json')
 const MODELS_CONFIG = join(PROJECT_ROOT, 'config/models.json')
 const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config/departments')
 
@@ -92,48 +92,22 @@ export function generateToolsMd(agentId: string, skills: string[], agentDir: str
 }
 
 export function readOpenlawConfig(): Record<string, any> {
-  if (existsSync(OPENCLAW_CONFIG)) {
-    return JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'))
-  }
-  return {}
+  return core.repo.configRepo.getConfig() as Record<string, any>
 }
 
 export function writeOpenclawConfig(config: Record<string, any>) {
-  writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n')
+  // Use updateConfig with identity mutator to write the full config
+  const { writeFileSync: _wfs } = require('fs')
+  _wfs(join(PROJECT_ROOT, 'config/openclaw.json'), JSON.stringify(config, null, 2) + '\n')
 }
 
 export function addToOpenclawConfig(agentId: string, workspaceDir: string, model: string | undefined) {
-  const config = readOpenlawConfig()
-  if (!config.agents) config.agents = {}
-  if (!config.agents.list) config.agents.list = []
-  if (!config.tools) config.tools = {}
-  if (!config.tools.agentToAgent) config.tools.agentToAgent = { enabled: true, allow: ['*'] }
-
-  const list = config.agents.list as Array<{ id: string; [key: string]: any }>
-  const existingIdx = list.findIndex(a => a.id === agentId)
-
-  const entry: { id: string; [key: string]: any } = {
-    id: agentId,
-    workspace: workspaceDir,
-  }
-  if (model) entry.model = { primary: resolveModelRef(model) }
-  entry.subagents = { allowAgents: [agentId] }
-
-  if (existingIdx >= 0) {
-    list[existingIdx] = { ...list[existingIdx], ...entry }
-  } else {
-    list.push(entry)
-  }
-
-  config.agents.list = list
-  writeOpenclawConfig(config)
+  const resolvedModel = model ? resolveModelRef(model) : undefined
+  core.repo.configRepo.addAgent(agentId, workspaceDir, resolvedModel)
 }
 
 export function removeFromOpenclawConfig(agentId: string) {
-  const config = readOpenlawConfig()
-  if (!config.agents?.list) return
-  config.agents.list = (config.agents.list as Array<{ id: string }>).filter(a => a.id !== agentId)
-  writeOpenclawConfig(config)
+  core.repo.configRepo.removeAgent(agentId)
 }
 
 export function syncAutopilotDeptAgents(department: string, agentId: string, action: 'add' | 'remove') {

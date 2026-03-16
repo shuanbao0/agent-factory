@@ -6,6 +6,7 @@
 import { gwCallAsync } from '@/lib/gateway-client'
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join, resolve } from 'path'
+import core from '@/lib/core-bridge'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
@@ -285,55 +286,7 @@ export interface TasksResult {
 }
 
 export async function fetchTasksData(): Promise<TasksResult> {
-  const tasks: Record<string, unknown>[] = []
-
-  // 1. Read project tasks from projects/*/.project-meta.json and projects/*/*/.project-meta.json
-  const projectsDir = join(PROJECT_ROOT, 'projects')
-  try {
-    if (existsSync(projectsDir)) {
-      // Collect candidate directories: both projects/{name} and projects/{dept}/{name}
-      const candidates: { dirPath: string; projectId: string }[] = []
-      const topDirs = readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory())
-      for (const dir of topDirs) {
-        const topPath = join(projectsDir, dir.name)
-        candidates.push({ dirPath: topPath, projectId: dir.name })
-        // Check for nested projects (projects/{dept}/{project})
-        try {
-          const subDirs = readdirSync(topPath, { withFileTypes: true }).filter(d => d.isDirectory())
-          for (const sub of subDirs) {
-            candidates.push({ dirPath: join(topPath, sub.name), projectId: `${dir.name}/${sub.name}` })
-          }
-        } catch { /* skip */ }
-      }
-      for (const { dirPath, projectId } of candidates) {
-        const metaPath = join(dirPath, '.project-meta.json')
-        if (!existsSync(metaPath)) continue
-        try {
-          const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-          for (const t of (meta.tasks || [])) {
-            // Normalize legacy fields
-            const assignees = Array.isArray(t.assignees) ? t.assignees
-              : t.assignedAgent ? [t.assignedAgent] : []
-            let status = t.status || 'pending'
-            if (status === 'running') status = 'in_progress'
-            tasks.push({ ...t, projectId, assignees, status, priority: t.priority || 'P1', creator: t.creator || 'user' })
-          }
-        } catch { /* skip */ }
-      }
-    }
-  } catch { /* skip */ }
-
-  // 2. Read standalone tasks from config/tasks.json
-  const tasksFile = join(PROJECT_ROOT, 'config', 'tasks.json')
-  try {
-    if (existsSync(tasksFile)) {
-      const data = JSON.parse(readFileSync(tasksFile, 'utf-8'))
-      for (const t of (data.tasks || [])) {
-        tasks.push(t)
-      }
-    }
-  } catch { /* skip */ }
-
+  const tasks = core.repo.taskRepo.findAllTasks() as Record<string, unknown>[]
   return { tasks, source: 'filesystem' }
 }
 
@@ -459,4 +412,119 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
   } catch { /* gateway not available */ }
 
   return { messages, activePairs, agentErrors, lastActivity, source: 'gateway' }
+}
+
+// ── Costs ───────────────────────────────────────────────────────
+
+export interface CostsResult {
+  entries: Record<string, unknown>[]
+  totalCost: number
+  source: 'filesystem'
+}
+
+export async function fetchCostsData(): Promise<CostsResult> {
+  const costLog = join(PROJECT_ROOT, 'config', 'cost-log.jsonl')
+  const entries: Record<string, unknown>[] = []
+  let totalCost = 0
+  try {
+    if (existsSync(costLog)) {
+      const lines = readFileSync(costLog, 'utf-8').trim().split('\n').filter(Boolean)
+      for (const line of lines.slice(-200)) {
+        try {
+          const entry = JSON.parse(line)
+          entries.push(entry)
+          totalCost += (entry.cost as number) || 0
+        } catch { /* skip */ }
+      }
+    }
+  } catch { /* skip */ }
+  return { entries, totalCost, source: 'filesystem' }
+}
+
+// ── Alerts ──────────────────────────────────────────────────────
+
+export interface AlertItem {
+  id: string
+  type: string
+  message: string
+  timestamp: string
+  severity: 'info' | 'warn' | 'error'
+}
+
+export interface AlertsResult {
+  alerts: AlertItem[]
+  source: 'filesystem'
+}
+
+export async function fetchAlertsData(): Promise<AlertsResult> {
+  const alertsFile = join(PROJECT_ROOT, 'config', 'alerts.json')
+  let alerts: AlertItem[] = []
+  try {
+    if (existsSync(alertsFile)) {
+      const data = JSON.parse(readFileSync(alertsFile, 'utf-8'))
+      alerts = Array.isArray(data) ? data : (data.alerts || [])
+    }
+  } catch { /* skip */ }
+  return { alerts, source: 'filesystem' }
+}
+
+// ── Autopilot Status ────────────────────────────────────────────
+
+export interface AutopilotResult {
+  status: string
+  pid?: number
+  lastCycle?: string
+  source: 'filesystem'
+}
+
+export async function fetchAutopilotStatusData(): Promise<AutopilotResult> {
+  try {
+    if (existsSync(AUTOPILOT_STATE)) {
+      const data = JSON.parse(readFileSync(AUTOPILOT_STATE, 'utf-8'))
+      return {
+        status: data.status || 'stopped',
+        pid: data.pid,
+        lastCycle: data.lastCycleAt,
+        source: 'filesystem',
+      }
+    }
+  } catch { /* skip */ }
+  return { status: 'stopped', source: 'filesystem' }
+}
+
+// ── Autopilot Departments ───────────────────────────────────────
+
+export interface AutopilotDeptsResult {
+  departments: Record<string, unknown>[]
+  source: 'filesystem'
+}
+
+export async function fetchAutopilotDeptsData(): Promise<AutopilotDeptsResult> {
+  const deptsFile = join(PROJECT_ROOT, 'config', 'departments.json')
+  let departments: Record<string, unknown>[] = []
+  try {
+    if (existsSync(deptsFile)) {
+      const data = JSON.parse(readFileSync(deptsFile, 'utf-8'))
+      departments = Array.isArray(data) ? data : (data.departments || [])
+    }
+  } catch { /* skip */ }
+  return { departments, source: 'filesystem' }
+}
+
+// ── Budget Status ───────────────────────────────────────────────
+
+export interface BudgetResult {
+  budget: Record<string, unknown>
+  source: 'filesystem'
+}
+
+export async function fetchBudgetStatusData(): Promise<BudgetResult> {
+  const budgetFile = join(PROJECT_ROOT, 'config', 'budget.json')
+  let budget: Record<string, unknown> = {}
+  try {
+    if (existsSync(budgetFile)) {
+      budget = JSON.parse(readFileSync(budgetFile, 'utf-8'))
+    }
+  } catch { /* skip */ }
+  return { budget, source: 'filesystem' }
 }
