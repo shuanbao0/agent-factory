@@ -10,8 +10,6 @@ import core from '@/lib/core-bridge'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const AUTOPILOT_STATE = join(PROJECT_ROOT, 'config', 'autopilot-state.json')
-const OPENCLAW_CONFIG = join(PROJECT_ROOT, 'config', 'openclaw.json')
 const BUSY_THRESHOLD_MS = 300_000
 
 // ── Health ───────────────────────────────────────────────────────
@@ -74,10 +72,8 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
 
   // Check autopilot state
   try {
-    if (existsSync(AUTOPILOT_STATE)) {
-      const ap = JSON.parse(readFileSync(AUTOPILOT_STATE, 'utf-8'))
-      if (ap.status === 'cycling') busyAgentIds.add('ceo')
-    }
+    const ap = core.common.loadState()
+    if (ap.status === 'cycling') busyAgentIds.add('ceo')
   } catch { /* ignore */ }
 
   // Read agent instance metadata from agents/ directory
@@ -310,13 +306,14 @@ export interface MessagesResult {
 function loadAllowAgentsMap(): Record<string, string[]> {
   const map: Record<string, string[]> = {}
   try {
-    if (!existsSync(OPENCLAW_CONFIG)) return map
-    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'))
-    const list = config.agents?.list || []
+    const config = core.repo.configRepo.getConfig()
+    const agents = (config.agents || {}) as Record<string, unknown>
+    const list = (agents.list || []) as Array<Record<string, unknown>>
     for (const agent of list) {
-      const allowed = agent.subagents?.allowAgents
+      const subagents = agent.subagents as Record<string, unknown> | undefined
+      const allowed = subagents?.allowAgents
       if (Array.isArray(allowed)) {
-        map[agent.id] = allowed
+        map[agent.id as string] = allowed
       }
     }
   } catch { /* ignore */ }
@@ -423,22 +420,17 @@ export interface CostsResult {
 }
 
 export async function fetchCostsData(): Promise<CostsResult> {
-  const costLog = join(PROJECT_ROOT, 'config', 'cost-log.jsonl')
-  const entries: Record<string, unknown>[] = []
-  let totalCost = 0
   try {
-    if (existsSync(costLog)) {
-      const lines = readFileSync(costLog, 'utf-8').trim().split('\n').filter(Boolean)
-      for (const line of lines.slice(-200)) {
-        try {
-          const entry = JSON.parse(line)
-          entries.push(entry)
-          totalCost += (entry.cost as number) || 0
-        } catch { /* skip */ }
-      }
+    const result = core.observe.queryCosts() as {
+      entries: Record<string, unknown>[]
+      totalCost: number
     }
+    // Return only the last 200 entries for consistency
+    const entries = result.entries.slice(-200)
+    const totalCost = entries.reduce((sum, e) => sum + ((e.cost as number) || 0), 0)
+    return { entries, totalCost, source: 'filesystem' }
   } catch { /* skip */ }
-  return { entries, totalCost, source: 'filesystem' }
+  return { entries: [], totalCost: 0, source: 'filesystem' }
 }
 
 // ── Alerts ──────────────────────────────────────────────────────
@@ -479,14 +471,12 @@ export interface AutopilotResult {
 
 export async function fetchAutopilotStatusData(): Promise<AutopilotResult> {
   try {
-    if (existsSync(AUTOPILOT_STATE)) {
-      const data = JSON.parse(readFileSync(AUTOPILOT_STATE, 'utf-8'))
-      return {
-        status: data.status || 'stopped',
-        pid: data.pid,
-        lastCycle: data.lastCycleAt,
-        source: 'filesystem',
-      }
+    const data = core.common.loadState()
+    return {
+      status: (data.status as string) || 'stopped',
+      pid: data.pid as number | undefined,
+      lastCycle: data.lastCycleAt as string | undefined,
+      source: 'filesystem',
     }
   } catch { /* skip */ }
   return { status: 'stopped', source: 'filesystem' }
@@ -519,12 +509,9 @@ export interface BudgetResult {
 }
 
 export async function fetchBudgetStatusData(): Promise<BudgetResult> {
-  const budgetFile = join(PROJECT_ROOT, 'config', 'budget.json')
   let budget: Record<string, unknown> = {}
   try {
-    if (existsSync(budgetFile)) {
-      budget = JSON.parse(readFileSync(budgetFile, 'utf-8'))
-    }
+    budget = core.observe.loadCompanyBudget() as Record<string, unknown>
   } catch { /* skip */ }
   return { budget, source: 'filesystem' }
 }

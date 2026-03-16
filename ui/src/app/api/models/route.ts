@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
 import { PROVIDERS } from '@/lib/providers'
 import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const MODELS_PATH = resolve(PROJECT_ROOT, 'config/models.json')
@@ -61,116 +62,112 @@ async function writeModelsAndSync(config: ModelsConfig) {
 
 function syncOpenClawConfig(modelsConfig: ModelsConfig) {
   try {
-    const ocConfig = existsSync(OPENCLAW_CONFIG_PATH)
-      ? JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf-8'))
-      : {}
+    core.repo.configRepo.updateConfig((ocConfig: Record<string, unknown>) => {
+      // Ensure structure exists
+      if (!ocConfig.models) ocConfig.models = {}
+      const models = ocConfig.models as Record<string, unknown>
+      if (!models.providers) models.providers = {}
+      if (!ocConfig.agents) ocConfig.agents = {}
+      const agents = ocConfig.agents as Record<string, unknown>
+      if (!agents.defaults) agents.defaults = {}
+      const defaults = agents.defaults as Record<string, unknown>
+      if (!ocConfig.plugins) ocConfig.plugins = {}
+      const plugins = ocConfig.plugins as Record<string, unknown>
+      if (!plugins.entries) plugins.entries = {}
 
-    // Ensure structure exists
-    if (!ocConfig.models) ocConfig.models = {}
-    if (!ocConfig.models.providers) ocConfig.models.providers = {}
-    if (!ocConfig.agents) ocConfig.agents = {}
-    if (!ocConfig.agents.defaults) ocConfig.agents.defaults = {}
-    if (!ocConfig.plugins) ocConfig.plugins = {}
-    if (!ocConfig.plugins.entries) ocConfig.plugins.entries = {}
+      const existingProviders = models.providers as Record<string, any>
+      const newProviders: Record<string, any> = {}
 
-    const existingProviders = ocConfig.models.providers as Record<string, any>
-    const newProviders: Record<string, any> = {}
+      // 1. Sync models.providers → openclaw.json models.providers
+      //    Skip builtin providers (OpenClaw handles them natively)
+      for (const [providerName, providerConfig] of Object.entries(modelsConfig.providers)) {
+        const providerDef = PROVIDERS.find(p => p.id === providerName)
+        if (providerDef?.builtin) continue // Don't write builtin providers to models.providers
 
-    // 1. Sync models.providers → openclaw.json models.providers
-    //    Skip builtin providers (OpenClaw handles them natively)
-    for (const [providerName, providerConfig] of Object.entries(modelsConfig.providers)) {
-      const providerDef = PROVIDERS.find(p => p.id === providerName)
-      if (providerDef?.builtin) continue // Don't write builtin providers to models.providers
+        const existing = existingProviders[providerName] || {}
+        const ocProvider: Record<string, any> = {}
 
-      const existing = existingProviders[providerName] || {}
-      const ocProvider: Record<string, any> = {}
+        // Copy provider-level fields
+        if (providerConfig.apiKey) ocProvider.apiKey = providerConfig.apiKey
+        if (providerConfig.baseUrl) ocProvider.baseUrl = providerConfig.baseUrl
+        if (providerConfig.api) ocProvider.api = providerConfig.api
 
-      // Copy provider-level fields
-      if (providerConfig.apiKey) ocProvider.apiKey = providerConfig.apiKey
-      if (providerConfig.baseUrl) ocProvider.baseUrl = providerConfig.baseUrl
-      if (providerConfig.api) ocProvider.api = providerConfig.api
-
-      // Preserve extra provider-level fields from existing config (e.g. custom settings)
-      for (const [key, val] of Object.entries(existing)) {
-        if (key !== 'models' && key !== 'apiKey' && key !== 'baseUrl' && key !== 'api') {
-          ocProvider[key] = val
-        }
-      }
-
-      // Convert models: { alias: modelId } (object) → [{ id, name, ... }] (array)
-      // Look up metadata from: 1) existing openclaw.json, 2) provider catalog, 3) minimal fallback
-      const existingModels = Array.isArray(existing.models) ? existing.models : []
-      const existingModelMap = new Map<string, any>()
-      for (const m of existingModels) {
-        if (m.id) existingModelMap.set(m.id, m)
-      }
-
-      const ocModels: any[] = []
-      for (const [, modelId] of Object.entries(providerConfig.models)) {
-        const existingModel = existingModelMap.get(modelId)
-        if (existingModel) {
-          // Preserve existing metadata (cost, contextWindow, etc.)
-          ocModels.push(existingModel)
-        } else {
-          // Look up from provider catalog
-          const catalogModel = providerDef?.catalogModels?.find(m => m.id === modelId)
-          if (catalogModel) {
-            ocModels.push({
-              id: catalogModel.id,
-              name: catalogModel.name,
-              reasoning: catalogModel.reasoning ?? false,
-              input: catalogModel.input ?? ['text'],
-              cost: catalogModel.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: catalogModel.contextWindow ?? 128000,
-              maxTokens: catalogModel.maxTokens ?? 8192,
-            })
-          } else {
-            // Unknown model — minimal entry
-            ocModels.push({ id: modelId, name: modelId })
+        // Preserve extra provider-level fields from existing config (e.g. custom settings)
+        for (const [key, val] of Object.entries(existing)) {
+          if (key !== 'models' && key !== 'apiKey' && key !== 'baseUrl' && key !== 'api') {
+            ocProvider[key] = val
           }
         }
+
+        // Convert models: { alias: modelId } (object) → [{ id, name, ... }] (array)
+        const existingModels = Array.isArray(existing.models) ? existing.models : []
+        const existingModelMap = new Map<string, any>()
+        for (const m of existingModels) {
+          if (m.id) existingModelMap.set(m.id, m)
+        }
+
+        const ocModels: any[] = []
+        for (const [, modelId] of Object.entries(providerConfig.models)) {
+          const existingModel = existingModelMap.get(modelId)
+          if (existingModel) {
+            ocModels.push(existingModel)
+          } else {
+            const catalogModel = providerDef?.catalogModels?.find(m => m.id === modelId)
+            if (catalogModel) {
+              ocModels.push({
+                id: catalogModel.id,
+                name: catalogModel.name,
+                reasoning: catalogModel.reasoning ?? false,
+                input: catalogModel.input ?? ['text'],
+                cost: catalogModel.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: catalogModel.contextWindow ?? 128000,
+                maxTokens: catalogModel.maxTokens ?? 8192,
+              })
+            } else {
+              ocModels.push({ id: modelId, name: modelId })
+            }
+          }
+        }
+        ocProvider.models = ocModels
+        newProviders[providerName] = ocProvider
       }
-      ocProvider.models = ocModels
-      newProviders[providerName] = ocProvider
-    }
 
-    // Also preserve any openclaw.json providers NOT in models.json (e.g. manually added)
-    // but remove ones that were explicitly deleted from models.json
-    ocConfig.models.providers = newProviders
+      models.providers = newProviders
 
-    // 2. Sync agents.defaults.model.primary from default ref
-    if (modelsConfig.default) {
-      const [provider, alias] = modelsConfig.default.split('/')
-      const providerConfig = modelsConfig.providers[provider]
-      const modelId = providerConfig?.models?.[alias] || alias
-      if (!ocConfig.agents.defaults.model) ocConfig.agents.defaults.model = {}
-      ocConfig.agents.defaults.model.primary = `${provider}/${modelId}`
-    } else {
-      // No default — remove model primary
-      delete ocConfig.agents.defaults.model
-    }
-
-    // 3. Build agents.defaults.models — full alias mapping (including builtin providers)
-    const modelsMap: Record<string, { alias: string }> = {}
-    for (const [providerName, providerConfig] of Object.entries(modelsConfig.providers)) {
-      for (const [alias, modelId] of Object.entries(providerConfig.models)) {
-        modelsMap[`${providerName}/${modelId}`] = { alias }
+      // 2. Sync agents.defaults.model.primary from default ref
+      if (modelsConfig.default) {
+        const [provider, alias] = modelsConfig.default.split('/')
+        const providerConfig = modelsConfig.providers[provider]
+        const modelId = providerConfig?.models?.[alias] || alias
+        if (!defaults.model) defaults.model = {}
+        ;(defaults.model as Record<string, unknown>).primary = `${provider}/${modelId}`
+      } else {
+        delete defaults.model
       }
-    }
-    if (Object.keys(modelsMap).length > 0) {
-      ocConfig.agents.defaults.models = modelsMap
-    } else {
-      delete ocConfig.agents.defaults.models
-    }
 
-    // 4. Auto-manage plugins based on provider presence
-    if (modelsConfig.providers['minimax'] || modelsConfig.providers['minimax-portal']) {
-      ocConfig.plugins.entries['minimax-portal-auth'] = { enabled: true }
-    } else {
-      delete ocConfig.plugins.entries['minimax-portal-auth']
-    }
+      // 3. Build agents.defaults.models — full alias mapping (including builtin providers)
+      const modelsMap: Record<string, { alias: string }> = {}
+      for (const [providerName, providerConfig] of Object.entries(modelsConfig.providers)) {
+        for (const [alias, modelId] of Object.entries(providerConfig.models)) {
+          modelsMap[`${providerName}/${modelId}`] = { alias }
+        }
+      }
+      if (Object.keys(modelsMap).length > 0) {
+        defaults.models = modelsMap
+      } else {
+        delete defaults.models
+      }
 
-    writeFileSync(OPENCLAW_CONFIG_PATH, JSON.stringify(ocConfig, null, 2) + '\n')
+      // 4. Auto-manage plugins based on provider presence
+      const entries = plugins.entries as Record<string, unknown>
+      if (modelsConfig.providers['minimax'] || modelsConfig.providers['minimax-portal']) {
+        entries['minimax-portal-auth'] = { enabled: true }
+      } else {
+        delete entries['minimax-portal-auth']
+      }
+
+      return ocConfig
+    })
   } catch {
     // Non-fatal
   }

@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from 'fs'
-import { join, resolve } from 'path'
 import type { Task } from '@/lib/types'
 import {
   readStandaloneTasks,
@@ -16,9 +14,7 @@ import {
   persistNewTask,
   getWorkflowForTask,
 } from '@/lib/quality-gate'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+import core from '@/lib/core-bridge'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -118,13 +114,12 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
   }
 
   if (task.projectId) {
-    const metaPath = join(PROJECTS_DIR, task.projectId, '.project-meta.json')
-    if (!existsSync(metaPath)) {
+    const meta = core.repo.taskRepo.readProjectMeta(task.projectId) as Record<string, unknown> | null
+    if (!meta) {
       return { error: `Project ${task.projectId} not found`, status: 404 }
     }
-    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
     if (!meta.tasks) meta.tasks = []
-    meta.tasks.push({ ...task })
+    ;(meta.tasks as Record<string, unknown>[]).push({ ...task })
     writeProjectMeta(task.projectId, meta)
   } else {
     const tasks = readStandaloneTasks()

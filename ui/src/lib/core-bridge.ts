@@ -35,10 +35,15 @@ export default _core as {
     deptConfigRepo: {
       load(deptId: string): Record<string, unknown> | null
       save(deptId: string, config: Record<string, unknown>): void
+      updateConfig(deptId: string, mutator: (config: Record<string, unknown>) => Record<string, unknown>): void
     }
     deptStateRepo: {
       load(deptId: string): Record<string, unknown>
       save(deptId: string, state: Record<string, unknown>): void
+    }
+    agentMetaRepo: {
+      load(agentId: string): Record<string, unknown> | null
+      save(agentId: string, meta: Record<string, unknown>): void
     }
     missionRepo: {
       readMission(): string
@@ -58,6 +63,17 @@ export default _core as {
       company: { dailyLimit: number; used: number; ratio: number }
       departments: Record<string, { limit: number; used: number; ratio: number }>
     }
+    loadCompanyBudget(): Record<string, unknown>
+    queryCosts(opts?: { date?: string; from?: string; to?: string; source?: string }): {
+      entries: Record<string, unknown>[]
+      totalCost: number
+      totalInputTokens: number
+      totalOutputTokens: number
+    }
+    getDailySummary(days?: number): Array<{
+      date: string; source: string; cost: number
+      inputTokens: number; outputTokens: number; calls: number
+    }>
   }
   common: {
     loadState(): Record<string, unknown>

@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
-import { readFileSync, writeFileSync, existsSync, readdirSync, renameSync } from 'fs'
+import { writeFileSync, renameSync } from 'fs'
 import { resolve, join } from 'path'
-import { logError } from '@/lib/error-logger'
+import { getDepartments } from '@/services/autopilot-api'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config/departments')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 function atomicWriteSync(filePath: string, data: string) {
   const tmpPath = filePath + '.tmp.' + process.pid
@@ -19,64 +19,7 @@ function atomicWriteSync(filePath: string, data: string) {
  * GET /api/autopilot/departments — list all department loop states
  */
 export async function GET() {
-  const departments: Array<Record<string, unknown>> = []
-
-  if (!existsSync(DEPARTMENTS_DIR)) {
-    return NextResponse.json({ departments })
-  }
-
-  try {
-    const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
-    for (const dir of dirs) {
-      const configPath = join(DEPARTMENTS_DIR, dir.name, 'config.json')
-      const statePath = join(DEPARTMENTS_DIR, dir.name, 'state.json')
-      const reportPath = join(DEPARTMENTS_DIR, dir.name, 'report.md')
-
-      if (!existsSync(configPath)) continue
-
-      try {
-        const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-        let state = { status: 'stopped', cycleCount: 0, tokensUsedToday: 0 }
-        let report = ''
-        let directives: string[] = []
-
-        if (existsSync(statePath)) {
-          try { state = JSON.parse(readFileSync(statePath, 'utf-8')) } catch (err) { logError('autopilot-depts/read-state', err) }
-        }
-        if (existsSync(reportPath)) {
-          try { report = readFileSync(reportPath, 'utf-8').slice(0, 2000) } catch (err) { logError('autopilot-depts/read-report', err) }
-        }
-        const directivesPath = join(DEPARTMENTS_DIR, dir.name, 'ceo-directives.json')
-        if (existsSync(directivesPath)) {
-          try {
-            const data = JSON.parse(readFileSync(directivesPath, 'utf-8'))
-            directives = data.directives || []
-          } catch (err) { logError('autopilot-depts/read-directives', err) }
-        }
-
-        // Read department mission
-        let mission = ''
-        const missionPath = join(DEPARTMENTS_DIR, dir.name, 'mission.md')
-        if (existsSync(missionPath)) {
-          try { mission = readFileSync(missionPath, 'utf-8').slice(0, 3000) } catch (err) { logError('autopilot-depts/read-mission', err) }
-        }
-
-        // Check if head agent actually exists
-        const headExists = config.head ? existsSync(join(AGENTS_DIR, config.head)) : false
-
-        departments.push({
-          ...config,
-          state,
-          report,
-          directives,
-          mission,
-          headExists,
-        })
-      } catch (err) { logError('autopilot-depts/parse-config', err) }
-    }
-  } catch (err) { logError('autopilot-depts/list-dirs', err) }
-
-  return NextResponse.json({ departments })
+  return NextResponse.json(getDepartments())
 }
 
 /**
@@ -92,17 +35,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'deptId required' }, { status: 400 })
     }
 
-    const deptDir = join(DEPARTMENTS_DIR, deptId)
-    const configPath = join(deptDir, 'config.json')
-    if (!existsSync(configPath)) {
+    const config = core.repo.deptConfigRepo.load(deptId)
+    if (!config) {
       return NextResponse.json({ ok: false, error: `Department ${deptId} not found` }, { status: 404 })
     }
 
     // Update config fields
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
     if (enabled !== undefined) config.enabled = enabled
     if (interval !== undefined) config.interval = interval
-    atomicWriteSync(configPath, JSON.stringify(config, null, 2))
+    core.repo.deptConfigRepo.save(deptId, config)
+    const deptDir = join(DEPARTMENTS_DIR, deptId)
 
     // Update department mission
     if (mission !== undefined) {

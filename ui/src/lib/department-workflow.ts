@@ -1,9 +1,5 @@
-import { readFileSync, existsSync } from 'fs'
-import { join, resolve } from 'path'
 import type { DepartmentWorkflow } from './types'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
+import core from '@/lib/core-bridge'
 
 export const DEFAULT_WORKFLOW: DepartmentWorkflow = {
   phases: [
@@ -30,11 +26,11 @@ export const DEFAULT_WORKFLOW: DepartmentWorkflow = {
 export function getDepartmentWorkflow(deptId?: string | null): DepartmentWorkflow {
   if (!deptId) return DEFAULT_WORKFLOW
   try {
-    const configPath = join(DEPARTMENTS_DIR, deptId, 'config.json')
-    if (!existsSync(configPath)) return DEFAULT_WORKFLOW
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-    if (config.workflow && config.workflow.phases?.length > 0) {
-      return config.workflow
+    const config = core.repo.deptConfigRepo.load(deptId)
+    if (!config) return DEFAULT_WORKFLOW
+    const workflow = (config as Record<string, unknown>).workflow as DepartmentWorkflow | undefined
+    if (workflow && workflow.phases?.length > 0) {
+      return workflow
     }
   } catch { /* fallback */ }
   return DEFAULT_WORKFLOW

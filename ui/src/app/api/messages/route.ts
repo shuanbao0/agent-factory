@@ -3,11 +3,11 @@ import { gwCallAsync } from '@/lib/gateway-client'
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
 import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
-const OPENCLAW_CONFIG = join(PROJECT_ROOT, 'config/openclaw.json')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 // Max subagent sessions to fetch chat.history for (parallel)
@@ -87,13 +87,14 @@ function cleanTask(text: string): string {
 function loadAllowAgents(): Record<string, string[]> {
   const map: Record<string, string[]> = {}
   try {
-    if (!existsSync(OPENCLAW_CONFIG)) return map
-    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'))
-    const list = config.agents?.list || []
+    const config = core.repo.configRepo.getConfig()
+    const agents = (config.agents || {}) as Record<string, unknown>
+    const list = (agents.list || []) as Array<Record<string, unknown>>
     for (const agent of list) {
-      const allowed = agent.subagents?.allowAgents
+      const subagents = agent.subagents as Record<string, unknown> | undefined
+      const allowed = subagents?.allowAgents
       if (Array.isArray(allowed)) {
-        map[agent.id] = allowed
+        map[agent.id as string] = allowed
       }
     }
   } catch (err) { logError('messages-api/load-allow-agents', err) }
