@@ -12,6 +12,7 @@
  * 4. delta event 带增量文本，final event 表示完成
  */
 import WebSocket from 'ws'
+import { logError } from '@/lib/error-logger'
 import { randomUUID } from 'crypto'
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
@@ -37,7 +38,7 @@ function loadGatewayConfig(): GatewayConfig {
         port: config.gateway?.port || port,
         token: config.gateway?.auth?.token || token,
       }
-    } catch {}
+    } catch (err) { logError('gateway-chat/loadConfig', err) }
   }
 
   return { port, token }
@@ -153,7 +154,7 @@ export async function sendChatMessage(
     const cleanup = () => {
       if (timer) clearTimeout(timer)
       timer = null
-      try { ws?.close() } catch {}
+      try { ws?.close() } catch (err) { logError('gateway-chat/closeWs', err) }
       ws = null
     }
 
@@ -196,7 +197,8 @@ export async function sendChatMessage(
         let frame: any
         try {
           frame = JSON.parse(data.toString())
-        } catch {
+        } catch (err) {
+          logError('gateway-chat/parseFrame', err)
           return
         }
 
