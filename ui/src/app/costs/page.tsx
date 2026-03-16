@@ -1,18 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from '@/lib/i18n'
+import { useAppStore } from '@/lib/store'
 import { DollarSign, Zap, ArrowUpDown, Activity } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-
-interface CostSummary {
-  date: string
-  cost: number
-  inputTokens: number
-  outputTokens: number
-  calls: number
-}
 
 interface CostEntry {
   ts: string
@@ -25,9 +18,9 @@ interface CostEntry {
   agentId?: string
 }
 
-interface CostData {
+interface FetchedCostData {
   entries: CostEntry[]
-  summary: CostSummary[]
+  summary: Array<{ date: string; cost: number; inputTokens: number; outputTokens: number; calls: number }>
   totalCost: number
   totalInputTokens: number
   totalOutputTokens: number
@@ -48,25 +41,47 @@ function formatTokens(n: number): string {
 export default function CostsPage() {
   const { t } = useTranslation()
   const [period, setPeriod] = useState<Period>('7d')
-  const [data, setData] = useState<CostData | null>(null)
+  const [fetchedData, setFetchedData] = useState<FetchedCostData | null>(null)
   const [loading, setLoading] = useState(true)
+  const sseCostData = useAppStore(s => s.costData)
 
   const fetchCosts = useCallback(async (p: Period) => {
     try {
       const res = await fetch(`/api/costs?period=${p}`)
       if (res.ok) {
-        setData(await res.json())
+        setFetchedData(await res.json())
       }
     } catch { /* ignore */ }
     setLoading(false)
   }, [])
 
+  // Fetch on period change; for '7d' rely primarily on SSE
   useEffect(() => {
     setLoading(true)
     fetchCosts(period)
-    const timer = setInterval(() => fetchCosts(period), 30000)
-    return () => clearInterval(timer)
+    // Only poll for non-default periods (SSE handles 7d)
+    if (period !== '7d') {
+      const timer = setInterval(() => fetchCosts(period), 30000)
+      return () => clearInterval(timer)
+    }
   }, [period, fetchCosts])
+
+  // For 7d period, prefer SSE data; for others, use fetched data
+  const data = period === '7d' && sseCostData
+    ? {
+        entries: fetchedData?.entries || [],
+        summary: sseCostData.summary.map(s => ({
+          date: s.date,
+          cost: s.cost,
+          inputTokens: s.inputTokens,
+          outputTokens: s.outputTokens,
+          calls: s.calls,
+        })),
+        totalCost: sseCostData.totalCost,
+        totalInputTokens: sseCostData.totalInputTokens,
+        totalOutputTokens: sseCostData.totalOutputTokens,
+      }
+    : fetchedData
 
   // Aggregate by source and model
   const bySource: Record<string, number> = {}
@@ -75,6 +90,17 @@ export default function CostsPage() {
     for (const e of data.entries) {
       bySource[e.source] = (bySource[e.source] || 0) + (e.cost || 0)
       byModel[e.model] = (byModel[e.model] || 0) + (e.cost || 0)
+    }
+  }
+
+  // Also aggregate from SSE summary by source when available
+  if (period === '7d' && sseCostData?.summary) {
+    for (const s of sseCostData.summary) {
+      if (!bySource[s.source]) bySource[s.source] = 0
+      // Only add if entries weren't available (avoid double counting)
+      if (!data?.entries?.length) {
+        bySource[s.source] += s.cost || 0
+      }
     }
   }
 

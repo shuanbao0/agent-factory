@@ -9,6 +9,7 @@ import {
   fetchUsageData,
   fetchMessagesData,
   fetchTasksData,
+  fetchCostsData,
 } from '@/lib/data-fetchers'
 
 export const dynamic = 'force-dynamic'
@@ -55,6 +56,7 @@ function startPolling() {
   poll(fetchUsageData, 'usage', 60_000)
   poll(fetchMessagesData, 'messages', 15_000)
   poll(fetchTasksData, 'tasks', 10_000)
+  poll(fetchCostsData, 'costs', 30_000)
 }
 
 // ── GET handler ──────────────────────────────────────────────────

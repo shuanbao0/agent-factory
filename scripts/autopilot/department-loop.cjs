@@ -160,6 +160,17 @@ async function executeChiefDecisions(decisions, deptId, config) {
           logger.warn('dept-loop', `Chief tried to assign to ${agentId} who is not in dept ${deptId}`)
           break
         }
+        // Agent-level budget check
+        try {
+          const { checkAgentBudget } = require('./kpi.cjs')
+          const agentBudget = checkAgentBudget(agentId)
+          if (!agentBudget.allowed) {
+            logger.warn('dept-loop', `[budget] Skipping assignment to ${agentId}: ${agentBudget.reason}`)
+            break
+          }
+        } catch (e) {
+          logger.debug('dept-loop', `Agent budget check failed for ${agentId}: ${e.message}`)
+        }
         try {
           const taskId = await createWorkTask(agentId, taskSummary, deptId, {
             type: 'dept-work',
@@ -417,10 +428,11 @@ async function runDepartmentCycle(deptId) {
 
   const state = loadDeptState(deptId)
 
-  // Check budget
+  // Check budget (hard enforcement — skip entire cycle if over budget)
   const budget = checkBudget(deptId)
   if (!budget.allowed) {
-    logger.warn('dept-loop', `Department ${deptId} over budget, skipping cycle: ${budget.reason}`)
+    logger.warn('dept-loop', `[budget] Department ${deptId} over budget, skipping cycle: ${budget.reason}`)
+    try { eventBus.fire('budget.dept_blocked', { deptId, reason: budget.reason, ratio: budget.ratio }) } catch {}
     return { ok: false, error: budget.reason }
   }
   if (budget.warning) {

@@ -4,5 +4,6 @@
     "monthlyTokenLimit": 100000000,
     "alertThreshold": 0.8
   },
+  "agentDailyLimit": 5,
   "overBudgetAction": "pause_and_notify"
 }

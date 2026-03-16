@@ -7,8 +7,13 @@
  * to get structured decisions without going through OpenClaw Gateway.
  */
 
+const { withRetry, isRetryableError, CircuitBreaker } = require('./retry.cjs')
+
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 const DEFAULT_MAX_TOKENS = 4096
+
+// Circuit breaker: shared across all sendWithTools calls
+const _circuitBreaker = new CircuitBreaker({ failureThreshold: 5, resetTimeoutMs: 60000 })
 
 /**
  * @typedef {Object} ToolCall
@@ -55,15 +60,22 @@ function getClient() {
  */
 async function sendWithTools({ system, user, tools, model, maxTokens, temperature }) {
   try {
-    const client = getClient()
-    const response = await client.messages.create({
-      model: model || DEFAULT_MODEL,
-      max_tokens: maxTokens || DEFAULT_MAX_TOKENS,
-      system,
-      messages: [{ role: 'user', content: user }],
-      tools: tools || [],
-      ...(temperature !== undefined ? { temperature } : {}),
-    })
+    const response = await _circuitBreaker.execute(() =>
+      withRetry(
+        () => {
+          const client = getClient()
+          return client.messages.create({
+            model: model || DEFAULT_MODEL,
+            max_tokens: maxTokens || DEFAULT_MAX_TOKENS,
+            system,
+            messages: [{ role: 'user', content: user }],
+            tools: tools || [],
+            ...(temperature !== undefined ? { temperature } : {}),
+          })
+        },
+        { maxRetries: 3, baseDelayMs: 1000, timeoutMs: 60000, retryOn: isRetryableError }
+      )
+    )
 
     const toolCalls = []
     const textParts = []
@@ -106,4 +118,4 @@ function resetClient() {
   _clientInstance = null
 }
 
-module.exports = { sendWithTools, resetClient, DEFAULT_MODEL, DEFAULT_MAX_TOKENS }
+module.exports = { sendWithTools, resetClient, DEFAULT_MODEL, DEFAULT_MAX_TOKENS, _circuitBreaker }

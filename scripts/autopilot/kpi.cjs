@@ -172,4 +172,54 @@ function getCompanyKPIs() {
   return results
 }
 
-module.exports = { calculateDepartmentKPIs, saveKPISnapshot, readKPIHistory, getCompanyKPIs }
+/**
+ * Check if an individual agent is within its daily budget.
+ * Uses cost-tracker JSONL data to sum today's cost for the agent.
+ *
+ * @param {string} agentId - Agent ID
+ * @param {number} [dailyLimitUsd] - Per-agent daily limit in USD (default from budget.json)
+ * @returns {{ allowed: boolean, reason?: string, todayCost: number, limit: number }}
+ */
+function checkAgentBudget(agentId, dailyLimitUsd) {
+  const { readFileSync, existsSync: fileExists } = require('fs')
+  const { join: joinPath } = require('path')
+  const { BUDGET_FILE } = require('./constants.cjs')
+
+  // Determine limit: explicit param > budget.json > $5 default
+  let limit = dailyLimitUsd
+  if (limit === undefined) {
+    try {
+      if (fileExists(BUDGET_FILE)) {
+        const budgetConfig = JSON.parse(readFileSync(BUDGET_FILE, 'utf-8'))
+        limit = budgetConfig.agentDailyLimit
+      }
+    } catch { /* ignore */ }
+    if (limit === undefined) limit = 5
+  }
+
+  // Sum today's cost for this agent from cost tracker
+  const costsFile = joinPath(require('path').resolve(__dirname, '../..'), 'config', 'autopilot-costs.jsonl')
+  const today = new Date().toISOString().slice(0, 10)
+  let todayCost = 0
+
+  try {
+    if (fileExists(costsFile)) {
+      const lines = readFileSync(costsFile, 'utf-8').split('\n').filter(Boolean)
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line)
+          if (entry.date === today && entry.agentId === agentId) {
+            todayCost += entry.cost || 0
+          }
+        } catch { /* skip bad lines */ }
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (todayCost >= limit) {
+    return { allowed: false, reason: `agent ${agentId} daily cost $${todayCost.toFixed(4)} >= limit $${limit}`, todayCost, limit }
+  }
+  return { allowed: true, todayCost, limit }
+}
+
+module.exports = { calculateDepartmentKPIs, saveKPISnapshot, readKPIHistory, getCompanyKPIs, checkAgentBudget }

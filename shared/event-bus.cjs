@@ -55,6 +55,17 @@ class EventBus extends EventEmitter {
       }
     }
   }
+
+  /**
+   * Return listener count for a given event (delegates to EventEmitter).
+   * Useful for debugging / verifying reactor registration.
+   *
+   * @param {string} eventType
+   * @returns {number}
+   */
+  listenerCount(eventType) {
+    return super.listenerCount(eventType)
+  }
 }
 
 // Singleton instance for the autopilot runtime

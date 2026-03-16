@@ -30,7 +30,11 @@ const { buildMemoryContext, compressMemory } = require('./memory.cjs')
 const { runDepartmentCycle, autoTransitionTasks } = require('./department-loop.cjs')
 const { createCycleTask, completeCycleTask, updateTaskStatus } = require('./task-bridge.cjs')
 const { eventBus } = require('../../shared/event-bus.cjs')
+const { registerAll } = require('../../shared/reactors/index.cjs')
 const logger = require('./logger.cjs')
+
+// Register all reactors on the shared event bus
+registerAll(eventBus)
 
 const MAX_HISTORY = 50
 

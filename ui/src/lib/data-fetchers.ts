@@ -337,6 +337,47 @@ export async function fetchTasksData(): Promise<TasksResult> {
   return { tasks, source: 'filesystem' }
 }
 
+// ── Costs ────────────────────────────────────────────────────
+
+export interface CostsSummaryItem {
+  date: string
+  source: string
+  cost: number
+  inputTokens: number
+  outputTokens: number
+  calls: number
+}
+
+export interface CostsResult {
+  summary: CostsSummaryItem[]
+  totalCost: number
+  totalInputTokens: number
+  totalOutputTokens: number
+}
+
+export async function fetchCostsData(): Promise<CostsResult> {
+  const { createRequire } = await import('module')
+  const require = createRequire(import.meta.url)
+  const { getDailySummary } = require('../../../shared/cost-tracker.cjs')
+
+  const summary = getDailySummary(7) as CostsSummaryItem[]
+  let totalCost = 0
+  let totalInputTokens = 0
+  let totalOutputTokens = 0
+  for (const s of summary) {
+    totalCost += s.cost || 0
+    totalInputTokens += s.inputTokens || 0
+    totalOutputTokens += s.outputTokens || 0
+  }
+
+  return {
+    summary,
+    totalCost: Math.round(totalCost * 1_000_000) / 1_000_000,
+    totalInputTokens,
+    totalOutputTokens,
+  }
+}
+
 // ── Messages (for pixel-office rich states) ─────────────────
 
 export interface AgentMessage {

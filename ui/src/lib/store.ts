@@ -135,6 +135,20 @@ export interface ProviderInfo {
   setupTokenProfileId?: string | null
 }
 
+export interface CostData {
+  summary: Array<{
+    date: string
+    source: string
+    cost: number
+    inputTokens: number
+    outputTokens: number
+    calls: number
+  }>
+  totalCost: number
+  totalInputTokens: number
+  totalOutputTokens: number
+}
+
 interface AppState {
   // Mode
   mode: 'attached' | 'standalone'
@@ -221,6 +235,10 @@ interface AppState {
   sendAutopilotAction: (action: string, extra?: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
   budgetSummary: BudgetSummary | null
   fetchBudget: () => Promise<void>
+
+  // Cost data (from SSE)
+  costData: CostData | null
+  setCostData: (d: CostData) => void
 
   // Tab visibility
   tabVisible: boolean
@@ -357,6 +375,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ budgetSummary: await res.json() })
     } catch { /* ignore */ }
   },
+
+  costData: null,
+  setCostData: (d) => set({ costData: d }),
 
   tabVisible: true,
   setTabVisible: (v) => set({ tabVisible: v }),
@@ -674,6 +695,15 @@ export const useAppStore = create<AppState>((set, get) => ({
             agentErrors: data.agentErrors || {},
             lastActivityTimestamps: data.lastActivity || {},
           })
+        }
+      } catch { /* ignore */ }
+    })
+
+    es.addEventListener('costs', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.summary) {
+          set({ costData: data as CostData })
         }
       } catch { /* ignore */ }
     })
