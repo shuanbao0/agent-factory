@@ -1,22 +1,29 @@
 'use strict'
 /**
- * Chief Tools — tool definitions for department chief structured decisions.
+ * ChiefTools — 部门主管和 CEO 的结构化决策工具定义
  *
- * Each tool maps to a concrete action in department-loop:
- *   assign_task    → createWorkTask() + peer-send
- *   complete_task  → updateTaskStatus(→review)
- *   send_rework    → peer-send feedback
- *   report_progress → logged, no side-effect
- *   no_action      → explicit "nothing to do"
+ * 设计模式：Strategy / Configuration Objects
  *
- * CEO tools for index.cjs:
- *   issue_directive → send directive to department
- *   update_priority → adjust department priority
- *   escalate_issue  → flag for human intervention
- *   no_action       → no intervention needed
+ * 职责：
+ * - 定义 Chief（部门主管）可用的 5 个工具的 Anthropic tool schema
+ * - 定义 CEO 可用的 4 个工具的 Anthropic tool schema
+ * - 提供 validateToolInput() 校验工具调用参数的完整性
+ *
+ * 工具 → 动作映射（department-loop 消费）：
+ *   assign_task      → 创建工作任务 + 通知 Agent
+ *   complete_task    → 推进任务到 review 阶段
+ *   send_rework      → 退回任务并附上反馈
+ *   report_progress  → 记录日志，无副作用
+ *   no_action        → 明确表达"无需操作"
+ *
+ * CEO 工具（index.cjs 消费）：
+ *   issue_directive  → 向部门发出指令
+ *   update_priority  → 调整部门优先级
+ *   escalate_issue   → 标记需要人工介入的问题
+ *   no_action        → 无需干预
  */
 
-// ── Chief (Department Head) Tools ────────────────────────────────
+// ── 部门主管工具 ────────────────────────────────────────────
 
 const CHIEF_TOOLS = [
   {
@@ -117,7 +124,7 @@ const CHIEF_TOOLS = [
   },
 ]
 
-// ── CEO Tools ────────────────────────────────────────────────────
+// ── CEO 工具 ────────────────────────────────────────────────
 
 const CEO_TOOLS = [
   {
@@ -206,11 +213,11 @@ const CEO_TOOLS = [
 ]
 
 /**
- * Validate a tool call input against its schema (basic required-field check).
+ * 校验工具调用的输入参数（基础 required 字段检查）
  *
- * @param {string} toolName
- * @param {Object} input
- * @param {Array} toolDefs - tool definitions array to validate against
+ * @param {string} toolName - 工具名称
+ * @param {Object} input - 输入参数
+ * @param {Array} toolDefs - 工具定义数组（CHIEF_TOOLS 或 CEO_TOOLS）
  * @returns {{ valid: boolean, errors: string[] }}
  */
 function validateToolInput(toolName, input, toolDefs) {

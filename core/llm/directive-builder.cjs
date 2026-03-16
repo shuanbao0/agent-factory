@@ -1,19 +1,32 @@
 'use strict'
-
 /**
- * DirectiveBuilder — chainable builder for constructing agent directives.
+ * DirectiveBuilder — 链式指令文本构建器
  *
- * Produces structured text prompts from composable sections.
- * Used by both CEO directives and department head directives.
+ * 设计模式：Builder
+ *
+ * 职责：
+ * - 通过链式调用组装多段结构化指令文本
+ * - 支持 header、角色、记忆、使命、团队状态、任务列表、预算、KPI 等段落
+ * - 最终 build() 输出格式良好的 Markdown 文本，传给 LLM
+ *
+ * 使用方式：
+ *   const directive = new DirectiveBuilder()
+ *     .withHeader('# 第 42 轮循环')
+ *     .withRole('novel-chief', '创作部')
+ *     .withMemory(memoryContext)
+ *     .withTasks(tasksText)
+ *     .build()
+ *
+ * 同时用于部门主管指令和 CEO 指令的构建
  */
 class DirectiveBuilder {
   constructor() {
-    this._header = ''
-    this._sections = []
+    this._header = ''       // 指令头部（通常是循环编号）
+    this._sections = []     // 各段落内容
   }
 
   /**
-   * Set the directive header (first line, typically cycle info).
+   * 设置指令头部（第一行，通常包含循环信息）
    * @param {string} header
    * @returns {DirectiveBuilder}
    */
@@ -23,9 +36,9 @@ class DirectiveBuilder {
   }
 
   /**
-   * Set role introduction line.
-   * @param {string} agentId - Head agent ID
-   * @param {string} deptName - Department display name
+   * 设置部门主管角色介绍
+   * @param {string} agentId - 主管 Agent ID
+   * @param {string} deptName - 部门显示名
    * @returns {DirectiveBuilder}
    */
   withRole(agentId, deptName) {
@@ -34,8 +47,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Set CEO role introduction.
-   * @param {number} cycleNum
+   * 设置 CEO 角色介绍
+   * @param {number} cycleNum - 循环编号
    * @returns {DirectiveBuilder}
    */
   withCeoRole(cycleNum) {
@@ -44,9 +57,13 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add memory context section.
-   * @param {object|null} memoryContext - { summary?, recentDecisions?, departmentStatus?, lessonsLearned? }
-   * @param {string} [fallbackMemory] - Raw memory text if structured not available
+   * 添加 CEO 记忆上下文（结构化格式）
+   *
+   * 支持字段：summary, recentDecisions, departmentStatus, lessonsLearned
+   * 如果没有结构化数据，可传 fallbackMemory（原始文本截断到 4000 字符）
+   *
+   * @param {object|null} memoryContext - 结构化记忆
+   * @param {string} [fallbackMemory] - 兜底原始记忆文本
    * @returns {DirectiveBuilder}
    */
   withMemory(memoryContext, fallbackMemory) {
@@ -70,8 +87,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add department head memory (simpler format).
-   * @param {string|null} memorySummary
+   * 添加部门主管记忆（简化格式）
+   * @param {string|null} memorySummary - 记忆摘要文本
    * @returns {DirectiveBuilder}
    */
   withDeptMemory(memorySummary) {
@@ -82,9 +99,9 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add mission section(s).
-   * @param {string} [baseMission] - Global base mission
-   * @param {string} [deptMission] - Department-specific mission
+   * 添加使命段落
+   * @param {string} [baseMission] - 全局通用准则
+   * @param {string} [deptMission] - 部门专属使命
    * @returns {DirectiveBuilder}
    */
   withMission(baseMission, deptMission) {
@@ -97,8 +114,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add full mission for CEO.
-   * @param {string} mission
+   * 添加 CEO 级公司使命
+   * @param {string} mission - 使命文本
    * @returns {DirectiveBuilder}
    */
   withFullMission(mission) {
@@ -107,8 +124,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add CEO directives section.
-   * @param {string} directives - Pre-formatted directives text
+   * 添加 CEO 指令段落
+   * @param {string} directives - 预格式化的指令文本
    * @returns {DirectiveBuilder}
    */
   withCeoDirectives(directives) {
@@ -117,8 +134,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add budget info section.
-   * @param {string} budgetInfo
+   * 添加预算信息段落
+   * @param {string} budgetInfo - 预算信息文本
    * @returns {DirectiveBuilder}
    */
   withBudget(budgetInfo) {
@@ -127,8 +144,11 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add task auto-transitions section.
-   * @param {Array<{taskId, taskName, agentId, from, to, reason}>} transitions
+   * 添加任务自动变化段落（系统检测的状态转换）
+   *
+   * 包含 review 待确认提示和 failed 告警
+   *
+   * @param {Array<{taskId, taskName, agentId, from, to, reason}>} transitions - 本轮变化列表
    * @returns {DirectiveBuilder}
    */
   withTransitions(transitions) {
@@ -148,10 +168,12 @@ class DirectiveBuilder {
       section += `- [${t.taskId}] ${t.taskName} → ${t.agentId}: ${t.from} → ${label}（${t.reason}）\n`
     }
 
+    // 待确认完成提示
     const reviewTasks = transitions.filter(t => t.to === 'review')
     if (reviewTasks.length > 0) {
       section += `\n> 🔔 有 ${reviewTasks.length} 个任务等待你确认完成。请检查产出质量后在 [任务完成] 中确认，或通过 peer-send 要求 agent 继续完善。\n`
     }
+    // 失败告警
     const failedTasks = transitions.filter(t => t.to === 'failed')
     if (failedTasks.length > 0) {
       section += `> ⚠️ 有 ${failedTasks.length} 个任务因长时间无进展被标记为失败。请决定是否重新分配。\n`
@@ -162,8 +184,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add team status section.
-   * @param {string} teamStatus - Pre-formatted team status text
+   * 添加团队状态段落
+   * @param {string} teamStatus - 预格式化的团队状态文本
    * @returns {DirectiveBuilder}
    */
   withTeamStatus(teamStatus) {
@@ -172,8 +194,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add department tasks section.
-   * @param {string} deptTasks - Pre-formatted tasks text
+   * 添加部门任务段落
+   * @param {string} deptTasks - 预格式化的任务列表文本
    * @returns {DirectiveBuilder}
    */
   withTasks(deptTasks) {
@@ -182,8 +204,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add KPI status section.
-   * @param {string} kpiStatus - Pre-formatted KPI text
+   * 添加 KPI 段落
+   * @param {string} kpiStatus - 预格式化的 KPI 文本
    * @returns {DirectiveBuilder}
    */
   withKpis(kpiStatus) {
@@ -192,8 +214,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add department reports section (for CEO).
-   * @param {object} reports - { deptId: reportText }
+   * 添加部门报告段落（CEO 视图）
+   * @param {object} reports - { deptId: reportText } 部门报告映射
    * @returns {DirectiveBuilder}
    */
   withDeptReports(reports) {
@@ -207,8 +229,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add escalations section (for CEO).
-   * @param {Array} escalations
+   * 添加升级事项段落（需要 CEO 决策的问题）
+   * @param {Array} escalations - 升级事项列表
    * @returns {DirectiveBuilder}
    */
   withEscalations(escalations) {
@@ -222,8 +244,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add project data section (for CEO).
-   * @param {string} projectData - Pre-formatted project data text
+   * 添加项目数据段落（CEO 视图）
+   * @param {string} projectData - 预格式化的项目数据文本
    * @returns {DirectiveBuilder}
    */
   withProjectData(projectData) {
@@ -232,8 +254,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add standalone tasks section (for CEO).
-   * @param {string} standaloneTasks - Pre-formatted standalone tasks text
+   * 添加独立任务段落（CEO 视图）
+   * @param {string} standaloneTasks - 预格式化文本
    * @returns {DirectiveBuilder}
    */
   withStandaloneTasks(standaloneTasks) {
@@ -242,8 +264,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add agent activity status section (for CEO).
-   * @param {string} activityStatus - Pre-formatted activity text
+   * 添加 Agent 活跃状态段落（CEO 视图）
+   * @param {string} activityStatus - 预格式化文本
    * @returns {DirectiveBuilder}
    */
   withAgentActivity(activityStatus) {
@@ -252,8 +274,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add a raw text section.
-   * @param {string} text
+   * 添加原始文本段落（通用）
+   * @param {string} text - 任意文本
    * @returns {DirectiveBuilder}
    */
   withSection(text) {
@@ -262,8 +284,8 @@ class DirectiveBuilder {
   }
 
   /**
-   * Add action requirements section (text block).
-   * @param {string} actionText
+   * 添加操作要求段落
+   * @param {string} actionText - 操作要求文本
    * @returns {DirectiveBuilder}
    */
   withActionRequirements(actionText) {
@@ -272,8 +294,11 @@ class DirectiveBuilder {
   }
 
   /**
-   * Build the final directive string.
-   * @returns {string}
+   * 构建最终指令文本
+   *
+   * 将 header + 所有段落用空行连接，并清理多余空行（3 行以上合并为 2 行）
+   *
+   * @returns {string} 格式良好的 Markdown 指令文本
    */
   build() {
     const parts = []
@@ -283,6 +308,7 @@ class DirectiveBuilder {
       parts.push(section)
       parts.push('')
     }
+    // 清理多余空行
     return parts.join('\n').replace(/\n{3,}/g, '\n\n')
   }
 }

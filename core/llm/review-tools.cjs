@@ -1,13 +1,20 @@
 'use strict'
 /**
- * Review Tools — tool definitions for quality gate structured reviews.
+ * ReviewTools — 质量门三阶段评审的工具定义
  *
- * Mirrors chief-tools.cjs pattern for the 3 quality gate stages:
- *   submit_self_check  — agent reviews own output
- *   submit_peer_review — peer evaluates task output
- *   submit_approval    — department head final sign-off
+ * 设计模式：Strategy / Configuration Objects
+ *
+ * 职责：
+ * - 定义质量门 3 个阶段对应的 Anthropic tool schema
+ * - 提供 parseReviewToolCall() 从 API 返回中提取评审结果
+ *
+ * 三阶段对应关系：
+ *   self_checking   → SELF_CHECK_TOOLS  → submit_self_check（Agent 自评）
+ *   peer_reviewing  → PEER_REVIEW_TOOLS → submit_peer_review（同行评审）
+ *   head_approving  → HEAD_APPROVAL_TOOLS → submit_approval（主管审批）
  */
 
+/** 自检工具：Agent 评估自己的产出质量 */
 const SELF_CHECK_TOOLS = [
   {
     name: 'submit_self_check',
@@ -34,6 +41,7 @@ const SELF_CHECK_TOOLS = [
   },
 ]
 
+/** 同行评审工具：其他 Agent 评估产出质量 */
 const PEER_REVIEW_TOOLS = [
   {
     name: 'submit_peer_review',
@@ -59,6 +67,7 @@ const PEER_REVIEW_TOOLS = [
   },
 ]
 
+/** 主管审批工具：部门主管最终签字 */
 const HEAD_APPROVAL_TOOLS = [
   {
     name: 'submit_approval',
@@ -81,11 +90,11 @@ const HEAD_APPROVAL_TOOLS = [
 ]
 
 /**
- * Parse a tool-use response into a structured review result.
+ * 从 tool-use 响应中提取指定工具的输入参数
  *
- * @param {Array} toolCalls - Array of { name, input } from sendWithTools
- * @param {string} expectedTool - The tool name to look for
- * @returns {Object|null} The tool input if found, null otherwise
+ * @param {Array} toolCalls - sendWithTools 返回的 [{ name, input }] 数组
+ * @param {string} expectedTool - 期望的工具名称
+ * @returns {Object|null} 工具的 input 对象，未找到返回 null
  */
 function parseReviewToolCall(toolCalls, expectedTool) {
   if (!Array.isArray(toolCalls)) return null

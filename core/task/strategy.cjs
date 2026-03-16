@@ -1,12 +1,24 @@
 'use strict'
 /**
- * Task Strategy — type-aware thresholds for task auto-transition, quality gates, and reviewer selection.
+ * TaskStrategy — 按任务类型定义的策略配置
  *
- * Replaces hardcoded IDLE_COMPLETE_MINS / STALE_TASK_MINS / score 60 / REVIEWER_MAP
- * with per-task-type strategy objects. Falls back to _fallback (identical to legacy values)
- * for tasks without a type, ensuring zero regression.
+ * 设计模式：Strategy + Fallback
+ *
+ * 职责：
+ * - 为不同任务类型（writing/editing/coding 等）提供差异化的阈值配置
+ * - 控制：空闲自动完成时间、过期超时、质量门最低分数、推荐评审人
+ * - 支持部门级覆盖（deptConfig.workflow.strategies[taskType]）
+ * - 未知类型回退到 _fallback 策略（与旧版硬编码值一致，零回归）
+ *
+ * 策略字段说明：
+ * - idleThresholdMins    — Agent 空闲超过此时间，任务自动推进到 review
+ * - staleThresholdMins   — 任务超过此时间无进展，标记为 failed
+ * - minPassingScore      — 质量门自检/评审的最低通过分数 (0-100)
+ * - preferredReviewers   — 推荐的同行评审 Agent ID 列表
+ * - reviewCriteria       — 评审关注点描述（可选，传给评审 Agent 的提示）
  */
 
+/** 8 种内置策略 + 1 个兜底策略 */
 const BUILTIN_STRATEGIES = {
   writing: {
     idleThresholdMins: 60,
@@ -58,6 +70,7 @@ const BUILTIN_STRATEGIES = {
     minPassingScore: 65,
     preferredReviewers: [],
   },
+  /** 兜底策略：与旧版硬编码值一致，保证零回归 */
   _fallback: {
     idleThresholdMins: 8,
     staleThresholdMins: 30,
@@ -66,24 +79,26 @@ const BUILTIN_STRATEGIES = {
   },
 }
 
+/** 策略对象的必填字段 */
 const REQUIRED_FIELDS = ['idleThresholdMins', 'staleThresholdMins', 'minPassingScore', 'preferredReviewers']
 
 /**
- * Get the strategy for a task type with optional department-level overrides.
+ * 获取指定任务类型的策略
  *
- * Priority:
- *   1. deptConfig.workflow.strategies[taskType] (partial override, shallow-merged)
- *   2. BUILTIN_STRATEGIES[taskType]
- *   3. BUILTIN_STRATEGIES._fallback
+ * 查找优先级：
+ *   1. 部门配置覆盖 deptConfig.workflow.strategies[taskType]（浅合并）
+ *   2. 内置策略 BUILTIN_STRATEGIES[taskType]
+ *   3. 兜底策略 BUILTIN_STRATEGIES._fallback
  *
- * @param {string} [taskType] - Task type key (e.g. 'writing', 'coding')
- * @param {object} [deptConfig] - Department config object
- * @returns {object} Strategy object
+ * @param {string} [taskType] - 任务类型（如 'writing', 'coding'）
+ * @param {object} [deptConfig] - 部门配置对象
+ * @returns {object} 策略对象
  */
 function getStrategy(taskType, deptConfig) {
+  // 查找内置策略，不存在则用兜底
   const base = (taskType && BUILTIN_STRATEGIES[taskType]) || BUILTIN_STRATEGIES._fallback
 
-  // Check for department-level override
+  // 检查部门级覆盖（浅合并，部门值优先）
   const deptOverride = deptConfig?.workflow?.strategies?.[taskType]
   if (deptOverride && typeof deptOverride === 'object') {
     return Object.assign({}, base, deptOverride)

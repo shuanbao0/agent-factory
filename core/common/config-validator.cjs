@@ -1,14 +1,27 @@
 'use strict'
 /**
- * Config Validator — validate budget.json and openclaw.json structures.
+ * ConfigValidator — 配置文件结构化校验
  *
- * Returns { valid: boolean, errors: string[] } for each config type.
+ * 设计模式：Validation / Guard Clause
+ *
+ * 职责：
+ * - 校验 budget.json 的结构和业务规则
+ * - 校验 openclaw.json 的结构完整性
+ * - 返回 { valid, errors[] } 格式，方便 API 返回具体错误信息
  */
 
 /**
- * Validate a budget configuration object.
+ * 校验预算配置对象（budget.json）
  *
- * @param {unknown} config
+ * 检查项：
+ * - config 必须为非空对象
+ * - company.dailyTokenLimit / monthlyTokenLimit 必须为非负数
+ * - company.alertThreshold 必须在 0~1 之间
+ * - dailyTokenLimit 不应超过 monthlyTokenLimit
+ * - agentDailyLimit 必须为非负数
+ * - overBudgetAction 必须为合法枚举值
+ *
+ * @param {unknown} config - 待校验的配置对象
  * @returns {{ valid: boolean, errors: string[] }}
  */
 function validateBudgetConfig(config) {
@@ -18,7 +31,7 @@ function validateBudgetConfig(config) {
     return { valid: false, errors: ['Config must be a non-null object'] }
   }
 
-  // company section
+  // ── company 部分 ──
   if (!config.company || typeof config.company !== 'object') {
     errors.push('Missing or invalid "company" section')
   } else {
@@ -39,19 +52,20 @@ function validateBudgetConfig(config) {
         errors.push('company.alertThreshold must be a number between 0 and 1')
       }
     }
+    // 逻辑校验：日限额不应超过月限额
     if (dailyTokenLimit && monthlyTokenLimit && dailyTokenLimit > monthlyTokenLimit) {
       errors.push('company.dailyTokenLimit should not exceed monthlyTokenLimit')
     }
   }
 
-  // agentDailyLimit
+  // ── agentDailyLimit ──
   if (config.agentDailyLimit !== undefined) {
     if (typeof config.agentDailyLimit !== 'number' || config.agentDailyLimit < 0) {
       errors.push('agentDailyLimit must be a non-negative number')
     }
   }
 
-  // overBudgetAction
+  // ── overBudgetAction 枚举校验 ──
   const validActions = ['pause_and_notify', 'notify_only', 'hard_stop']
   if (config.overBudgetAction !== undefined) {
     if (!validActions.includes(config.overBudgetAction)) {
@@ -63,9 +77,14 @@ function validateBudgetConfig(config) {
 }
 
 /**
- * Validate an openclaw.json configuration object.
+ * 校验 OpenClaw 配置对象（openclaw.json）
  *
- * @param {unknown} config
+ * 检查项：
+ * - config 必须为非空对象
+ * - port 必须在 1~65535 范围内
+ * - agents 必须为数组，每个元素需有 id 和 workspace 字段
+ *
+ * @param {unknown} config - 待校验的配置对象
  * @returns {{ valid: boolean, errors: string[] }}
  */
 function validateOpenclawConfig(config) {
@@ -75,14 +94,14 @@ function validateOpenclawConfig(config) {
     return { valid: false, errors: ['Config must be a non-null object'] }
   }
 
-  // Port
+  // ── 端口校验 ──
   if (config.port !== undefined) {
     if (typeof config.port !== 'number' || config.port < 1 || config.port > 65535) {
       errors.push('port must be a number between 1 and 65535')
     }
   }
 
-  // Agents array
+  // ── Agent 列表校验 ──
   if (config.agents !== undefined) {
     if (!Array.isArray(config.agents)) {
       errors.push('agents must be an array')

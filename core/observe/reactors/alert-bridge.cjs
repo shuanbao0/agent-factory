@@ -1,20 +1,32 @@
 'use strict'
 /**
- * Alert Bridge Reactor — collects alert events into a shared queue for UI consumption.
+ * AlertBridgeReactor — 告警事件桥接器（EventBus → UI）
  *
- * Listens to `alert.*` events from the event bus and stores them in a bounded queue.
- * The SSE endpoint reads from this queue to push alerts to the browser.
+ * 设计模式：Reactor / Observer + 有界队列
+ *
+ * 职责：
+ * - 监听 EventBus 上的 alert.* 和 budget.* 事件
+ * - 将告警收集到内存有界队列（最多 50 条，超出丢弃最旧的）
+ * - 提供 getAlerts() / dismissAlert() 接口，供 SSE 端点和 UI 消费
+ *
+ * 目前监听的事件类型：
+ * - alert.cost_exceeded  → 日成本超限（来自 CostAlertReactor）
+ * - alert.cycle_slowdown → 循环耗时异常（来自 CycleMonitorReactor）
+ * - budget.dept_blocked  → 部门预算被阻断
  */
 
+/** 告警队列最大容量 */
 const MAX_ALERTS = 50
+/** @type {Array<{id: string, type: string, severity: string, ts: string, data: object}>} */
 const alerts = []
 
 /**
- * Register the alert-bridge reactor on an event bus.
+ * 在 EventBus 上注册告警桥接 Reactor
  *
- * @param {import('../event-bus.cjs').EventBus} bus
+ * @param {import('../event-bus.cjs').EventBus} bus - 事件总线
  */
 function register(bus) {
+  // 成本超限告警
   bus.on('alert.cost_exceeded', (event) => {
     alerts.push({
       id: `cost-${Date.now()}`,
@@ -26,6 +38,7 @@ function register(bus) {
     if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
   })
 
+  // 循环耗时异常告警
   bus.on('alert.cycle_slowdown', (event) => {
     alerts.push({
       id: `cycle-${Date.now()}`,
@@ -37,6 +50,7 @@ function register(bus) {
     if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
   })
 
+  // 部门预算阻断告警
   bus.on('budget.dept_blocked', (event) => {
     alerts.push({
       id: `budget-${Date.now()}`,
@@ -50,7 +64,7 @@ function register(bus) {
 }
 
 /**
- * Get all pending alerts (non-destructive read).
+ * 获取所有待处理告警（非破坏性读取，返回副本）
  * @returns {Array<{id: string, type: string, severity: string, ts: string, data: object}>}
  */
 function getAlerts() {
@@ -58,8 +72,8 @@ function getAlerts() {
 }
 
 /**
- * Dismiss an alert by ID.
- * @param {string} alertId
+ * 按 ID 关闭（移除）一条告警
+ * @param {string} alertId - 告警 ID
  */
 function dismissAlert(alertId) {
   const idx = alerts.findIndex(a => a.id === alertId)
