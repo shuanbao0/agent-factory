@@ -194,7 +194,7 @@ export async function sendChatMessage(
       })
 
       ws.on('message', (data) => {
-        let frame: any
+        let frame: Record<string, unknown>
         try {
           frame = JSON.parse(data.toString())
         } catch (err) {
@@ -204,7 +204,7 @@ export async function sendChatMessage(
 
         // ── 处理 connect 响应 ──────────────────────────────
         if (frame.type === 'res') {
-          const res = frame as ResponseFrame
+          const res = frame as unknown as ResponseFrame
 
           // connect 成功 → 发送 chat.send
           if (res.ok && !connected) {
@@ -329,11 +329,11 @@ export async function sendChatMessage(
         }
       })
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       finish({
         ok: false,
         reply: '',
-        error: `Connection failed: ${err.message}`,
+        error: `Connection failed: ${err instanceof Error ? err.message : String(err)}`,
         runId: idempotencyKey,
       })
     }

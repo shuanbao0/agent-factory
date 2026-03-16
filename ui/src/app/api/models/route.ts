@@ -5,6 +5,7 @@ import { restartGateway, getStatus } from '@/lib/gateway-manager'
 import { PROVIDERS } from '@/lib/providers'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
+import type { OpenClawConfig, OpenClawModelEntry, OpenClawProviderConfig } from '@entity/config'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const MODELS_PATH = resolve(PROJECT_ROOT, 'config/models.json')
@@ -62,21 +63,21 @@ async function writeModelsAndSync(config: ModelsConfig) {
 
 function syncOpenClawConfig(modelsConfig: ModelsConfig) {
   try {
-    core.repo.configRepo.updateConfig((ocConfig: Record<string, unknown>) => {
+    core.repo.configRepo.updateConfig((ocConfig: OpenClawConfig) => {
       // Ensure structure exists
       if (!ocConfig.models) ocConfig.models = {}
-      const models = ocConfig.models as Record<string, unknown>
+      const models = ocConfig.models
       if (!models.providers) models.providers = {}
       if (!ocConfig.agents) ocConfig.agents = {}
-      const agents = ocConfig.agents as Record<string, unknown>
+      const agents = ocConfig.agents
       if (!agents.defaults) agents.defaults = {}
-      const defaults = agents.defaults as Record<string, unknown>
+      const defaults = agents.defaults
       if (!ocConfig.plugins) ocConfig.plugins = {}
-      const plugins = ocConfig.plugins as Record<string, unknown>
+      const plugins = ocConfig.plugins
       if (!plugins.entries) plugins.entries = {}
 
-      const existingProviders = models.providers as Record<string, any>
-      const newProviders: Record<string, any> = {}
+      const existingProviders = models.providers!
+      const newProviders: Record<string, OpenClawProviderConfig> = {}
 
       // 1. Sync models.providers → openclaw.json models.providers
       //    Skip builtin providers (OpenClaw handles them natively)
@@ -85,7 +86,7 @@ function syncOpenClawConfig(modelsConfig: ModelsConfig) {
         if (providerDef?.builtin) continue // Don't write builtin providers to models.providers
 
         const existing = existingProviders[providerName] || {}
-        const ocProvider: Record<string, any> = {}
+        const ocProvider: OpenClawProviderConfig = {}
 
         // Copy provider-level fields
         if (providerConfig.apiKey) ocProvider.apiKey = providerConfig.apiKey
@@ -101,12 +102,12 @@ function syncOpenClawConfig(modelsConfig: ModelsConfig) {
 
         // Convert models: { alias: modelId } (object) → [{ id, name, ... }] (array)
         const existingModels = Array.isArray(existing.models) ? existing.models : []
-        const existingModelMap = new Map<string, any>()
+        const existingModelMap = new Map<string, OpenClawModelEntry>()
         for (const m of existingModels) {
           if (m.id) existingModelMap.set(m.id, m)
         }
 
-        const ocModels: any[] = []
+        const ocModels: OpenClawModelEntry[] = []
         for (const [, modelId] of Object.entries(providerConfig.models)) {
           const existingModel = existingModelMap.get(modelId)
           if (existingModel) {
@@ -139,10 +140,10 @@ function syncOpenClawConfig(modelsConfig: ModelsConfig) {
         const [provider, alias] = modelsConfig.default.split('/')
         const providerConfig = modelsConfig.providers[provider]
         const modelId = providerConfig?.models?.[alias] || alias
-        if (!defaults.model) defaults.model = {}
-        ;(defaults.model as Record<string, unknown>).primary = `${provider}/${modelId}`
+        if (!defaults!.model) defaults!.model = {}
+        defaults!.model!.primary = `${provider}/${modelId}`
       } else {
-        delete defaults.model
+        delete defaults!.model
       }
 
       // 3. Build agents.defaults.models — full alias mapping (including builtin providers)
@@ -153,13 +154,13 @@ function syncOpenClawConfig(modelsConfig: ModelsConfig) {
         }
       }
       if (Object.keys(modelsMap).length > 0) {
-        defaults.models = modelsMap
+        defaults!.models = modelsMap
       } else {
-        delete defaults.models
+        delete defaults!.models
       }
 
       // 4. Auto-manage plugins based on provider presence
-      const entries = plugins.entries as Record<string, unknown>
+      const entries = plugins.entries!
       if (modelsConfig.providers['minimax'] || modelsConfig.providers['minimax-portal']) {
         entries['minimax-portal-auth'] = { enabled: true }
       } else {

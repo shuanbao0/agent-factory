@@ -148,10 +148,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } else {
       return NextResponse.json({ error: result.error || 'Test failed' }, { status: 500 })
     }
-  } catch (e: any) {
-    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+  } catch (e: unknown) {
+    if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
       return NextResponse.json({ error: 'Test request timeout (15s)' }, { status: 408 })
     }
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }
 }

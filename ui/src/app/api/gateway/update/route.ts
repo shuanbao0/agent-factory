@@ -109,11 +109,13 @@ export async function POST(req: NextRequest) {
       restarted,
       output: stdout.slice(-1000),
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const errMsg = e instanceof Error ? e.message : String(e)
+    const execErr = e as { stdout?: Buffer | string; stderr?: Buffer | string }
     return NextResponse.json({
       ok: false,
-      error: e.message || 'Update failed',
-      output: e.stdout?.toString()?.slice(-500) || e.stderr?.toString()?.slice(-500) || '',
+      error: errMsg || 'Update failed',
+      output: execErr.stdout?.toString()?.slice(-500) || execErr.stderr?.toString()?.slice(-500) || '',
     }, { status: 500 })
   }
 }

@@ -33,10 +33,10 @@ export async function DELETE(req: NextRequest) {
       ? Date.now() - olderThanDays * 24 * 60 * 60 * 1000
       : null
 
-    const shouldRemove = (task: Record<string, unknown>): boolean => {
-      if (!statusSet.has(task.status as string)) return false
+    const shouldRemove = (task: { status: string; updatedAt: string }): boolean => {
+      if (!statusSet.has(task.status)) return false
       if (cutoff != null) {
-        const updatedAt = new Date(task.updatedAt as string).getTime()
+        const updatedAt = new Date(task.updatedAt).getTime()
         if (updatedAt > cutoff) return false
       }
       return true
@@ -46,7 +46,7 @@ export async function DELETE(req: NextRequest) {
 
     // 1. Standalone tasks
     const standalone = readStandaloneTasks()
-    const kept = standalone.filter(t => !shouldRemove(t as unknown as Record<string, unknown>))
+    const kept = standalone.filter(t => !shouldRemove(t))
     deleted += standalone.length - kept.length
     if (kept.length !== standalone.length) {
       writeStandaloneTasks(kept)
@@ -159,11 +159,11 @@ function deleteTask(task: { id: string; projectId?: string | null }) {
 
 function filterProjectTasks(
   projectId: string,
-  shouldRemove: (t: Record<string, unknown>) => boolean
+  shouldRemove: (t: { status: string; updatedAt: string }) => boolean
 ): number {
   const meta = readProjectMeta(projectId)
   if (!meta || !Array.isArray(meta.tasks)) return 0
-  const tasks = meta.tasks as Record<string, unknown>[]
+  const tasks = meta.tasks
   const kept = tasks.filter(t => !shouldRemove(t))
   const removed = tasks.length - kept.length
   if (removed > 0) {

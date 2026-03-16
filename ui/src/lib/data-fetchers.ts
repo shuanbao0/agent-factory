@@ -7,6 +7,10 @@ import { gwCallAsync } from '@/lib/gateway-client'
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join, resolve } from 'path'
 import core from '@/lib/core-bridge'
+import type { Task } from '@entity/task'
+import type { AgentMeta } from '@entity/agent'
+import type { CostEntry, CompanyBudget } from '@entity/observe'
+import type { AgentConfigEntry } from '@entity/agent'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
@@ -77,14 +81,14 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
   } catch { /* ignore */ }
 
   // Read agent instance metadata from agents/ directory
-  const agentInstances = new Map<string, Record<string, unknown>>()
+  const agentInstances = new Map<string, AgentMeta>()
   if (existsSync(AGENTS_DIR)) {
     for (const entry of readdirSync(AGENTS_DIR, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const agentJsonPath = join(AGENTS_DIR, entry.name, 'agent.json')
       if (existsSync(agentJsonPath)) {
         try {
-          const data = JSON.parse(readFileSync(agentJsonPath, 'utf-8'))
+          const data = JSON.parse(readFileSync(agentJsonPath, 'utf-8')) as AgentMeta
           agentInstances.set(entry.name, data)
         } catch { /* ignore */ }
       }
@@ -95,13 +99,13 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
     const instance = agentInstances.get(a.id)
     return {
       id: a.id,
-      templateId: (instance?.templateId as string) || null,
-      role: (instance?.role as string) || a.id,
-      name: (instance?.name as string) || a.id,
-      description: (instance?.description as string) || `OpenClaw agent: ${a.id}`,
+      templateId: instance?.templateId || null,
+      role: instance?.role || a.id,
+      name: instance?.name || a.id,
+      description: instance?.description || `OpenClaw agent: ${a.id}`,
       status: (busyAgentIds.has(a.id) ? 'busy' : 'online') as 'busy' | 'online',
       isDefault: a.id === result.defaultId,
-      department: (instance?.department as string) || undefined,
+      department: instance?.department || undefined,
     }
   })
 
@@ -277,12 +281,12 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
 // ── Tasks ───────────────────────────────────────────────────────
 
 export interface TasksResult {
-  tasks: Record<string, unknown>[]
+  tasks: Task[]
   source: 'filesystem'
 }
 
 export async function fetchTasksData(): Promise<TasksResult> {
-  const tasks = core.repo.taskRepo.findAllTasks() as Record<string, unknown>[]
+  const tasks = core.repo.taskRepo.findAllTasks()
   return { tasks, source: 'filesystem' }
 }
 
@@ -307,13 +311,11 @@ function loadAllowAgentsMap(): Record<string, string[]> {
   const map: Record<string, string[]> = {}
   try {
     const config = core.repo.configRepo.getConfig()
-    const agents = (config.agents || {}) as Record<string, unknown>
-    const list = (agents.list || []) as Array<Record<string, unknown>>
+    const list = config.agents?.list || []
     for (const agent of list) {
-      const subagents = agent.subagents as Record<string, unknown> | undefined
-      const allowed = subagents?.allowAgents
+      const allowed = agent.subagents?.allowAgents
       if (Array.isArray(allowed)) {
-        map[agent.id as string] = allowed
+        map[agent.id] = allowed
       }
     }
   } catch { /* ignore */ }
@@ -414,20 +416,17 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
 // ── Costs ───────────────────────────────────────────────────────
 
 export interface CostsResult {
-  entries: Record<string, unknown>[]
+  entries: CostEntry[]
   totalCost: number
   source: 'filesystem'
 }
 
 export async function fetchCostsData(): Promise<CostsResult> {
   try {
-    const result = core.observe.queryCosts() as {
-      entries: Record<string, unknown>[]
-      totalCost: number
-    }
+    const result = core.observe.queryCosts()
     // Return only the last 200 entries for consistency
     const entries = result.entries.slice(-200)
-    const totalCost = entries.reduce((sum, e) => sum + ((e.cost as number) || 0), 0)
+    const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0)
     return { entries, totalCost, source: 'filesystem' }
   } catch { /* skip */ }
   return { entries: [], totalCost: 0, source: 'filesystem' }
@@ -473,9 +472,9 @@ export async function fetchAutopilotStatusData(): Promise<AutopilotResult> {
   try {
     const data = core.common.loadState()
     return {
-      status: (data.status as string) || 'stopped',
-      pid: data.pid as number | undefined,
-      lastCycle: data.lastCycleAt as string | undefined,
+      status: data.status || 'stopped',
+      pid: data.pid || undefined,
+      lastCycle: data.lastCycleAt || undefined,
       source: 'filesystem',
     }
   } catch { /* skip */ }
@@ -504,14 +503,14 @@ export async function fetchAutopilotDeptsData(): Promise<AutopilotDeptsResult> {
 // ── Budget Status ───────────────────────────────────────────────
 
 export interface BudgetResult {
-  budget: Record<string, unknown>
+  budget: CompanyBudget
   source: 'filesystem'
 }
 
 export async function fetchBudgetStatusData(): Promise<BudgetResult> {
-  let budget: Record<string, unknown> = {}
+  let budget: CompanyBudget = {}
   try {
-    budget = core.observe.loadCompanyBudget() as Record<string, unknown>
+    budget = core.observe.loadCompanyBudget()
   } catch { /* skip */ }
   return { budget, source: 'filesystem' }
 }

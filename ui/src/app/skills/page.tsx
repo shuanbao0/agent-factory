@@ -335,8 +335,8 @@ export default function SkillsPage() {
         fetchInstalled()
         fetchLocalSkills()
       }
-    } catch (e: any) {
-      setInstallResult({ ok: false, message: e.message })
+    } catch (e: unknown) {
+      setInstallResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
     } finally { setInstalling(null) }
   }
 
@@ -371,8 +371,8 @@ export default function SkillsPage() {
         message: data.ok ? t('skills.updateAllSuccess') : (data.output || t('skills.updateFailed')),
       })
       if (data.ok) fetchInstalled()
-    } catch (e: any) {
-      setInstallResult({ ok: false, message: e.message })
+    } catch (e: unknown) {
+      setInstallResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
     } finally { setInstalling(null) }
   }
 

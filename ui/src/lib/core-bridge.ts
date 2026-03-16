@@ -5,6 +5,14 @@
  * 此文件是 UI 层访问 core/ 的唯一入口。
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
+import type { Task, PipelineStep } from '@entity/task'
+import type { DepartmentConfig, DepartmentLoopState, TaskTypeDefinition } from '@entity/dept'
+import type { OpenClawConfig, GatewayConfig } from '@entity/config'
+import type { AutopilotState } from '@entity/autopilot'
+import type { CompanyBudget, CostEntry, DailyCostSummary } from '@entity/observe'
+import type { AgentMeta } from '@entity/agent'
+import type { ProjectMeta } from '@entity/project'
+
 const _path = require('path')
 const _corePath = _path.resolve(process.cwd(), '..', 'core')
 const _core = require(_corePath)
@@ -12,38 +20,38 @@ const _core = require(_corePath)
 export default _core as {
   repo: {
     taskRepo: {
-      normalizeTask(raw: Record<string, unknown>, projectId?: string): Record<string, unknown>
-      readStandaloneTasks(): Record<string, unknown>[]
-      writeStandaloneTasks(tasks: Record<string, unknown>[]): void
-      readProjectMeta(projectId: string): Record<string, unknown> | null
-      writeProjectMeta(projectId: string, meta: Record<string, unknown>): void
-      readProjectsWithTasks(): Record<string, unknown>[]
-      readProjectTasks(): Record<string, unknown>[]
-      findAllTasks(): Record<string, unknown>[]
-      findTaskById(taskId: string): { task: Record<string, unknown>; source: string } | null
-      updateProjectTask(projectId: string, taskId: string, updates: Record<string, unknown>): boolean
+      normalizeTask(raw: Record<string, unknown>, projectId?: string): Task
+      readStandaloneTasks(): Task[]
+      writeStandaloneTasks(tasks: Task[]): void
+      readProjectMeta(projectId: string): ProjectMeta | null
+      writeProjectMeta(projectId: string, meta: ProjectMeta): void
+      readProjectsWithTasks(): ProjectMeta[]
+      readProjectTasks(): Task[]
+      findAllTasks(): Task[]
+      findTaskById(taskId: string): { task: Task; source: string } | null
+      updateProjectTask(projectId: string, taskId: string, updates: Partial<Task>): boolean
       deleteProjectTask(projectId: string, taskId: string): boolean
-      updateTaskInPlace(taskId: string, updates: Record<string, unknown>): Record<string, unknown> | null
+      updateTaskInPlace(taskId: string, updates: Partial<Task>): Task | null
     }
     configRepo: {
-      getConfig(): Record<string, unknown>
-      updateConfig(mutator: (config: Record<string, unknown>) => Record<string, unknown>): Record<string, unknown>
-      getGatewayConfig(): { port: number; token: string }
+      getConfig(): OpenClawConfig
+      updateConfig(mutator: (config: OpenClawConfig) => OpenClawConfig): OpenClawConfig
+      getGatewayConfig(): GatewayConfig
       addAgent(agentId: string, workspaceDir: string, model?: string): void
       removeAgent(agentId: string): void
     }
     deptConfigRepo: {
-      load(deptId: string): Record<string, unknown> | null
-      save(deptId: string, config: Record<string, unknown>): void
-      updateConfig(deptId: string, mutator: (config: Record<string, unknown>) => Record<string, unknown>): void
+      load(deptId: string): DepartmentConfig | null
+      save(deptId: string, config: DepartmentConfig): void
+      updateConfig(deptId: string, mutator: (config: DepartmentConfig) => DepartmentConfig): void
     }
     deptStateRepo: {
-      load(deptId: string): Record<string, unknown>
-      save(deptId: string, state: Record<string, unknown>): void
+      load(deptId: string): DepartmentLoopState
+      save(deptId: string, state: DepartmentLoopState): void
     }
     agentMetaRepo: {
-      load(agentId: string): Record<string, unknown> | null
-      save(agentId: string, meta: Record<string, unknown>): void
+      load(agentId: string): AgentMeta | null
+      save(agentId: string, meta: AgentMeta): void
     }
     missionRepo: {
       readMission(): string
@@ -52,31 +60,28 @@ export default _core as {
     }
   }
   task: {
-    checkQualityGate(task: Record<string, unknown>, pipelineStep: Record<string, unknown> | null): {
+    checkQualityGate(task: Task, pipelineStep: PipelineStep | null): {
       passed: boolean; errors: string[]; shouldRework: boolean; escalate: boolean
     }
-    createPipelineTask(completedTask: Record<string, unknown>, pipelineStep: Record<string, unknown> | null, taskTypes?: Record<string, unknown>[]): Record<string, unknown> | null
-    createReworkTask(task: Record<string, unknown>, errors: string[]): Record<string, unknown>
+    createPipelineTask(completedTask: Task, pipelineStep: PipelineStep | null, taskTypes?: TaskTypeDefinition[]): Task | null
+    createReworkTask(task: Task, errors: string[]): Task
   }
   observe: {
     getBudgetSummary(): {
       company: { dailyLimit: number; used: number; ratio: number }
       departments: Record<string, { limit: number; used: number; ratio: number }>
     }
-    loadCompanyBudget(): Record<string, unknown>
+    loadCompanyBudget(): CompanyBudget
     queryCosts(opts?: { date?: string; from?: string; to?: string; source?: string }): {
-      entries: Record<string, unknown>[]
+      entries: CostEntry[]
       totalCost: number
       totalInputTokens: number
       totalOutputTokens: number
     }
-    getDailySummary(days?: number): Array<{
-      date: string; source: string; cost: number
-      inputTokens: number; outputTokens: number; calls: number
-    }>
+    getDailySummary(days?: number): DailyCostSummary[]
   }
   common: {
-    loadState(): Record<string, unknown>
-    saveState(state: Record<string, unknown>): void
+    loadState(): AutopilotState
+    saveState(state: AutopilotState): void
   }
 }

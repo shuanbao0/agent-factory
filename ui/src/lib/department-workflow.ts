@@ -28,9 +28,8 @@ export function getDepartmentWorkflow(deptId?: string | null): DepartmentWorkflo
   try {
     const config = core.repo.deptConfigRepo.load(deptId)
     if (!config) return DEFAULT_WORKFLOW
-    const workflow = (config as Record<string, unknown>).workflow as DepartmentWorkflow | undefined
-    if (workflow && workflow.phases?.length > 0) {
-      return workflow
+    if (config.workflow && config.workflow.phases?.length > 0) {
+      return config.workflow
     }
   } catch { /* fallback */ }
   return DEFAULT_WORKFLOW

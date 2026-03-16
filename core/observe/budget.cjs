@@ -25,16 +25,14 @@ function getDeptStateRepo() {
 /**
  * Load company-level budget config.
  */
+const { DEFAULT_BUDGET } = require('../../entity/observe/budget.cjs')
+
 function loadCompanyBudget() {
-  const defaults = {
-    company: { dailyTokenLimit: 5000000, monthlyTokenLimit: 100000000, alertThreshold: 0.8 },
-    overBudgetAction: 'pause_and_notify',
-  }
-  if (!existsSync(BUDGET_FILE)) return defaults
+  if (!existsSync(BUDGET_FILE)) return { ...DEFAULT_BUDGET }
   try {
     return JSON.parse(readFileSync(BUDGET_FILE, 'utf-8'))
   } catch {
-    return defaults
+    return { ...DEFAULT_BUDGET }
   }
 }
 

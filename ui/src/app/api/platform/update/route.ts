@@ -68,15 +68,16 @@ export async function POST(req: NextRequest) {
       updated,
       output: stdout.slice(-2000),
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     // The update may have partially succeeded (version bumped but restart needed)
     const newVersion = getInstalledVersion()
-    const stdout = e.stdout?.toString() || ''
-    const stderr = e.stderr?.toString() || ''
+    const execErr = e as { stdout?: Buffer | string; stderr?: Buffer | string }
+    const stdout = execErr.stdout?.toString() || ''
+    const stderr = execErr.stderr?.toString() || ''
 
     return NextResponse.json({
       ok: false,
-      error: e.message || 'Update failed',
+      error: e instanceof Error ? e.message : String(e),
       currentVersion: newVersion,
       output: (stdout + '\n' + stderr).slice(-2000),
     }, { status: 500 })

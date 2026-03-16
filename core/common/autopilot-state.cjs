@@ -9,17 +9,8 @@ const { join, resolve } = require('path')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
 const STATE_FILE = join(PROJECT_ROOT, 'config', 'autopilot-state.json')
-const DEFAULT_INTERVAL_SEC = 1800
-
-const DEFAULT_STATE = {
-  status: 'stopped',
-  pid: null,
-  cycleCount: 0,
-  lastCycleAt: null,
-  lastCycleResult: null,
-  intervalSeconds: DEFAULT_INTERVAL_SEC,
-  history: [],
-}
+const { DEFAULT_AUTOPILOT_STATE, DEFAULT_INTERVAL_SEC } = require('../../entity/autopilot/autopilot.cjs')
+const DEFAULT_STATE = { ...DEFAULT_AUTOPILOT_STATE }
 
 function loadState() {
   try {

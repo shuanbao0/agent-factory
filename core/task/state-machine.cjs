@@ -4,87 +4,15 @@
  *
  * 设计模式：State Machine（显式状态转换表）
  *
- * 职责：
- * - 定义任务生命周期的 7 种状态和合法转换路径
- * - 校验状态转换是否合法（canTransition）
- * - 执行状态转换并记录时间戳和历史（transition）
- * - 标准化非标准状态名（如 'running' → 'in_progress'）
- *
- * 状态流转图：
- *   pending → assigned → in_progress → review → completed
- *                    ↘                ↗    ↘
- *                     → in_progress        rework → in_progress
- *   任何非终态 → failed
- *
- * 终态：completed, failed（不可再转换）
+ * 常量与纯谓词函数来自 entity/task/task.cjs（单一来源）。
+ * 本模块保留 transition()（修改 task 对象的业务逻辑）。
  */
 
-/** 所有合法任务状态 */
-const STATUSES = ['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed', 'rework']
-
-/** 状态转换表：每个状态允许转换到哪些目标状态 */
-const TRANSITIONS = {
-  pending:     ['assigned', 'in_progress', 'completed', 'failed'],
-  assigned:    ['in_progress', 'completed', 'failed'],
-  in_progress: ['review', 'completed', 'rework', 'failed'],
-  review:      ['completed', 'rework', 'in_progress', 'failed'],
-  rework:      ['in_progress', 'review', 'completed', 'failed'],
-  completed:   [],  // 终态，不可转换
-  failed:      [],  // 终态，不可转换
-}
-
-/** 终态集合（不可再转换的状态） */
-const TERMINAL = new Set(['completed', 'failed'])
-
-/**
- * 检查从 from 到 to 的状态转换是否合法
- * @param {string} from - 当前状态
- * @param {string} to - 目标状态
- * @returns {boolean}
- */
-function canTransition(from, to) {
-  const allowed = TRANSITIONS[from]
-  if (!allowed) return false
-  return allowed.includes(to)
-}
-
-/**
- * 获取某状态的所有合法目标状态
- * @param {string} from - 当前状态
- * @returns {string[]} 允许转换到的状态列表
- */
-function getValidTransitions(from) {
-  return TRANSITIONS[from] || []
-}
-
-/**
- * 判断是否为终态（completed 或 failed）
- * @param {string} status
- * @returns {boolean}
- */
-function isTerminal(status) {
-  return TERMINAL.has(status)
-}
-
-/**
- * 判断是否为合法的任务状态
- * @param {string} status
- * @returns {boolean}
- */
-function isValidStatus(status) {
-  return STATUSES.includes(status)
-}
-
-/**
- * 标准化非标准状态名
- * 兼容旧版：'running' → 'in_progress'
- * @param {string} status
- * @returns {string}
- */
-function normalizeStatus(status) {
-  if (status === 'running') return 'in_progress'
-  return status
-}
+const {
+  STATUSES, TRANSITIONS, TERMINAL,
+  canTransition, getValidTransitions,
+  isTerminal, isValidStatus, normalizeStatus,
+} = require('../../entity/task/task.cjs')
 
 /**
  * 执行状态转换

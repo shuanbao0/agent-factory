@@ -80,8 +80,8 @@ export async function GET(
         }
       })
       return NextResponse.json({ files })
-    } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 500 })
+    } catch (err: unknown) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
     }
   }
 
@@ -99,8 +99,8 @@ export async function GET(
     const raw = readFileSync(resolved, 'utf-8')
     const content = stripBaseRulesFromContent(file, raw)
     return NextResponse.json({ content })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }
 
@@ -142,7 +142,7 @@ export async function PUT(
     }
 
     return NextResponse.json({ ok: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }

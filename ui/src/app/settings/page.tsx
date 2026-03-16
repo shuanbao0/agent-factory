@@ -108,7 +108,7 @@ function AddProviderDialog({ onAdd, onClose }: { onAdd: (p: { name: string; entr
                   m.type === 'apiKeyPair' ? 'Credentials' :
                   m.type === 'setupToken' ? 'Setup Token' :
                   m.type === 'oauth' ? 'OAuth' :
-                  m.type === 'baseUrl' ? 'Base URL' : (m as any).type
+                  m.type === 'baseUrl' ? 'Base URL' : (m as { type: string }).type
                 return (
                   <button
                     key={idx}
@@ -204,8 +204,8 @@ function AddModelDialog({ provider, onAdd, onClose }: { provider: string; onAdd:
       } else {
         setTestResult({ ok: false, message: data.error || 'Test failed' })
       }
-    } catch (e: any) {
-      setTestResult({ ok: false, message: e.message || 'Test failed' })
+    } catch (e: unknown) {
+      setTestResult({ ok: false, message: e instanceof Error ? e.message : 'Test failed' })
     }
     setTesting(false)
   }
@@ -333,8 +333,8 @@ function GatewayControl() {
       const data = await res.json()
       if (!data.ok) setError(data.error || 'Action failed')
       await fetchStatus()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
@@ -477,8 +477,8 @@ function ProviderCard({ providerName, provider, defaultModel, onDelete, onDelete
         setTestResults(prev => ({ ...prev, [alias]: { ok: false, error: data.error || 'Unknown error' } }))
         setTimeout(() => setTestResults(prev => { const n = { ...prev }; delete n[alias]; return n }), 5000)
       }
-    } catch (e: any) {
-      setTestResults(prev => ({ ...prev, [alias]: { ok: false, error: e.message } }))
+    } catch (e: unknown) {
+      setTestResults(prev => ({ ...prev, [alias]: { ok: false, error: e instanceof Error ? e.message : String(e) } }))
       setTimeout(() => setTestResults(prev => { const n = { ...prev }; delete n[alias]; return n }), 5000)
     }
     setTesting(null)
@@ -706,8 +706,8 @@ function OpenClawUpdateCard() {
       } else {
         setUpdateResult({ ok: false, message: data.error || t('settings.updateFailed') })
       }
-    } catch (e: any) {
-      setUpdateResult({ ok: false, message: e.message || t('settings.updateFailed') })
+    } catch (e: unknown) {
+      setUpdateResult({ ok: false, message: e instanceof Error ? e.message : t('settings.updateFailed') })
     } finally {
       setUpdating(false)
     }
@@ -867,8 +867,8 @@ function PlatformUpdateCard() {
       } else {
         setUpdateResult({ ok: false, message: data.error || t('settings.updateFailed') })
       }
-    } catch (e: any) {
-      setUpdateResult({ ok: false, message: e.message || t('settings.updateFailed') })
+    } catch (e: unknown) {
+      setUpdateResult({ ok: false, message: e instanceof Error ? e.message : t('settings.updateFailed') })
     } finally {
       setUpdating(false)
     }

@@ -22,18 +22,8 @@ const CONFIG_DIR = join(require('path').resolve(__dirname, '..', '..'), 'config'
 /** 成本日志文件路径 */
 const COSTS_FILE = join(CONFIG_DIR, 'autopilot-costs.jsonl')
 
-/**
- * 模型定价表（USD / 百万 Token）
- * 更新于 2026-03-15。新增模型时在此添加即可
- */
-const PRICING = {
-  'claude-sonnet-4-6':   { input: 3.0,  output: 15.0 },
-  'claude-opus-4-6':     { input: 15.0, output: 75.0 },
-  'claude-haiku-4-5':    { input: 0.80, output: 4.0 },
-  'claude-haiku-4-5-20251001': { input: 0.80, output: 4.0 },
-  'MiniMax-M2.5':        { input: 0.0,  output: 0.0 },   // 免费层
-  'MiniMax-M2.1':        { input: 0.0,  output: 0.0 },   // 免费层
-}
+/** 模型定价表（来自 entity/observe — 单一来源） */
+const { PRICING } = require('../../entity/observe/cost.cjs')
 
 /**
  * 计算单次 API 调用的 USD 成本

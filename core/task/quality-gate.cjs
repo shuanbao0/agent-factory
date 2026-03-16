@@ -20,40 +20,17 @@
  * - head_approving  — 主管审批：部门主管最终签字
  */
 
-/** 质量门所有阶段 */
-const STAGES = ['pending', 'self_checking', 'peer_reviewing', 'head_approving', 'done', 'failed']
-/** 终态集合 */
-const TERMINAL = new Set(['done', 'failed'])
+// Constants and predicates from entity/ (single source of truth)
+const {
+  GATE_STAGES, GATE_TRANSITIONS, GATE_TERMINAL,
+  canAdvanceGate, isGateDone,
+} = require('../../entity/task/quality-gate.cjs')
 
-/** 阶段转换表 */
-const TRANSITIONS = {
-  pending:        ['self_checking'],
-  self_checking:  ['peer_reviewing', 'failed'],
-  peer_reviewing: ['head_approving', 'failed'],
-  head_approving: ['done', 'failed'],
-  done:           [],  // 终态
-  failed:         [],  // 终态
-}
-
-/**
- * 检查质量门阶段转换是否合法
- * @param {string} from - 当前阶段
- * @param {string} to - 目标阶段
- * @returns {boolean}
- */
-function canAdvance(from, to) {
-  const allowed = TRANSITIONS[from]
-  return allowed ? allowed.includes(to) : false
-}
-
-/**
- * 判断质量门是否已结束（done 或 failed）
- * @param {string} stage - 当前阶段
- * @returns {boolean}
- */
-function isGateDone(stage) {
-  return TERMINAL.has(stage)
-}
+// Re-export with original names for backward compatibility
+const STAGES = GATE_STAGES
+const TRANSITIONS = GATE_TRANSITIONS
+const TERMINAL = GATE_TERMINAL
+const canAdvance = canAdvanceGate
 
 /**
  * 从任务对象中获取质量门状态

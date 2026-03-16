@@ -17,17 +17,9 @@ const { BaseRepository } = require('./base.cjs')
 const PROJECT_ROOT = join(__dirname, '..', '..')
 const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
 
-/** 部门状态默认值 */
-const DEFAULT_STATE = {
-  status: 'stopped',       // 运行状态：running / stopped / error
-  pid: null,               // 当前运行进程 PID
-  cycleCount: 0,           // 累计运行循环次数
-  lastCycleAt: null,       // 最近一次循环时间
-  lastCycleResult: null,   // 最近一次循环结果
-  history: [],             // 历史循环记录
-  tokensUsedToday: 0,      // 今日已消耗 Token 数
-  budgetResetAt: null,     // 预算上次重置时间
-}
+const { DEFAULT_DEPT_STATE } = require('../../entity/dept/dept.cjs')
+/** 部门状态默认值（来自 entity/dept） */
+const DEFAULT_STATE = { ...DEFAULT_DEPT_STATE }
 
 class DeptStateRepository extends BaseRepository {
   /**

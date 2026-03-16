@@ -114,12 +114,12 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
   }
 
   if (task.projectId) {
-    const meta = core.repo.taskRepo.readProjectMeta(task.projectId) as Record<string, unknown> | null
+    const meta = core.repo.taskRepo.readProjectMeta(task.projectId)
     if (!meta) {
       return { error: `Project ${task.projectId} not found`, status: 404 }
     }
     if (!meta.tasks) meta.tasks = []
-    ;(meta.tasks as Record<string, unknown>[]).push({ ...task })
+    meta.tasks.push({ ...task })
     writeProjectMeta(task.projectId, meta)
   } else {
     const tasks = readStandaloneTasks()

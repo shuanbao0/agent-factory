@@ -33,8 +33,9 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ ok: true, output: stdout.trim() })
-  } catch (e: any) {
-    const output = e.stderr || e.stdout || e.message || 'Install failed'
+  } catch (e: unknown) {
+    const execErr = e as { stderr?: string; stdout?: string }
+    const output = execErr.stderr || execErr.stdout || (e instanceof Error ? e.message : String(e)) || 'Install failed'
     return NextResponse.json({ ok: false, output: String(output) }, { status: 500 })
   }
 }

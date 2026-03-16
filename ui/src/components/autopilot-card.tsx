@@ -177,9 +177,9 @@ function OverviewTab({ state, loading, countdown, sendAction, t }: {
         <div className="bg-muted/50 rounded-lg p-2">
           <div className="text-lg font-bold flex items-center justify-center gap-1">
             <Zap className="w-3 h-3" />
-            {state.recentHistory.reduce((s, h) => s + h.tokens, 0) > 1000
-              ? `${(state.recentHistory.reduce((s, h) => s + h.tokens, 0) / 1000).toFixed(0)}k`
-              : state.recentHistory.reduce((s, h) => s + h.tokens, 0)}
+            {(state.recentHistory || []).reduce((s, h) => s + h.tokens, 0) > 1000
+              ? `${((state.recentHistory || []).reduce((s, h) => s + h.tokens, 0) / 1000).toFixed(0)}k`
+              : (state.recentHistory || []).reduce((s, h) => s + h.tokens, 0)}
           </div>
           <div className="text-[10px] text-muted-foreground">{t('autopilot.tokens')}</div>
         </div>
@@ -199,10 +199,10 @@ function OverviewTab({ state, loading, countdown, sendAction, t }: {
       )}
 
       {/* Recent history */}
-      {state.recentHistory.length > 0 && (
+      {(state.recentHistory || []).length > 0 && (
         <div className="space-y-1.5">
           <span className="text-[10px] text-muted-foreground font-medium">{t('autopilot.history')}</span>
-          {state.recentHistory.slice(-5).reverse().map(h => (
+          {(state.recentHistory || []).slice(-5).reverse().map(h => (
             <div key={h.cycle} className="flex items-center gap-2 text-[10px]">
               <span className="text-muted-foreground font-mono w-6">#{h.cycle}</span>
               {h.cycleType && (

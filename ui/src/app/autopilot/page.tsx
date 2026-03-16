@@ -208,9 +208,9 @@ function OverviewPanel({ state, loading, countdown, sendAction }: {
               <div className="bg-muted/50 rounded-lg p-3">
                 <div className="text-2xl font-bold flex items-center justify-center gap-1">
                   <Zap className="w-4 h-4" />
-                  {state.recentHistory.reduce((s, h) => s + h.tokens, 0) > 1000
-                    ? `${(state.recentHistory.reduce((s, h) => s + h.tokens, 0) / 1000).toFixed(0)}k`
-                    : state.recentHistory.reduce((s, h) => s + h.tokens, 0)}
+                  {(state.recentHistory || []).reduce((s, h) => s + h.tokens, 0) > 1000
+                    ? `${((state.recentHistory || []).reduce((s, h) => s + h.tokens, 0) / 1000).toFixed(0)}k`
+                    : (state.recentHistory || []).reduce((s, h) => s + h.tokens, 0)}
                 </div>
                 <div className="text-xs text-muted-foreground">{t('autopilot.tokens')}</div>
               </div>
@@ -239,14 +239,14 @@ function OverviewPanel({ state, loading, countdown, sendAction }: {
         )}
 
         {/* Recent history */}
-        {state.recentHistory.length > 0 && (
+        {(state.recentHistory || []).length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">{t('autopilot.history')} <span className="text-xs font-normal text-muted-foreground ml-1">CEO</span></CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {state.recentHistory.slice(-10).reverse().map(h => (
+                {(state.recentHistory || []).slice(-10).reverse().map(h => (
                   <div key={h.cycle} className="flex items-center gap-3 text-sm py-1.5 border-b border-border/50 last:border-0">
                     <span className="text-muted-foreground font-mono w-8">#{h.cycle}</span>
                     {h.cycleType && (

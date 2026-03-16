@@ -117,8 +117,8 @@ export function AgentForm({ editAgent, onClose, onSaved }: AgentFormProps) {
 
       onSaved(isEdit ? undefined : id.trim(), data.hasIdentityFiles === true)
       onClose()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setSaving(false)
     }

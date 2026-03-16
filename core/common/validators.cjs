@@ -30,14 +30,15 @@ function validateAgentId(id) {
   return { valid: true }
 }
 
+const { isValidStatus } = require('../../entity/task/task.cjs')
+
 /**
  * 校验任务状态是否在白名单中
  * @param {string} status - 任务状态
  * @returns {boolean}
  */
 function validateTaskStatus(status) {
-  const valid = ['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed', 'rework']
-  return valid.includes(status)
+  return isValidStatus(status)
 }
 
 /**

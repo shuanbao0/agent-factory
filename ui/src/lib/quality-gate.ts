@@ -21,7 +21,7 @@ export function getWorkflowForTask(task: Task): DepartmentWorkflow {
   if (!task.projectId) return getDepartmentWorkflow()
   const meta = readProjectMeta(task.projectId)
   if (!meta) return getDepartmentWorkflow()
-  const dept = (meta.department as string) || undefined
+  const dept = meta.department || undefined
   return getDepartmentWorkflow(dept)
 }
 
@@ -29,23 +29,19 @@ export function getWorkflowForTask(task: Task): DepartmentWorkflow {
 export function checkQualityGate(task: Task, workflow: DepartmentWorkflow): QualityGateResult {
   if (!task.type) return { passed: true, errors: [], shouldRework: false, escalate: false }
   const step = workflow.pipeline.find(p => p.from === task.type) || null
-  return core.task.checkQualityGate(task as unknown as Record<string, unknown>, step as unknown as Record<string, unknown> | null)
+  return core.task.checkQualityGate(task, step)
 }
 
 /** Create pipeline follow-up task when a task completes and passes quality gate */
 export function createPipelineTask(completedTask: Task, workflow: DepartmentWorkflow): Task | null {
   if (!completedTask.type || !completedTask.projectId) return null
   const step = workflow.pipeline.find(p => p.from === completedTask.type) || null
-  return core.task.createPipelineTask(
-    completedTask as unknown as Record<string, unknown>,
-    step as Record<string, unknown> | null,
-    workflow.taskTypes as unknown as Record<string, unknown>[],
-  ) as Task | null
+  return core.task.createPipelineTask(completedTask, step, workflow.taskTypes)
 }
 
 /** Create a rework task from a failed quality gate */
 export function createReworkTask(task: Task, errors: string[]): Task {
-  return core.task.createReworkTask(task as unknown as Record<string, unknown>, errors) as unknown as Task
+  return core.task.createReworkTask(task, errors)
 }
 
 /** Persist a new task to the correct storage location */
@@ -53,8 +49,8 @@ export function persistNewTask(task: Task): void {
   if (task.projectId) {
     const meta = readProjectMeta(task.projectId)
     if (meta) {
-      if (!meta.tasks) meta.tasks = [];
-      (meta.tasks as Record<string, unknown>[]).push({ ...task })
+      if (!meta.tasks) meta.tasks = []
+      meta.tasks.push({ ...task })
       core.repo.taskRepo.writeProjectMeta(task.projectId, meta)
       return
     }

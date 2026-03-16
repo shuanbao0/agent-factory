@@ -48,9 +48,9 @@ export async function GET() {
     })
 
     return NextResponse.json(result)
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { error: e.message || 'Failed to list builtin skills', skills: [], total: 0, eligible: 0 },
+      { error: (e instanceof Error ? e.message : String(e)) || 'Failed to list builtin skills', skills: [], total: 0, eligible: 0 },
       { status: 500 },
     )
   }

@@ -3,6 +3,8 @@ import { readFileSync, existsSync, readdirSync } from 'fs'
 import { resolve, join } from 'path'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
+import type { AutopilotState, DeptInfo } from '@entity/autopilot'
+import type { DepartmentConfig } from '@/lib/types'
 
 // --- Constants ---
 
@@ -14,24 +16,7 @@ const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 // --- Types ---
 
-export interface AutopilotState {
-  status: 'running' | 'stopped' | 'cycling' | 'error'
-  pid: number | null
-  cycleCount: number
-  lastCycleAt: string | null
-  lastCycleResult: string | null
-  intervalSeconds: number
-  mode?: 'all' | null
-  history: Array<{
-    cycle: number
-    startedAt: string
-    completedAt: string
-    elapsedSec: number
-    result: string
-    tokens: number
-    cycleType?: string
-  }>
-}
+export type { AutopilotState } from '@entity/autopilot'
 
 export interface ServiceResult {
   ok: boolean
@@ -44,11 +29,11 @@ export interface ServiceResult {
 // --- Internal helpers (delegating to core/) ---
 
 function loadState(): AutopilotState {
-  return core.common.loadState() as unknown as AutopilotState
+  return core.common.loadState()
 }
 
 function saveState(state: AutopilotState) {
-  core.common.saveState(state as unknown as Record<string, unknown>)
+  core.common.saveState(state)
 }
 
 function isProcessRunning(pid: number): boolean {
@@ -62,8 +47,8 @@ function atomicWriteSync(filePath: string, data: string) {
   renameSync(tmpPath, filePath)
 }
 
-function loadDepartments(): Array<{ id: string; name: string; emoji?: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> {
-  const results: Array<{ id: string; name: string; emoji?: string; head: string; enabled: boolean; interval: number; directives?: string[]; mission?: string; report?: string; headExists?: boolean; state: Record<string, unknown> }> = []
+function loadDepartments(): DeptInfo[] {
+  const results: DeptInfo[] = []
   if (!existsSync(DEPARTMENTS_DIR)) return results
   try {
     const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
@@ -71,7 +56,7 @@ function loadDepartments(): Array<{ id: string; name: string; emoji?: string; he
       const config = core.repo.deptConfigRepo.load(dir.name)
       if (!config) continue
       try {
-        const state = core.repo.deptStateRepo.load(dir.name) as Record<string, unknown>
+        const state = core.repo.deptStateRepo.load(dir.name)
         const reportPath = join(DEPARTMENTS_DIR, dir.name, 'report.md')
         const directivesPath = join(DEPARTMENTS_DIR, dir.name, 'ceo-directives.json')
         let report = ''
@@ -87,19 +72,26 @@ function loadDepartments(): Array<{ id: string; name: string; emoji?: string; he
           } catch (err) { logError('autopilot/load-dept-directives', err) }
         }
         try { mission = core.repo.missionRepo.readDeptMission(dir.name).slice(0, 3000) } catch { /* skip */ }
-        const headExists = config.head ? existsSync(join(AGENTS_DIR, config.head as string)) : false
+        const headExists = config.head ? existsSync(join(AGENTS_DIR, config.head)) : false
         results.push({
-          id: (config.id as string) || dir.name,
-          name: (config.name as string) || dir.name,
-          emoji: (config.emoji as string) || '',
-          head: (config.head as string) || '',
-          enabled: (config.enabled as boolean) || false,
-          interval: (config.interval as number) || 600,
+          id: config.id || dir.name,
+          name: config.name || dir.name,
+          emoji: (config as DepartmentConfig & { emoji?: string }).emoji || '',
+          head: config.head || '',
+          enabled: config.enabled || false,
+          interval: config.interval || 600,
           directives,
           mission,
           report,
           headExists,
-          state,
+          state: {
+            status: state.status || 'stopped',
+            cycleCount: state.cycleCount || 0,
+            lastCycleAt: state.lastCycleAt || undefined,
+            lastCycleResult: state.lastCycleResult || undefined,
+            tokensUsedToday: state.tokensUsedToday || undefined,
+            pid: state.pid,
+          },
         })
       } catch (err) { logError('autopilot/parse-dept-config', err) }
     }
@@ -149,7 +141,7 @@ export function getKpis() {
   for (const dept of depts) {
     const config = core.repo.deptConfigRepo.load(dept.id)
     try {
-      if (config && (config as Record<string, unknown>).kpis) kpis[dept.id] = (config as Record<string, unknown>).kpis as Record<string, unknown>
+      if (config?.kpis) kpis[dept.id] = config.kpis as Record<string, unknown>
     } catch (err) { logError('autopilot/load-kpis', err) }
   }
   return { kpis }
@@ -187,11 +179,11 @@ export async function stopAutopilot(): Promise<ServiceResult> {
     try {
       const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
       for (const dir of dirs) {
-        const deptState = core.repo.deptStateRepo.load(dir.name) as Record<string, unknown>
-        if (typeof deptState.pid === 'number' && isProcessRunning(deptState.pid)) {
+        const deptState = core.repo.deptStateRepo.load(dir.name)
+        if (typeof deptState.pid === 'number' && deptState.pid && isProcessRunning(deptState.pid)) {
           try { process.kill(deptState.pid, 'SIGTERM') } catch (err) { logError('autopilot/stop-dept-sigterm', err) }
           await new Promise(r => setTimeout(r, 500))
-          if (isProcessRunning(deptState.pid)) {
+          if (deptState.pid && isProcessRunning(deptState.pid)) {
             try { process.kill(deptState.pid, 'SIGKILL') } catch (err) { logError('autopilot/stop-dept-sigkill', err) }
           }
         }
@@ -265,13 +257,13 @@ export function startDeptLoop(deptId: string, interval?: number): ServiceResult 
   // Check head agent exists
   const deptConfig = core.repo.deptConfigRepo.load(deptId)
   if (deptConfig) {
-    if (deptConfig.head && !existsSync(join(AGENTS_DIR, deptConfig.head as string))) {
+    if (deptConfig.head && !existsSync(join(AGENTS_DIR, deptConfig.head))) {
       return { ok: false, error: `部门主管 ${deptConfig.head} 尚未创建，请先创建该智能体`, status: 400 }
     }
   }
   // Prevent duplicate: kill existing process if still alive
-  const deptState = core.repo.deptStateRepo.load(deptId) as Record<string, unknown>
-  if (typeof deptState.pid === 'number' && isProcessRunning(deptState.pid)) {
+  const deptState = core.repo.deptStateRepo.load(deptId)
+  if (typeof deptState.pid === 'number' && deptState.pid && isProcessRunning(deptState.pid)) {
     try { process.kill(deptState.pid, 'SIGTERM') } catch (err) { logError('autopilot/start-dept-kill-old', err) }
   }
   const deptInterval = String(interval || 600)
@@ -290,8 +282,8 @@ export function startDeptLoop(deptId: string, interval?: number): ServiceResult 
 
 export function stopDeptLoop(deptId: string): ServiceResult {
   if (!deptId) return { ok: false, error: 'deptId required', status: 400 }
-  const deptState = core.repo.deptStateRepo.load(deptId) as Record<string, unknown>
-  if (typeof deptState.pid === 'number') {
+  const deptState = core.repo.deptStateRepo.load(deptId)
+  if (typeof deptState.pid === 'number' && deptState.pid) {
     try { process.kill(deptState.pid, 'SIGTERM') } catch (err) { logError('autopilot/stop-dept-kill', err) }
   }
   deptState.status = 'stopped'
@@ -305,7 +297,7 @@ export function runDeptCycle(deptId: string): ServiceResult {
   // Check head agent exists
   const deptConfig = core.repo.deptConfigRepo.load(deptId)
   if (deptConfig) {
-    if (deptConfig.head && !existsSync(join(AGENTS_DIR, deptConfig.head as string))) {
+    if (deptConfig.head && !existsSync(join(AGENTS_DIR, deptConfig.head))) {
       return { ok: false, error: `部门主管 ${deptConfig.head} 尚未创建，请先创建该智能体`, status: 400 }
     }
   }

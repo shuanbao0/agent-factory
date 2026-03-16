@@ -181,11 +181,11 @@ const AgentChat = memo(function AgentChat({ agentId, t }: { agentId: string; t: 
           })
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setStreamText('')
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `Error: ${e.message}`,
+        content: `Error: ${e instanceof Error ? e.message : String(e)}`,
         timestamp: new Date().toISOString(),
       }])
     } finally {

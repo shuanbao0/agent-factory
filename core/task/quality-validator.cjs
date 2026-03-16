@@ -10,14 +10,7 @@
  * - 返工/升级决策（maxReworks 超限 → escalate）
  */
 
-const DEFAULT_GATE_CONFIG = {
-  minScore: 75,
-  requireSelfCheck: true,
-  requirePeerReview: false,
-  maxReworks: 3,
-  validators: [],
-  validatorConfig: {},
-}
+const { DEFAULT_GATE_CONFIG } = require('../../entity/task/quality-validator.cjs')
 
 /**
  * Check quality gate for a completed task.

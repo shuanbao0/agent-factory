@@ -114,9 +114,9 @@ export default function SetupPage() {
       setStep('done')
       setStatusMsg('Gateway is running!')
       setTimeout(() => router.push('/'), 1500)
-    } catch (e: any) {
+    } catch (e: unknown) {
       setStep('error')
-      setError(e.message || 'Something went wrong')
+      setError(e instanceof Error ? e.message : 'Something went wrong')
     }
   }
 
