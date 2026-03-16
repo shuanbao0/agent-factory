@@ -16,9 +16,6 @@ const logger = require('./logger.cjs')
 function syncProjects(ceoResponseText) {
   const memory = readCeoWorkspaceFile('MEMORY.md')
 
-  // Combine CEO memory + latest response for signal detection
-  const signals = (memory || '') + '\n' + (ceoResponseText || '')
-
   try {
     if (!existsSync(PROJECTS_DIR)) return
     const dirs = readdirSync(PROJECTS_DIR, { withFileTypes: true })
@@ -34,30 +31,8 @@ function syncProjects(ceoResponseText) {
         let phase = meta.currentPhase || 1
         let status = meta.status || 'planning'
 
-        // FIX: Phase regression — match ALL phase mentions, take maximum, never go below current
-        const phases = [...signals.matchAll(/阶段(\d)|Phase\s*(\d)/gi)]
-        if (phases.length > 0) {
-          const maxPhase = Math.max(...phases.map(m => parseInt(m[1] || m[2])))
-          if (maxPhase >= 1 && maxPhase <= 6 && maxPhase >= phase) {
-            phase = maxPhase
-            status = phase >= 4 ? 'in-progress' : 'planning'
-            logger.info('sync', `Phase updated to ${phase} for ${dir.name} (matched ${phases.length} mentions)`)
-          }
-        }
-
-        // Update tasks based on phase progression
-        // Only auto-complete tasks from PREVIOUS phases (conservative)
+        // Detect project status from actual task states (no text-based phase detection)
         if (meta.tasks) {
-          for (const task of meta.tasks) {
-            if (task.status === 'completed') continue
-            if (task.phase < phase) {
-              task.status = 'completed'
-              task.progress = 100
-              task.updatedAt = new Date().toISOString()
-            }
-          }
-
-          // Detect all-tasks-completed → project is completed
           const allDone = meta.tasks.length > 0 && meta.tasks.every(t => t.status === 'completed')
           const anyRunning = meta.tasks.some(t => t.status === 'in_progress')
           if (allDone) {

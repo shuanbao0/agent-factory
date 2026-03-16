@@ -48,7 +48,9 @@ function calculateMetric(deptId, metric, config) {
         for (const task of (proj.tasks || [])) {
           if (task.status === 'completed' && task.completedAt?.startsWith(today)) {
             if (agentIds.includes(task.assignedAgent) || (task.assignees || []).some(a => agentIds.includes(a))) {
-              count++
+              const isChapter = task.type === 'writing' || task.type === 'chapter' ||
+                /chapter|章|篇/.test((task.name || '').toLowerCase())
+              if (isChapter) count++
             }
           }
         }

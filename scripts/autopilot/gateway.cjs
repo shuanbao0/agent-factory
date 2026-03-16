@@ -1,300 +1,51 @@
 /**
  * Gateway — WebSocket communication with agents
  *
- * Generalized from the original sendToCeo() to support any agent.
+ * Thin wrapper over GatewayConnectionPool (shared/gateway-pool.cjs).
+ * Preserves the original module.exports API for zero-impact migration.
  */
-const WebSocket = require('ws')
-const { randomUUID } = require('crypto')
-const { readFileSync, existsSync } = require('fs')
-const { join } = require('path')
-const { CONFIG_DIR, DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_COMPACT_TIMEOUT_MS } = require('./constants.cjs')
+'use strict'
+const { GatewayConnectionPool } = require('../../shared/gateway-pool.cjs')
+const { configRepo } = require('../../shared/config-repository.cjs')
 const { readMemorySummary } = require('./readers.cjs')
+const { DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_COMPACT_TIMEOUT_MS } = require('./constants.cjs')
 const logger = require('./logger.cjs')
 
+const pool = new GatewayConnectionPool()
+pool.setMemoryReader(readMemorySummary)
+pool.setLogger(logger)
+
 function getGatewayConfig() {
-  const envPort = parseInt(process.env.AGENT_FACTORY_PORT || '0')
-  const envToken = process.env.AGENT_FACTORY_TOKEN || ''
-  const cfgPath = join(CONFIG_DIR, 'openclaw.json')
-  if (existsSync(cfgPath)) {
-    try {
-      const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'))
-      return {
-        port: envPort || cfg.gateway?.port || 19100,
-        token: envToken || cfg.gateway?.auth?.token || '',
-      }
-    } catch (err) {
-      logger.warn('gateway', 'Failed to parse openclaw.json', err)
-    }
-  }
-  return { port: envPort || 19100, token: envToken }
+  return configRepo.getGatewayConfig()
 }
 
-/**
- * Send a message to any agent via WebSocket.
- *
- * @param {string} agentId - The agent to talk to (e.g. 'ceo', 'novel-chief')
- * @param {string} sessionKey - Session key (e.g. 'agent:ceo:autopilot')
- * @param {string} message - The directive/message text
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<{ok: boolean, text?: string, error?: string, usage?: object, aborted?: boolean}>}
- */
 function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIMEOUT_MS) {
-  return new Promise((resolve, reject) => {
-    const config = getGatewayConfig()
-    let runId = randomUUID()
-    let fullText = ''
-    let done = false
-    let retried = false  // Track empty-response retry
-
-    const finish = (result) => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      try { ws.close() } catch (err) {
-        logger.debug('gateway', 'WS close error (benign)', err)
-      }
-      resolve(result)
-    }
-
-    const timer = setTimeout(() => {
-      if (!done) {
-        done = true
-        try { ws.close() } catch (err) {
-          logger.debug('gateway', 'WS close on timeout', err)
-        }
-        reject(new Error(`Timeout after ${timeoutMs / 1000}s for agent ${agentId}`))
-      }
-    }, timeoutMs)
-
-    const connectFrame = JSON.stringify({
-      type: 'req', id: 'c', method: 'connect',
-      params: {
-        minProtocol: 3, maxProtocol: 3,
-        client: { id: 'openclaw-control-ui', mode: 'backend', version: '1.0.0', platform: process.platform },
-        caps: [],
-        auth: { token: config.token },
-        role: 'operator',
-        scopes: ['operator.admin', 'operator.read', 'operator.write'],
-      }
-    })
-
-    const ws = new WebSocket(`ws://127.0.0.1:${config.port}`, {
-      headers: { Origin: `http://127.0.0.1:${config.port}` }
-    })
-
-    ws.on('message', (data) => {
-      let f
-      try { f = JSON.parse(data.toString()) } catch { return }
-
-      if (f.type === 'event' && f.event === 'connect.challenge') {
-        ws.send(connectFrame)
-        return
-      }
-
-      if (f.type === 'res' && f.id === 'c') {
-        if (f.ok) {
-          ws.send(JSON.stringify({
-            type: 'req', id: 's', method: 'chat.send',
-            params: { sessionKey, message, idempotencyKey: runId }
-          }))
-          logger.debug('gateway', `Connected and sent message to ${agentId}`)
-        } else {
-          finish({ ok: false, error: `Connect failed: ${f.error?.message}` })
-        }
-        return
-      }
-
-      if (f.type === 'res' && f.id === 's' && f.ok) {
-        if (f.payload?.runId) runId = f.payload.runId
-        return
-      }
-
-      if (f.type === 'res' && f.id === 's' && !f.ok) {
-        finish({ ok: false, error: `chat.send failed: ${f.error?.message}` })
-        return
-      }
-
-      // Retry-kill response — empty response recovery with memory injection
-      if (f.type === 'res' && f.id === 'retry-kill') {
-        logger.info('gateway', `Empty response recovery: session ${sessionKey} ${f.ok ? 'reset' : 'reset failed'}, retrying`)
-        runId = randomUUID()
-        fullText = ''
-        // Inject memory summary so the fresh session has context
-        let retryMessage = message
-        const summary = readMemorySummary(agentId)
-        if (summary) {
-          retryMessage = `[Context from previous session]\n${summary}\n\n${message}`
-          logger.debug('gateway', `Injected memory summary for ${agentId} (${summary.length} chars)`)
-        }
-        ws.send(JSON.stringify({
-          type: 'req', id: 's', method: 'chat.send',
-          params: { sessionKey, message: retryMessage, idempotencyKey: runId }
-        }))
-        return
-      }
-
-      if (f.type === 'event' && f.event === 'chat') {
-        const p = f.payload
-        if (!p || (p.runId !== runId && p.sessionKey !== sessionKey)) return
-
-        if (p.state === 'delta') {
-          const text = p.message?.content
-            ?.filter(b => b.type === 'text')
-            ?.map(b => b.text || '')
-            ?.join('') || ''
-          if (text) fullText = text
-        } else if (p.state === 'final') {
-          const text = p.message?.content
-            ?.filter(b => b.type === 'text')
-            ?.map(b => b.text || '')
-            ?.join('') || fullText
-
-          // Empty response recovery: reset session and retry once
-          if (!text.trim() && !retried) {
-            retried = true
-            logger.warn('gateway', `Empty response from ${agentId} on ${sessionKey}, resetting session and retrying`)
-            ws.send(JSON.stringify({
-              type: 'req', id: 'retry-kill', method: 'sessions.reset',
-              params: { key: sessionKey }
-            }))
-            return
-          }
-
-          // If still empty after retry, treat as error
-          if (!text.trim() && retried) {
-            logger.error('gateway', `Empty response from ${agentId} after retry, treating as error`)
-            finish({ ok: false, error: 'Empty response after session reset retry', usage: p.usage })
-            return
-          }
-
-          finish({ ok: true, text, usage: p.usage })
-        } else if (p.state === 'error') {
-          finish({ ok: false, error: p.errorMessage || 'Agent error' })
-        } else if (p.state === 'aborted') {
-          finish({ ok: true, text: fullText, aborted: true })
-        }
-      }
-    })
-
-    ws.on('error', (err) => {
-      logger.error('gateway', `WebSocket error for ${agentId}`, err)
-      finish({ ok: false, error: `WebSocket: ${err.message}` })
-    })
-    ws.on('close', (code) => {
-      if (!done) {
-        logger.warn('gateway', `WebSocket closed unexpectedly for ${agentId}`, { code })
-        finish({ ok: false, error: `WebSocket closed (${code})` })
-      }
-    })
-  })
+  return pool.sendToAgent(agentId, sessionKey, message, timeoutMs)
 }
 
-/**
- * Convenience: send to CEO (backward compat)
- */
 function sendToCeo(message, timeoutMs = DEFAULT_AGENT_TIMEOUT_MS) {
   return sendToAgent('ceo', 'agent:ceo:autopilot', message, timeoutMs)
 }
 
-/**
- * Send a session management command (compact or kill) via WebSocket.
- *
- * @param {string} method - 'sessions.compact' or 'sessions.reset'
- * @param {string} sessionKey - Session key to operate on
- * @param {number} timeoutMs - Timeout in milliseconds
- * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
- */
-function sendSessionCommand(method, sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
-  return new Promise((resolve) => {
-    const config = getGatewayConfig()
-    let done = false
-
-    const finish = (result) => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      try { ws.close() } catch {}
-      resolve(result)
-    }
-
-    const timer = setTimeout(() => {
-      finish({ ok: false, error: `Timeout after ${timeoutMs / 1000}s for ${method}` })
-    }, timeoutMs)
-
-    const connectFrame = JSON.stringify({
-      type: 'req', id: 'c', method: 'connect',
-      params: {
-        minProtocol: 3, maxProtocol: 3,
-        client: { id: 'openclaw-control-ui', mode: 'backend', version: '1.0.0', platform: process.platform },
-        caps: [],
-        auth: { token: config.token },
-        role: 'operator',
-        scopes: ['operator.admin', 'operator.read', 'operator.write'],
-      }
-    })
-
-    const ws = new WebSocket(`ws://127.0.0.1:${config.port}`, {
-      headers: { Origin: `http://127.0.0.1:${config.port}` }
-    })
-
-    ws.on('message', (data) => {
-      let f
-      try { f = JSON.parse(data.toString()) } catch { return }
-
-      if (f.type === 'event' && f.event === 'connect.challenge') {
-        ws.send(connectFrame)
-        return
-      }
-
-      if (f.type === 'res' && f.id === 'c') {
-        if (f.ok) {
-          ws.send(JSON.stringify({
-            type: 'req', id: 'cmd', method,
-            params: { key: sessionKey }
-          }))
-          logger.debug('gateway', `Connected, sending ${method} for ${sessionKey}`)
-        } else {
-          finish({ ok: false, error: `Connect failed: ${f.error?.message}` })
-        }
-        return
-      }
-
-      if (f.type === 'res' && f.id === 'cmd') {
-        if (f.ok) {
-          finish({ ok: true, payload: f.payload })
-        } else {
-          finish({ ok: false, error: `${method} failed: ${f.error?.message}` })
-        }
-      }
-    })
-
-    ws.on('error', (err) => {
-      finish({ ok: false, error: `WebSocket: ${err.message}` })
-    })
-    ws.on('close', (code) => {
-      if (!done) finish({ ok: false, error: `WebSocket closed (${code})` })
-    })
-  })
-}
-
-/**
- * Compact a session via Gateway WebSocket.
- * @param {string} sessionKey
- * @param {number} timeoutMs
- * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
- */
 function compactSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
-  return sendSessionCommand('sessions.compact', sessionKey, timeoutMs)
+  return pool.sendCommand('sessions.compact', { key: sessionKey }, timeoutMs)
+}
+
+function killSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
+  return pool.sendCommand('sessions.reset', { key: sessionKey }, timeoutMs)
 }
 
 /**
- * Kill (reset) a session via Gateway WebSocket.
- * @param {string} sessionKey
- * @param {number} timeoutMs
- * @returns {Promise<{ok: boolean, error?: string, payload?: object}>}
+ * Send a message directly to Anthropic API with tool definitions.
+ * Bypasses OpenClaw Gateway — used for chief/CEO decisions that need
+ * structured tool_use responses.
+ *
+ * @param {Object} opts - Options passed to anthropic-client.sendWithTools
+ * @returns {Promise<import('../../shared/anthropic-client.cjs').SendResult>}
  */
-function killSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
-  return sendSessionCommand('sessions.reset', sessionKey, timeoutMs)
+function sendDirectToAnthropic(opts) {
+  const { sendWithTools } = require('../../shared/anthropic-client.cjs')
+  return sendWithTools(opts)
 }
 
-module.exports = { getGatewayConfig, sendToAgent, sendToCeo, compactSession, killSession }
+module.exports = { getGatewayConfig, sendToAgent, sendToCeo, compactSession, killSession, sendDirectToAnthropic }

@@ -19,12 +19,17 @@ const {
 } = require('./constants.cjs')
 const { loadState, saveState } = require('./state.cjs')
 const { sendToCeo } = require('./gateway.cjs')
+const { makeCeoDecision } = require('../../shared/chief-decision-engine.cjs')
+const { trackCost } = require('../../shared/cost-tracker.cjs')
+const { getStrategy } = require('../../shared/task-strategy.cjs')
 const { fetchSessionTokens, readProjectTasks, readStandaloneTasks, readAgentActivity } = require('./readers.cjs')
 const { buildDirective } = require('./directive.cjs')
+const { canTransition } = require('../../shared/task-state-machine.cjs')
 const { syncProjects } = require('./sync.cjs')
 const { buildMemoryContext, compressMemory } = require('./memory.cjs')
 const { runDepartmentCycle, autoTransitionTasks } = require('./department-loop.cjs')
 const { createCycleTask, completeCycleTask, updateTaskStatus } = require('./task-bridge.cjs')
+const { eventBus } = require('../../shared/event-bus.cjs')
 const logger = require('./logger.cjs')
 
 const MAX_HISTORY = 50
@@ -282,13 +287,55 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
   const startTime = Date.now()
 
   logger.info('main', `CEO ${cycleType} cycle #${cycleNum} started`)
+  try { eventBus.fire('ceo.cycle.start', { cycleCount: cycleNum, cycleType }) } catch {}
 
   const taskId = await createCycleTask('ceo', cycleType, cycleNum)
 
   try {
     const memoryContext = buildMemoryContext('ceo', cycleType)
     const directive = buildDirective(cycleNum, cycleType, memoryContext)
-    const result = await sendToCeo(directive)
+
+    // ── Primary: Tool-Use via Anthropic API ──
+    let result
+    let usedToolUse = false
+    try {
+      const decisionResult = await makeCeoDecision(directive, { logger })
+      if (decisionResult.ok) {
+        usedToolUse = true
+
+        // Track cost
+        if (decisionResult.usage) {
+          trackCost({
+            model: decisionResult.model || 'claude-sonnet-4-6',
+            usage: decisionResult.usage,
+            source: 'ceo',
+            agentId: 'ceo',
+          })
+        }
+
+        // Log decisions (CEO decisions are informational — no direct side-effects needed here)
+        for (const d of decisionResult.decisions) {
+          logger.info('main', `CEO decision: ${d.tool} → ${JSON.stringify(d.input)}`)
+        }
+
+        result = {
+          ok: true,
+          text: decisionResult.text || decisionResult.decisions.map(d => `[${d.tool}] ${JSON.stringify(d.input)}`).join('\n'),
+          usage: decisionResult.usage,
+        }
+      }
+    } catch (e) {
+      logger.warn('main', `CEO tool-use failed, falling back to Gateway: ${e.message}`)
+    }
+
+    // ── Fallback: Legacy Gateway ──
+    if (!usedToolUse) {
+      result = await sendToCeo(directive)
+      if (result.ok && result.usage) {
+        trackCost({ model: 'unknown', usage: result.usage, source: 'ceo', agentId: 'ceo' })
+      }
+    }
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
     if (result.ok) {
@@ -319,12 +366,14 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
         logger.warn('main', 'Memory compression failed', e)
       }
       await completeCycleTask('ceo', taskId, result)
+      try { eventBus.fire('ceo.cycle.end', { cycleCount: cycleNum, results: 'ok', durationMs: Date.now() - startTime }) } catch {}
     } else {
       logger.error('main', `CEO cycle #${cycleNum} failed: ${result.error}`)
       state.status = 'running'
       state.lastCycleResult = `Error: ${result.error}`
       saveState(state)
       await completeCycleTask('ceo', taskId, result)
+      try { eventBus.fire('ceo.cycle.end', { cycleCount: cycleNum, results: 'error', error: result.error }) } catch {}
     }
   } catch (err) {
     logger.error('main', `CEO cycle #${cycleNum} error`, err)
@@ -332,6 +381,7 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
     state.lastCycleResult = `Error: ${err.message}`
     saveState(state)
     await completeCycleTask('ceo', taskId, { ok: false, error: err.message })
+    try { eventBus.fire('ceo.cycle.end', { cycleCount: cycleNum, results: 'error', error: err.message }) } catch {}
   }
 }
 
@@ -367,10 +417,13 @@ async function sweepStaleTasks() {
     const activity = agentActivity[assignee]
     const idleMins = activity ? activity.idleMins : 9999
 
+    // Use strategy-based thresholds instead of hardcoded constants
+    const strategy = getStrategy(task.type)
+
     let newStatus = null
-    if (task.status === 'assigned' && idleMins >= STALE_TASK_MINS) {
+    if (task.status === 'assigned' && idleMins >= strategy.staleThresholdMins) {
       newStatus = 'failed'
-    } else if (task.status === 'review' && idleMins >= IDLE_COMPLETE_MINS) {
+    } else if (task.status === 'review' && idleMins >= strategy.idleThresholdMins) {
       if (deptAgents.has(assignee)) {
         // Department agent — skip, dept-loop's quality gate handles review tasks
       } else {
@@ -378,13 +431,17 @@ async function sweepStaleTasks() {
         // Send to completed — sync gate will validate quality if pipeline step exists.
         newStatus = 'completed'
       }
-    } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
+    } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= strategy.staleThresholdMins && (task.progress || 0) < 50) {
       newStatus = 'failed'
-    } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= IDLE_COMPLETE_MINS) {
+    } else if ((task.status === 'in_progress' || task.status === 'rework') && idleMins >= strategy.idleThresholdMins) {
       newStatus = 'review'  // Mark as review instead of completed — let chief confirm
     }
 
     if (newStatus) {
+      if (!canTransition(task.status, newStatus)) {
+        logger.warn('main', `Sweep: blocked ${task.status}→${newStatus} for ${task.id}`)
+        continue
+      }
       updateTaskStatus(assignee, task.id, newStatus)
       transitioned++
       logger.info('main', `Sweep: task ${task.id} (${task.status}) → ${newStatus} (agent ${assignee} idle ${idleMins}m)`)
@@ -461,8 +518,12 @@ async function startAll() {
   const departments = discoverActiveDepartments()
   logger.info('main', `Found ${departments.length} active departments`)
 
+  // Track running department loops for dynamic discovery
+  const runningDeptLoops = new Set()
+
   for (const dept of departments) {
     logger.info('main', `Starting department loop: ${dept.id} (interval: ${dept.interval}s)`)
+    runningDeptLoops.add(dept.id)
 
     await runDepartmentCycle(dept.id)
 
@@ -472,6 +533,35 @@ async function startAll() {
     }
     setTimeout(deptLoop, dept.interval * 1000)
   }
+
+  // 5. Dynamic department discovery: check for new departments every 3 CEO cycles
+  const DEPT_RESCAN_INTERVAL_MS = CEO_COORDINATION_INTERVAL_SEC * 3 * 1000
+  const rescanDepartments = () => {
+    try {
+      const currentDepts = discoverActiveDepartments()
+      for (const dept of currentDepts) {
+        if (!runningDeptLoops.has(dept.id)) {
+          logger.info('main', `Discovered new department: ${dept.id}, starting loop (interval: ${dept.interval}s)`)
+          runningDeptLoops.add(dept.id)
+
+          runDepartmentCycle(dept.id).then(() => {
+            const deptLoop = async () => {
+              await runDepartmentCycle(dept.id)
+              setTimeout(deptLoop, dept.interval * 1000)
+            }
+            setTimeout(deptLoop, dept.interval * 1000)
+          }).catch(e => {
+            logger.error('main', `Failed to start new dept loop ${dept.id}`, e)
+            runningDeptLoops.delete(dept.id)
+          })
+        }
+      }
+    } catch (e) {
+      logger.warn('main', 'Department rescan failed', e)
+    }
+    setTimeout(rescanDepartments, DEPT_RESCAN_INTERVAL_MS)
+  }
+  setTimeout(rescanDepartments, DEPT_RESCAN_INTERVAL_MS)
 
   logger.info('main', 'All loops scheduled. Running...')
 }

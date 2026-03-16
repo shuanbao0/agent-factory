@@ -8,6 +8,9 @@ const {
   CEO_WORKSPACE, AGENTS_DIR, DEPARTMENTS_DIR,
 } = require('./constants.cjs')
 const logger = require('./logger.cjs')
+const { deptStateRepo } = require('../../shared/dept-state-repository.cjs')
+const { agentMetaRepo } = require('../../shared/agent-meta-repository.cjs')
+const { deptConfigRepo } = require('../../shared/dept-config-repository.cjs')
 
 function readMission() {
   try {
@@ -224,60 +227,29 @@ function readEscalations() {
 }
 
 /**
- * Load a department config
+ * Load a department config (delegates to DeptConfigRepository for caching + atomic reads)
  */
 function loadDeptConfig(deptId) {
-  const configPath = join(DEPARTMENTS_DIR, deptId, 'config.json')
   try {
-    if (existsSync(configPath)) {
-      return JSON.parse(readFileSync(configPath, 'utf-8'))
-    }
+    return deptConfigRepo.load(deptId)
   } catch (err) {
     logger.error('readers', `Failed to load dept config for ${deptId}`, err)
+    return null
   }
-  return null
 }
 
 /**
- * Load a department state
+ * Load a department state (delegates to DeptStateRepository)
  */
 function loadDeptState(deptId) {
-  const statePath = join(DEPARTMENTS_DIR, deptId, 'state.json')
-  try {
-    if (existsSync(statePath)) {
-      return JSON.parse(readFileSync(statePath, 'utf-8'))
-    }
-  } catch (err) {
-    logger.error('readers', `Failed to load dept state for ${deptId}`, err)
-  }
-  return {
-    status: 'stopped',
-    pid: null,
-    cycleCount: 0,
-    lastCycleAt: null,
-    lastCycleResult: null,
-    history: [],
-    tokensUsedToday: 0,
-    budgetResetAt: null,
-  }
+  return deptStateRepo.load(deptId)
 }
 
 /**
- * Save a department state atomically
+ * Save a department state atomically (delegates to DeptStateRepository)
  */
 function saveDeptState(deptId, state) {
-  const { writeFileSync, renameSync, mkdirSync } = require('fs')
-  const deptDir = join(DEPARTMENTS_DIR, deptId)
-  if (!existsSync(deptDir)) mkdirSync(deptDir, { recursive: true })
-  const statePath = join(deptDir, 'state.json')
-  const tmpPath = statePath + '.tmp'
-  try {
-    writeFileSync(tmpPath, JSON.stringify(state, null, 2))
-    renameSync(tmpPath, statePath)
-  } catch (err) {
-    logger.error('readers', `Failed to save dept state for ${deptId}`, err)
-    try { writeFileSync(statePath, JSON.stringify(state, null, 2)) } catch {}
-  }
+  deptStateRepo.save(deptId, state)
 }
 
 /**
@@ -340,21 +312,15 @@ function readMemorySummary(agentId) {
 
 /**
  * Read agent metadata (description, role, name) from agent.json
+ * Delegates to AgentMetaRepository with field extraction for backward compat.
  *
  * @param {string} agentId
  * @returns {{ description: string, role: string, name: string } | null}
  */
 function readAgentMeta(agentId) {
-  const metaPath = join(AGENTS_DIR, agentId, 'agent.json')
-  try {
-    if (existsSync(metaPath)) {
-      const data = JSON.parse(readFileSync(metaPath, 'utf-8'))
-      return { description: data.description || '', role: data.role || agentId, name: data.name || agentId }
-    }
-  } catch (err) {
-    logger.debug('readers', `Failed to read agent.json for ${agentId}`, err)
-  }
-  return null
+  const data = agentMetaRepo.readMeta(agentId)
+  if (!data) return null
+  return { description: data.description || '', role: data.role || agentId, name: data.name || agentId }
 }
 
 module.exports = {

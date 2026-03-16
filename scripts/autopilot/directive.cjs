@@ -2,6 +2,7 @@
  * Directive — build CEO directives (supports strategy/coordination cycle types)
  */
 const { readMission, readCeoWorkspaceFile, readProjectTasks, readStandaloneTasks, readAgentActivity, readAllDepartmentReports, readEscalations } = require('./readers.cjs')
+const { DirectiveBuilder } = require('../../shared/directive-builder.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -19,117 +20,79 @@ function buildDirective(cycleNum, cycleType = 'coordination', memoryContext = nu
   return buildCoordinationDirective(cycleNum, memoryContext)
 }
 
-function buildCoordinationDirective(cycleNum, memoryContext) {
-  const mission = readMission()
+/**
+ * Format project data for CEO coordination directive.
+ */
+function formatProjectData(projects, agentActivity) {
+  if (projects.length === 0) return null
 
-  let context = `## 公司使命\n${mission}\n`
+  let text = '## 📊 项目实时数据（来自系统，非记忆）\n'
+  for (const proj of projects) {
+    const tasks = proj.tasks || []
+    const completed = tasks.filter(t => t.status === 'completed').length
+    const running = tasks.filter(t => t.status === 'in_progress')
+    const pending = tasks.filter(t => !['completed', 'in_progress', 'review', 'failed'].includes(t.status))
 
-  // Memory section — use structured memory if available, fall back to raw file
-  if (memoryContext) {
-    if (memoryContext.summary) {
-      context += `\n## 你的记忆摘要\n${memoryContext.summary}\n`
-    }
-    if (memoryContext.recentDecisions) {
-      context += `\n## 近期重要决策\n${memoryContext.recentDecisions}\n`
-    }
-    if (memoryContext.departmentStatus) {
-      context += `\n## 各部门最新状态\n${memoryContext.departmentStatus}\n`
-    }
-  } else {
-    const memory = readCeoWorkspaceFile('MEMORY.md')
-    if (memory) {
-      context += `\n## 你的上次记忆 (MEMORY.md)\n${memory.slice(0, 4000)}\n`
-    }
-  }
+    text += `\n### ${proj.name} (${proj.id})\n`
+    text += `- 状态: ${proj.status} | 阶段: ${proj.currentPhase}/${proj.totalPhases}\n`
+    text += `- 进度: ${completed}/${tasks.length} 任务完成\n`
 
-  // Department reports (if available, prefer over raw agent data)
-  const deptReports = readAllDepartmentReports()
-  const hasDeptReports = Object.keys(deptReports).length > 0
-
-  if (hasDeptReports) {
-    context += `\n## 📊 部门报告\n`
-    for (const [deptId, report] of Object.entries(deptReports)) {
-      context += `\n### ${deptId} 部门\n${report.slice(0, 1000)}\n`
-    }
-
-    // Escalations
-    const escalations = readEscalations()
-    if (escalations.length > 0) {
-      context += `\n## 🚨 需要CEO决策的升级事项\n`
-      for (const esc of escalations) {
-        context += `- [${esc.deptId}] ${esc.title || esc.description || JSON.stringify(esc)}\n`
+    if (running.length > 0) {
+      text += `- ⚡ 进行中:\n`
+      for (const t of running) {
+        const agentInfo = agentActivity[t.assignedAgent]
+        const idle = agentInfo ? `（${agentInfo.idleMins} 分钟前活跃）` : '（无活动记录）'
+        text += `  - [${t.id}] ${t.name} → ${t.assignedAgent} ${idle} (${t.progress}%)\n`
       }
     }
-  }
-
-  // Always include real project data
-  const projects = readProjectTasks()
-  const agentActivity = readAgentActivity()
-
-  if (projects.length > 0) {
-    context += `\n## 📊 项目实时数据（来自系统，非记忆）\n`
-    for (const proj of projects) {
-      const tasks = proj.tasks || []
-      const completed = tasks.filter(t => t.status === 'completed').length
-      const running = tasks.filter(t => t.status === 'in_progress')
-      const pending = tasks.filter(t => !['completed', 'in_progress', 'review', 'failed'].includes(t.status))
-
-      context += `\n### ${proj.name} (${proj.id})\n`
-      context += `- 状态: ${proj.status} | 阶段: ${proj.currentPhase}/${proj.totalPhases}\n`
-      context += `- 进度: ${completed}/${tasks.length} 任务完成\n`
-
-      if (running.length > 0) {
-        context += `- ⚡ 进行中:\n`
-        for (const t of running) {
-          const agentInfo = agentActivity[t.assignedAgent]
-          const idle = agentInfo ? `（${agentInfo.idleMins} 分钟前活跃）` : '（无活动记录）'
-          context += `  - [${t.id}] ${t.name} → ${t.assignedAgent} ${idle} (${t.progress}%)\n`
-        }
-      }
-      if (pending.length > 0) {
-        context += `- 🔲 待办:\n`
-        for (const t of pending) {
-          context += `  - [${t.id}] ${t.name} → 分配给 ${t.assignedAgent}\n`
-        }
-      }
-
-      if (completed > 0 && completed >= tasks.length - 1) {
-        context += `- 🚨 **项目接近完成！仅剩 ${tasks.length - completed} 个任务。必须主动推进收尾。**\n`
+    if (pending.length > 0) {
+      text += `- 🔲 待办:\n`
+      for (const t of pending) {
+        text += `  - [${t.id}] ${t.name} → 分配给 ${t.assignedAgent}\n`
       }
     }
-  }
-
-  // Standalone tasks
-  const standaloneTasks = readStandaloneTasks()
-  const activeStandalone = standaloneTasks.filter(t => t.status !== 'completed')
-  if (activeStandalone.length > 0) {
-    context += `\n## 📋 独立任务（用户通过任务面板分配）\n`
-    for (const t of activeStandalone) {
-      const agents = (t.assignees || []).join(', ') || '未分配'
-      context += `- [${t.id}] ${t.name} → ${agents} (${t.status}, ${t.priority || 'P1'}, ${t.progress || 0}%)\n`
-      if (t.description) context += `  描述: ${t.description}\n`
+    if (completed > 0 && completed >= tasks.length - 1) {
+      text += `- 🚨 **项目接近完成！仅剩 ${tasks.length - completed} 个任务。必须主动推进收尾。**\n`
     }
   }
+  return text
+}
 
-  // Agent availability (when no dept reports, show raw agent data)
+/**
+ * Format standalone tasks for CEO.
+ */
+function formatStandaloneTasks(standaloneTasks) {
+  const active = standaloneTasks.filter(t => t.status !== 'completed')
+  if (active.length === 0) return null
+
+  let text = '## 📋 独立任务（用户通过任务面板分配）\n'
+  for (const t of active) {
+    const agents = (t.assignees || []).join(', ') || '未分配'
+    text += `- [${t.id}] ${t.name} → ${agents} (${t.status}, ${t.priority || 'P1'}, ${t.progress || 0}%)\n`
+    if (t.description) text += `  描述: ${t.description}\n`
+  }
+  return text
+}
+
+/**
+ * Format agent activity for CEO.
+ */
+function formatAgentActivity(agentActivity) {
   const agentNames = Object.keys(agentActivity)
-  if (agentNames.length > 0) {
-    context += `\n## 👥 团队活动状态\n`
-    const sorted = agentNames.sort((a, b) => (agentActivity[a].idleMins || 0) - (agentActivity[b].idleMins || 0))
-    for (const name of sorted) {
-      const a = agentActivity[name]
-      const status = a.idleMins < 5 ? '🔴 忙碌' : a.idleMins < 30 ? '🟡 刚完成' : '🟢 空闲'
-      context += `- ${name}: ${status}（${a.idleMins}分钟无活动, 累计 ${a.totalTokens} tokens）\n`
-    }
+  if (agentNames.length === 0) return null
+
+  let text = '## 👥 团队活动状态\n'
+  const sorted = agentNames.sort((a, b) => (agentActivity[a].idleMins || 0) - (agentActivity[b].idleMins || 0))
+  for (const name of sorted) {
+    const a = agentActivity[name]
+    const status = a.idleMins < 5 ? '🔴 忙碌' : a.idleMins < 30 ? '🟡 刚完成' : '🟢 空闲'
+    text += `- ${name}: ${status}（${a.idleMins}分钟无活动, 累计 ${a.totalTokens} tokens）\n`
   }
+  return text
+}
 
-  return `[Autopilot Cycle #${cycleNum}]
-
-你是 CEO，这是公司第 ${cycleNum} 轮自主运营循环。
-
-${context}
-
-## 本轮任务
+/** CEO coordination action instructions */
+const CEO_COORDINATION_ACTIONS = `## 本轮任务
 
 ⚠️ **禁止"等待"。每轮必须产出至少一个具体动作。**
 
@@ -172,49 +135,61 @@ ${context}
 \`\`\`
 
 系统会自动把这个区块展示在前端 UI 上通知用户。`
+
+function buildCoordinationDirective(cycleNum, memoryContext) {
+  const projects = readProjectTasks()
+  const agentActivity = readAgentActivity()
+  const deptReports = readAllDepartmentReports()
+
+  const builder = new DirectiveBuilder()
+    .withHeader(`[Autopilot Cycle #${cycleNum}]`)
+    .withCeoRole(cycleNum)
+    .withFullMission(readMission())
+    .withMemory(memoryContext, memoryContext ? null : readCeoWorkspaceFile('MEMORY.md'))
+
+  // Department reports + escalations
+  if (Object.keys(deptReports).length > 0) {
+    builder.withDeptReports(deptReports)
+    builder.withEscalations(readEscalations())
+  }
+
+  // Real-time project data, standalone tasks, agent activity
+  builder
+    .withProjectData(formatProjectData(projects, agentActivity))
+    .withStandaloneTasks(formatStandaloneTasks(readStandaloneTasks()))
+    .withAgentActivity(formatAgentActivity(agentActivity))
+    .withActionRequirements(CEO_COORDINATION_ACTIONS)
+
+  return builder.build()
 }
 
 function buildStrategyDirective(cycleNum, memoryContext) {
-  const mission = readMission()
   const projects = readProjectTasks()
   const deptReports = readAllDepartmentReports()
 
-  let context = `## 公司使命\n${mission}\n`
-
-  if (memoryContext) {
-    if (memoryContext.summary) {
-      context += `\n## 你的记忆摘要\n${memoryContext.summary}\n`
-    }
-    if (memoryContext.lessonsLearned) {
-      context += `\n## 经验总结\n${memoryContext.lessonsLearned}\n`
-    }
-  }
-
   // High-level project summary
+  let projectSummary = null
   if (projects.length > 0) {
-    context += `\n## 项目总览\n`
+    let text = '## 项目总览\n'
     for (const proj of projects) {
       const tasks = proj.tasks || []
       const completed = tasks.filter(t => t.status === 'completed').length
-      context += `- ${proj.name}: ${proj.status} (${completed}/${tasks.length} tasks, phase ${proj.currentPhase}/${proj.totalPhases})\n`
+      text += `- ${proj.name}: ${proj.status} (${completed}/${tasks.length} tasks, phase ${proj.currentPhase}/${proj.totalPhases})\n`
     }
+    projectSummary = text
   }
 
   // Department summaries
+  let deptSummary = null
   if (Object.keys(deptReports).length > 0) {
-    context += `\n## 部门工作概要\n`
+    let text = '## 部门工作概要\n'
     for (const [deptId, report] of Object.entries(deptReports)) {
-      context += `\n### ${deptId}\n${report.slice(0, 500)}\n`
+      text += `\n### ${deptId}\n${report.slice(0, 500)}\n`
     }
+    deptSummary = text
   }
 
-  return `[Strategy Cycle #${cycleNum}]
-
-你是 CEO，这是一次**战略规划循环**。不需要执行具体任务，而是做长期思考。
-
-${context}
-
-## 战略思考要求
+  const strategyActions = `## 战略思考要求
 
 1. **复盘**：过去一段时间的决策效果如何？有哪些成功经验和失败教训？
 2. **方向判断**：当前项目方向是否正确？是否需要调整优先级？
@@ -225,6 +200,16 @@ ${context}
 请将你的战略思考更新到 MEMORY.md 中。
 
 如果战略方向有实质调整（如新增/砍掉业务线、核心能力变化、阶段转换），同步更新 \`config/mission.md\` 的相关章节（特别是"当前状态"和"运营模式"）。愿景和原则部分保持稳定，除非有根本性转变。`
+
+  return new DirectiveBuilder()
+    .withHeader(`[Strategy Cycle #${cycleNum}]`)
+    .withSection(`你是 CEO，这是一次**战略规划循环**。不需要执行具体任务，而是做长期思考。`)
+    .withFullMission(readMission())
+    .withMemory(memoryContext)
+    .withProjectData(projectSummary)
+    .withSection(deptSummary)
+    .withActionRequirements(strategyActions)
+    .build()
 }
 
 module.exports = { buildDirective, buildCoordinationDirective, buildStrategyDirective }

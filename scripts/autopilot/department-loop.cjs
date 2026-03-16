@@ -18,11 +18,16 @@ const {
 } = require('./constants.cjs')
 const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo, readAgentActivity, readProjectTasks, readStandaloneTasks } = require('./readers.cjs')
 const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
+const { makeChiefDecision } = require('../../shared/chief-decision-engine.cjs')
+const { trackCost } = require('../../shared/cost-tracker.cjs')
+const { canTransition } = require('../../shared/task-state-machine.cjs')
+const { getStrategy } = require('../../shared/task-strategy.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('./task-bridge.cjs')
 const { processQualityGate } = require('./quality-gate.cjs')
+const { eventBus } = require('../../shared/event-bus.cjs')
 const logger = require('./logger.cjs')
 
 // Cooldown: skip session health check if recently reset
@@ -73,7 +78,10 @@ function parseTaskAssignments(text) {
     // Or:    - agent-id：任务摘要
     const m = line.match(/^[-*]\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
     if (!m) continue
-    const [, agentId, summary] = m
+    const [, rawAgentId, summary] = m
+    const agentId = rawAgentId.replace(/\*+/g, '')
+    const { validateAgentId } = require('../../shared/validators.cjs')
+    if (!validateAgentId(agentId).valid) continue
     // Skip "无需分配" and similar
     if (/无需分配|不需要|跳过/.test(summary)) continue
     // Skip lines that already contain a task ID (chief created it)
@@ -125,6 +133,121 @@ function parseTaskCompletions(text) {
 }
 
 /**
+ * Execute structured chief decisions (from tool-use API).
+ * Each decision maps to a concrete side-effect.
+ *
+ * @param {Array<{tool: string, input: Object}>} decisions
+ * @param {string} deptId
+ * @param {Object} config
+ * @returns {Promise<{assignments: Array, completions: string[], reworks: number, noActions: number}>}
+ */
+async function executeChiefDecisions(decisions, deptId, config) {
+  const { execFile } = require('child_process')
+  const { promisify } = require('util')
+  const execFileAsync = promisify(execFile)
+  const { PROJECT_ROOT } = require('./constants.cjs')
+
+  const result = { assignments: [], completions: [], reworks: 0, noActions: 0, progressReports: [] }
+  const agents = config.agents || []
+  const peerSendScript = join(PROJECT_ROOT, 'skills', 'peer-status', 'scripts', 'peer-send.mjs')
+
+  for (const decision of decisions) {
+    switch (decision.tool) {
+      case 'assign_task': {
+        const { agentId, taskSummary, priority } = decision.input
+        // Validate agent belongs to department
+        if (!agents.includes(agentId)) {
+          logger.warn('dept-loop', `Chief tried to assign to ${agentId} who is not in dept ${deptId}`)
+          break
+        }
+        try {
+          const taskId = await createWorkTask(agentId, taskSummary, deptId, {
+            type: 'dept-work',
+            priority: priority || 'P1',
+          })
+          if (taskId) {
+            updateTaskStatus(agentId, taskId, 'in_progress')
+            result.assignments.push({ agentId, taskId, summary: taskSummary })
+            logger.info('dept-loop', `Tool-use: assigned task ${taskId} to ${agentId} in ${deptId}`)
+
+            // Send peer-send to notify agent
+            const message = `[Task: ${taskId}] 新任务分配：${taskSummary}\n\n请立即开始工作。`
+            execFile('node', [peerSendScript, '--from', config.head, '--to', agentId, '--message', message, '--no-wait'], {
+              cwd: PROJECT_ROOT, timeout: 15000,
+            }, (err) => {
+              if (err) logger.debug('dept-loop', `Failed to notify ${agentId}: ${err.message}`)
+            })
+          }
+        } catch (e) {
+          logger.error('dept-loop', `Failed to create task for ${agentId}: ${e.message}`)
+        }
+        break
+      }
+
+      case 'complete_task': {
+        const { taskId, reason } = decision.input
+        try {
+          // Find the task and its assignee
+          const projects = readProjectTasks()
+          let found = null
+          for (const proj of projects) {
+            const t = (proj.tasks || []).find(t => t.id === taskId)
+            if (t) { found = t; break }
+          }
+          if (!found) {
+            const standalone = readStandaloneTasks()
+            found = standalone.find(t => t.id === taskId)
+          }
+          if (found && ['in_progress', 'rework'].includes(found.status)) {
+            const assignee = found.assignedAgent || (found.assignees && found.assignees[0])
+            if (assignee) {
+              updateTaskStatus(assignee, taskId, 'review')
+              result.completions.push(taskId)
+              logger.info('dept-loop', `Tool-use: task ${taskId} → review (reason: ${reason || 'chief confirmed'})`)
+            }
+          }
+        } catch (e) {
+          logger.error('dept-loop', `Failed to complete task ${taskId}: ${e.message}`)
+        }
+        break
+      }
+
+      case 'send_rework': {
+        const { taskId, agentId, feedback } = decision.input
+        try {
+          const message = `[Task: ${taskId}] 返工要求：${feedback}\n\n请根据反馈修改并重新提交。`
+          await execFileAsync('node', [peerSendScript, '--from', config.head, '--to', agentId, '--message', message, '--no-wait'], {
+            cwd: PROJECT_ROOT, timeout: 15000,
+          })
+          result.reworks++
+          logger.info('dept-loop', `Tool-use: sent rework to ${agentId} for task ${taskId}`)
+        } catch (e) {
+          logger.error('dept-loop', `Failed to send rework to ${agentId}: ${e.message}`)
+        }
+        break
+      }
+
+      case 'report_progress': {
+        result.progressReports.push(decision.input)
+        logger.info('dept-loop', `Tool-use: progress report — ${decision.input.summary}`)
+        break
+      }
+
+      case 'no_action': {
+        result.noActions++
+        logger.info('dept-loop', `Tool-use: no_action — ${decision.input.reason}`)
+        break
+      }
+
+      default:
+        logger.warn('dept-loop', `Unknown tool: ${decision.tool}`)
+    }
+  }
+
+  return result
+}
+
+/**
  * Auto-transition tasks based on agent activity and chief reports.
  *
  * Rules:
@@ -169,7 +292,11 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
   if (allTasks.length === 0) return transitions
 
   // Helper to record transition (extras: optional fields like quality, reworkCount)
-  const transition = (task, assignee, from, to, reason, extras) => {
+  const doTransition = (task, assignee, from, to, reason, extras) => {
+    if (!canTransition(from, to)) {
+      logger.warn('dept-loop', `Blocked invalid transition ${from}→${to} for task ${task.id}`)
+      return
+    }
     updateTaskStatus(assignee, task.id, to, extras)
     transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from, to, reason })
   }
@@ -182,7 +309,8 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
       if (task && ['in_progress', 'rework'].includes(task.status)) {
         const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
         if (assignee) {
-          transition(task, assignee, task.status, 'review', 'chief 确认完成，进入质量审核')
+          gateErrorCounts.delete(taskId)  // Reset gate errors for new review round
+          doTransition(task, assignee, task.status, 'review', 'chief 确认完成，进入质量审核')
           logger.info('dept-loop', `Chief reported task ${taskId} → review in ${deptId}`)
         }
       }
@@ -199,41 +327,48 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
     const activity = agentActivity[assignee]
     const idleMins = activity ? activity.idleMins : 9999
 
+    const strategy = getStrategy(task.type, config)
+
     if (task.status === 'assigned') {
       if (idleMins < 5) {
-        transition(task, assignee, 'assigned', 'in_progress', 'agent 活跃，自动提升')
+        doTransition(task, assignee, 'assigned', 'in_progress', 'agent 活跃，自动提升')
         logger.debug('dept-loop', `Auto-promoted assigned task ${task.id} to in_progress`)
-      } else if (idleMins >= STALE_TASK_MINS) {
-        transition(task, assignee, 'assigned', 'failed', `agent 空闲 ${idleMins}m 未开始`)
+      } else if (idleMins >= strategy.staleThresholdMins) {
+        doTransition(task, assignee, 'assigned', 'failed', `agent 空闲 ${idleMins}m 未开始`)
         logger.warn('dept-loop', `Assigned task ${task.id} never started, marked failed (agent ${assignee} idle ${idleMins}m)`)
       }
     } else if (task.status === 'review') {
       // Review → in_progress revert is handled by peer-send autoClaimTasks
       // when chief explicitly references [Task: xxx] in a message.
       // Do NOT revert based on idle time — notifications can wake the agent.
-      if (idleMins >= IDLE_COMPLETE_MINS) {
-        // Run quality gate instead of auto-approving
+      if (idleMins >= strategy.idleThresholdMins) {
+        // Run async quality gate — advances one stage per cycle (non-blocking)
         try {
           const gate = await processQualityGate(deptId, task)
-          if (gate.passed) {
+          if (!gate.done) {
+            // Gate in progress — leave in review, will continue next cycle
+            logger.debug('dept-loop', `Task ${task.id} quality gate in progress (stage: ${gate.stage})`)
+            // Persist qualityGate state via task update
+            updateTaskStatus(assignee, task.id, 'review', { qualityGate: task.qualityGate, quality: task.quality })
+          } else if (gate.passed) {
             gateErrorCounts.delete(task.id)
-            transition(task, assignee, 'review', 'completed',
+            doTransition(task, assignee, 'review', 'completed',
               `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
-              { quality: task.quality })
+              { quality: task.quality, qualityGate: task.qualityGate })
             logger.info('dept-loop', `Task ${task.id} passed quality gate in ${deptId}`)
           } else {
             // Check rework count — fail after 3 rounds (use persisted reworkCount from API)
             const reworkCount = (task.reworkCount || 0) + 1
             if (reworkCount >= 3) {
-              transition(task, assignee, 'review', 'failed',
+              doTransition(task, assignee, 'review', 'failed',
                 `质量审核不通过且已返工 ${reworkCount} 次: ${gate.reason}`,
-                { quality: task.quality, reworkCount })
+                { quality: task.quality, qualityGate: task.qualityGate, reworkCount })
               logger.warn('dept-loop', `Task ${task.id} failed after ${reworkCount} rework rounds`)
             } else {
               gateErrorCounts.delete(task.id)
-              transition(task, assignee, 'review', 'rework',
+              doTransition(task, assignee, 'review', 'rework',
                 `质量审核不通过 (第${reworkCount}次返工): ${gate.reason}`,
-                { quality: task.quality, reworkCount })
+                { quality: task.quality, qualityGate: task.qualityGate, reworkCount })
               logger.info('dept-loop', `Task ${task.id} sent to rework #${reworkCount}: ${gate.reason}`)
               notifyAgentTaskChange(config.head, assignee, task.id, task.name || '', 'rework', gate.reason)
             }
@@ -243,7 +378,7 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
           const errCount = (gateErrorCounts.get(task.id) || 0) + 1
           gateErrorCounts.set(task.id, errCount)
           if (errCount >= MAX_GATE_ERRORS) {
-            transition(task, assignee, 'review', 'failed',
+            doTransition(task, assignee, 'review', 'failed',
               `质量审核连续异常 ${errCount} 次: ${gateErr.message}`)
             gateErrorCounts.delete(task.id)
           }
@@ -251,12 +386,14 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
         }
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
-      if (idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
-        transition(task, assignee, task.status, 'failed', `agent 空闲 ${idleMins}m 且进度 <50%`)
+      if (idleMins >= strategy.staleThresholdMins && (task.progress || 0) < 50) {
+        doTransition(task, assignee, task.status, 'failed', `agent 空闲 ${idleMins}m 且进度 <50%`)
         logger.warn('dept-loop', `Stale task ${task.id} marked failed (idle ${idleMins}m, progress ${task.progress || 0}%)`)
-      } else if (idleMins >= IDLE_COMPLETE_MINS) {
+      } else if (idleMins >= strategy.idleThresholdMins) {
         // Mark as review instead of completed — let chief confirm in next cycle
-        transition(task, assignee, task.status, 'review', `agent 空闲 ${idleMins}m, 待 chief 确认`)
+        // Bug fix: reset gate error count from previous review rounds
+        gateErrorCounts.delete(task.id)
+        doTransition(task, assignee, task.status, 'review', `agent 空闲 ${idleMins}m, 待 chief 确认`)
         logger.info('dept-loop', `Task ${task.id} moved to review (agent ${assignee} idle ${idleMins}m)`)
       }
     }
@@ -304,15 +441,14 @@ async function runDepartmentCycle(deptId) {
   const startTime = Date.now()
   logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} started`)
 
+  try { eventBus.fire('cycle.start', { deptId, cycleCount: state.cycleCount }) } catch {}
+
   const taskId = await createCycleTask(config.head, `dept-${deptId}-cycle`, state.cycleCount)
 
   try {
     const sessionKey = `agent:${config.head}:dept-autopilot`
 
-    // ── Step 1: Session health check before sending ──
-    await ensureSessionHealth(config.head, sessionKey, deptId)
-
-    // ── Step 1.5: Auto-transition stale tasks BEFORE sending ──
+    // ── Step 1: Auto-transition stale tasks BEFORE sending ──
     // Workers have been idle ~10min since last cycle; checking now ensures
     // idle-based completion fires before sendToAgent resets idle timers.
     // idleOnly: skip chief completions (no response yet)
@@ -335,37 +471,100 @@ async function runDepartmentCycle(deptId) {
     // Build directive for department head (include transition info so chief sees what changed)
     const directive = buildDepartmentDirective(deptId, config, state, preSendTransitions)
 
-    // Send to department head
-    const result = await sendToAgent(config.head, sessionKey, directive)
+    // ── Primary path: Tool-Use via Anthropic API (structured decisions) ──
+    // Falls back to legacy Gateway path if API call fails.
+    let result
+    let usedToolUse = false
+    let chiefDecisions = null
+
+    try {
+      const decisionResult = await makeChiefDecision(directive, deptId, { logger })
+      if (decisionResult.ok) {
+        usedToolUse = true
+        chiefDecisions = decisionResult.decisions
+
+        // Track cost
+        if (decisionResult.usage) {
+          trackCost({
+            model: decisionResult.model || 'claude-sonnet-4-6',
+            usage: decisionResult.usage,
+            source: `dept:${deptId}`,
+            agentId: config.head,
+          })
+        }
+
+        // Execute structured decisions
+        const execResult = await executeChiefDecisions(decisionResult.decisions, deptId, config)
+
+        // Build a synthetic result for downstream compatibility
+        const parts = []
+        if (decisionResult.text) parts.push(decisionResult.text)
+        if (execResult.assignments.length > 0) {
+          parts.push(`[任务分配]\n${execResult.assignments.map(a => `- ${a.agentId}: ${a.summary}`).join('\n')}`)
+        }
+        if (execResult.completions.length > 0) {
+          parts.push(`[任务完成]\n${execResult.completions.map(id => `- ${id}`).join('\n')}`)
+        }
+        if (execResult.progressReports.length > 0) {
+          parts.push(`[进展汇报]\n${execResult.progressReports.map(r => `- ${r.summary}`).join('\n')}`)
+        }
+
+        result = {
+          ok: true,
+          text: parts.join('\n\n') || '(tool-use: structured decisions executed)',
+          usage: decisionResult.usage,
+        }
+        logger.info('dept-loop', `Department ${deptId} cycle via tool-use: ${chiefDecisions.length} decisions`)
+      }
+    } catch (e) {
+      logger.warn('dept-loop', `Tool-use decision failed for ${deptId}, falling back to Gateway: ${e.message}`)
+    }
+
+    // ── Fallback: Legacy Gateway path (regex parsing) ──
+    if (!usedToolUse) {
+      await ensureSessionHealth(config.head, sessionKey, deptId)
+      result = await sendToAgent(config.head, sessionKey, directive)
+
+      // Track cost for gateway path too
+      if (result.ok && result.usage) {
+        trackCost({
+          model: 'unknown',
+          usage: result.usage,
+          source: `dept:${deptId}`,
+          agentId: config.head,
+        })
+      }
+    }
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
     if (result.ok) {
       logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} completed in ${elapsed}s`)
 
-      // ── Auto-create tasks from chief's response ──
-      const assignments = parseTaskAssignments(result.text)
-      if (assignments.length > 0) {
-        // Dedup: keep only the first assignment per agent to avoid TOCTOU race
-        // when Promise.allSettled runs parallel createWorkTask for the same agent
-        const seen = new Set()
-        const uniqueAssignments = assignments.filter(({ agentId }) => {
-          if (seen.has(agentId)) return false
-          seen.add(agentId)
-          return true
-        })
-        const taskPromises = uniqueAssignments.map(({ agentId, summary }) =>
-          createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
-            .then(taskId => ({ agentId, taskId }))
-        )
-        Promise.allSettled(taskPromises).then(results => {
-          const created = results.filter(r => r.status === 'fulfilled' && r.value?.taskId)
-          if (created.length > 0) {
-            logger.info('dept-loop', `Auto-created ${created.length} tasks from chief response in dept ${deptId}`)
-            for (const r of created) {
-              updateTaskStatus(r.value.agentId, r.value.taskId, 'in_progress')
+      // ── Auto-create tasks from chief's response (legacy fallback only) ──
+      if (!usedToolUse) {
+        const assignments = parseTaskAssignments(result.text)
+        if (assignments.length > 0) {
+          const seen = new Set()
+          const uniqueAssignments = assignments.filter(({ agentId }) => {
+            if (seen.has(agentId)) return false
+            seen.add(agentId)
+            return true
+          })
+          const taskPromises = uniqueAssignments.map(({ agentId, summary }) =>
+            createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
+              .then(taskId => ({ agentId, taskId }))
+          )
+          Promise.allSettled(taskPromises).then(results => {
+            const created = results.filter(r => r.status === 'fulfilled' && r.value?.taskId)
+            if (created.length > 0) {
+              logger.info('dept-loop', `Auto-created ${created.length} tasks from chief response in dept ${deptId}`)
+              for (const r of created) {
+                updateTaskStatus(r.value.agentId, r.value.taskId, 'in_progress')
+              }
             }
-          }
-        })
+          })
+        }
       }
 
       // ── Auto-transition stale tasks (with chief response for completion parsing) ──
@@ -381,8 +580,9 @@ async function runDepartmentCycle(deptId) {
       )
 
       // ── Response validation: token check ──
+      // Tool-use path always counts as effective (structured decisions were executed)
       const responseLength = (result.text || '').trim().length
-      const isEffective = responseLength >= MIN_EFFECTIVE_RESPONSE_LENGTH
+      const isEffective = usedToolUse || responseLength >= MIN_EFFECTIVE_RESPONSE_LENGTH
       if (!isEffective) {
         state.consecutiveFailures = (state.consecutiveFailures || 0) + 1
         logger.warn('dept-loop', `Department ${deptId} chief ineffective response: ${responseLength} chars (cycle #${state.cycleCount}, consecutive failures: ${state.consecutiveFailures})`)
@@ -390,7 +590,7 @@ async function runDepartmentCycle(deptId) {
         state.consecutiveFailures = 0
       }
 
-      // ── Dispatch verification: did chief mention peer-send for idle agents? ──
+      // ── Dispatch verification: did chief dispatch to idle agents? ──
       let dispatchNeeded = false
       const activityNow = readAgentActivity()
       const idleWorkers = workers.filter(id => {
@@ -398,17 +598,26 @@ async function runDepartmentCycle(deptId) {
         return !a || a.idleMins >= 5
       })
       if (isEffective && idleWorkers.length > 0) {
-        // Parse which agents were actually mentioned in peer-send commands
         const peerSendTargets = new Set()
-        const peerSendRe = /peer-send\.mjs\s+--from\s+\S+\s+--to\s+(\S+)/g
-        let m
-        while ((m = peerSendRe.exec(result.text)) !== null) {
-          peerSendTargets.add(m[1])
-        }
-        // Also count agents listed in [任务分配] as dispatched
-        for (const a of assignments) {
-          if (/peer-send\s*已发送|已发送/.test(a.summary)) {
-            peerSendTargets.add(a.agentId)
+
+        if (usedToolUse && chiefDecisions) {
+          // Tool-use path: check which agents got assign_task decisions
+          for (const d of chiefDecisions) {
+            if (d.tool === 'assign_task') peerSendTargets.add(d.input.agentId)
+            if (d.tool === 'send_rework') peerSendTargets.add(d.input.agentId)
+          }
+        } else {
+          // Legacy path: parse peer-send commands from text
+          const peerSendRe = /peer-send\.mjs\s+--from\s+\S+\s+--to\s+(\S+)/g
+          let m
+          while ((m = peerSendRe.exec(result.text)) !== null) {
+            peerSendTargets.add(m[1])
+          }
+          const assignments = parseTaskAssignments(result.text)
+          for (const a of assignments) {
+            if (/peer-send\s*已发送|已发送/.test(a.summary)) {
+              peerSendTargets.add(a.agentId)
+            }
           }
         }
 
@@ -491,6 +700,7 @@ async function runDepartmentCycle(deptId) {
       saveDeptState(deptId, state)
 
       await completeCycleTask(config.head, taskId, result)
+      try { eventBus.fire('cycle.end', { deptId, results: 'ok', durationMs: Date.now() - startTime }) } catch {}
       return { ok: true, text: result.text }
     } else {
       logger.error('dept-loop', `Department ${deptId} cycle failed: ${result.error}`)
@@ -863,4 +1073,4 @@ if (require.main === module) {
   })
 }
 
-module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, autoTransitionTasks }
+module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, autoTransitionTasks, executeChiefDecisions }

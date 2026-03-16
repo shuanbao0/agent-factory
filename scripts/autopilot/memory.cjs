@@ -337,10 +337,9 @@ function updateDomainKnowledge(agentId, response) {
     existing = readFileSync(knowledgePath, 'utf-8')
   }
 
-  // Deduplicate: skip if the new content is already substantially present
-  if (existing && newKnowledge.split('\n').every(line =>
-    line.length < 10 || existing.includes(line.trim())
-  )) {
+  // Deduplicate: skip if the entire new knowledge block is already present
+  // (entry-level comparison instead of per-line, so short lines don't auto-pass)
+  if (existing && existing.includes(newKnowledge.trim())) {
     return
   }
 

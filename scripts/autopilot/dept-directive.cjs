@@ -3,9 +3,10 @@
  */
 const { join } = require('path')
 const { readFileSync, existsSync } = require('fs')
-const { DEPARTMENTS_DIR, PROJECTS_DIR } = require('./constants.cjs')
+const { DEPARTMENTS_DIR } = require('./constants.cjs')
 const { readAgentActivity, readProjectTasks, readDeptMission, readBaseMission, readAgentMeta } = require('./readers.cjs')
 const { buildMemoryContext } = require('./memory.cjs')
+const { DirectiveBuilder } = require('../../shared/directive-builder.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -29,7 +30,6 @@ function readCeoDirectives(deptId) {
 function buildTeamStatus(agentIds, agentActivity, projects) {
   if (!agentIds || agentIds.length === 0) return '(无团队成员)'
 
-  // Count in_progress tasks per agent
   const inProgressCount = {}
   for (const proj of projects) {
     for (const t of (proj.tasks || [])) {
@@ -75,7 +75,6 @@ function buildDeptTasks(deptId, config, projects) {
 
     result += `\n### ${proj.name}\n`
 
-    // Group by task type if available
     const byType = {}
     const untyped = []
     for (const t of tasks) {
@@ -140,92 +139,11 @@ function buildKpiStatus(deptId, kpiDefs) {
 }
 
 /**
- * Build a complete directive for a department head.
- *
- * @param {string} deptId - Department ID
- * @param {object} config - Department config
- * @param {object} state - Department state
- * @param {Array<{taskId: string, taskName: string, agentId: string, from: string, to: string, reason: string}>} [transitions] - Task transitions from pre-send auto-transition
- * @returns {string} The directive text
+ * Build the action requirements text block for a department head.
+ * Extracted to keep buildDepartmentDirective focused on data assembly.
  */
-function buildDepartmentDirective(deptId, config, state, transitions) {
-  const agentActivity = readAgentActivity()
-  const projects = readProjectTasks()
-
-  // Try to get structured memory for the department head
-  let memorySection = ''
-  try {
-    const memCtx = buildMemoryContext(config.head, 'department')
-    if (memCtx.summary) memorySection = `\n## 你的记忆\n${memCtx.summary}\n`
-  } catch {
-    // No memory available
-  }
-
-  const budgetInfo = config.budget
-    ? `今日已用: ${state.tokensUsedToday || 0} / ${config.budget.dailyTokenLimit} tokens`
-    : '(无预算限制)'
-
-  // Read base mission + department mission
-  const baseMission = readBaseMission()
-  const deptMission = readDeptMission(deptId)
-
-  let missionSection = ''
-  if (baseMission || deptMission) {
-    missionSection = '\n## 部门使命\n'
-    if (baseMission) {
-      missionSection += `### 通用准则\n${baseMission}\n\n`
-    }
-    if (deptMission) {
-      missionSection += `### 本部门使命\n${deptMission}\n`
-    }
-  }
-
-  // Build transitions summary (from pre-send auto-transition)
-  let transitionSection = ''
-  if (transitions && transitions.length > 0) {
-    transitionSection = '\n## ⚡ 本轮任务自动变化（系统检测）\n'
-    transitionSection += '以下任务在本轮开始前被系统自动流转，请注意处理：\n'
-    for (const t of transitions) {
-      const statusLabels = {
-        review: '⏳ 待确认完成',
-        completed: '✅ 已完成',
-        failed: '❌ 已失败',
-        in_progress: '🔄 进行中',
-      }
-      const label = statusLabels[t.to] || t.to
-      transitionSection += `- [${t.taskId}] ${t.taskName} → ${t.agentId}: ${t.from} → ${label}（${t.reason}）\n`
-    }
-    // Highlight review tasks that need chief action
-    const reviewTasks = transitions.filter(t => t.to === 'review')
-    if (reviewTasks.length > 0) {
-      transitionSection += `\n> 🔔 有 ${reviewTasks.length} 个任务等待你确认完成。请检查产出质量后在 [任务完成] 中确认，或通过 peer-send 要求 agent 继续完善。\n`
-    }
-    const failedTasks = transitions.filter(t => t.to === 'failed')
-    if (failedTasks.length > 0) {
-      transitionSection += `> ⚠️ 有 ${failedTasks.length} 个任务因长时间无进展被标记为失败。请决定是否重新分配。\n`
-    }
-  }
-
-  return `[Department Loop: ${deptId} Cycle #${(state.cycleCount || 0) + 1}]
-
-你是 ${config.head}，${config.name || deptId} 部门主管。
-${memorySection}${missionSection}
-## CEO 指令
-${readCeoDirectives(deptId)}
-
-## 部门预算
-${budgetInfo}
-${transitionSection}
-## 团队状态
-${buildTeamStatus(config.agents, agentActivity, projects)}
-
-## 部门任务
-${buildDeptTasks(deptId, config, projects)}
-
-## 部门 KPI
-${buildKpiStatus(deptId, config.kpis)}
-
-## 行动要求
+function buildActionRequirements(headId, deptId) {
+  return `## 行动要求
 
 ### ⛔ 分配决策原则（按优先级）
 
@@ -252,12 +170,12 @@ ${buildKpiStatus(deptId, config.kpis)}
 
 **调用方式（直接在 bash 中执行）：**
 \`\`\`bash
-node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <目标agent-id> --message "具体任务指令" --no-wait
+node skills/peer-status/scripts/peer-send.mjs --from ${headId} --to <目标agent-id> --message "具体任务指令" --no-wait
 \`\`\`
 
 **示例：**
 \`\`\`bash
-node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-writer --message "请继续写作第3章，参考 projects/novel/ 下的大纲" --no-wait
+node skills/peer-status/scripts/peer-send.mjs --from ${headId} --to novel-writer --message "请继续写作第3章，参考 projects/novel/ 下的大纲" --no-wait
 \`\`\`
 
 ### 📋 任务追踪
@@ -267,7 +185,7 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-w
 
 \`\`\`bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
-  -d '{"agent":"${config.head}","name":"任务名","projectId":"${deptId}","type":"dept-work","assignees":["实际执行的agent-id"]}' \\
+  -d '{"agent":"${headId}","name":"任务名","projectId":"${deptId}","type":"dept-work","assignees":["实际执行的agent-id"]}' \\
   "http://127.0.0.1:3100/api/agent-tasks"
 \`\`\`
 peer-send 消息中引用任务 ID：\`[Task: task-xxx] 具体指令...\`
@@ -280,7 +198,7 @@ peer-send 消息中引用任务 ID：\`[Task: task-xxx] 具体指令...\`
 2. 如果质量合格 → 在 [任务完成] 中列出该 task ID
 3. 如果需要修改 → 通过 peer-send 要求修改，**消息中必须包含 [Task: task-xxx]**（系统会自动将任务回退到 in_progress）：
 \`\`\`bash
-node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-id> --message "[Task: task-xxx] 请修改：<具体修改意见>" --no-wait
+node skills/peer-status/scripts/peer-send.mjs --from ${headId} --to <agent-id> --message "[Task: task-xxx] 请修改：<具体修改意见>" --no-wait
 \`\`\`
 
 ### 其他行动
@@ -308,8 +226,48 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-
 - <关键进展>
 [阻塞项]
 - <如有>
-\`\`\`
-`
+\`\`\``
+}
+
+/**
+ * Build a complete directive for a department head.
+ *
+ * @param {string} deptId - Department ID
+ * @param {object} config - Department config
+ * @param {object} state - Department state
+ * @param {Array<{taskId: string, taskName: string, agentId: string, from: string, to: string, reason: string}>} [transitions]
+ * @returns {string} The directive text
+ */
+function buildDepartmentDirective(deptId, config, state, transitions) {
+  const agentActivity = readAgentActivity()
+  const projects = readProjectTasks()
+
+  // Memory context for department head
+  let memorySummary = null
+  try {
+    const memCtx = buildMemoryContext(config.head, 'department')
+    if (memCtx.summary) memorySummary = memCtx.summary
+  } catch {
+    // No memory available
+  }
+
+  const budgetInfo = config.budget
+    ? `今日已用: ${state.tokensUsedToday || 0} / ${config.budget.dailyTokenLimit} tokens`
+    : '(无预算限制)'
+
+  return new DirectiveBuilder()
+    .withHeader(`[Department Loop: ${deptId} Cycle #${(state.cycleCount || 0) + 1}]`)
+    .withRole(config.head, config.name || deptId)
+    .withDeptMemory(memorySummary)
+    .withMission(readBaseMission(), readDeptMission(deptId))
+    .withCeoDirectives(readCeoDirectives(deptId))
+    .withBudget(budgetInfo)
+    .withTransitions(transitions)
+    .withTeamStatus(buildTeamStatus(config.agents, agentActivity, projects))
+    .withTasks(buildDeptTasks(deptId, config, projects))
+    .withKpis(buildKpiStatus(deptId, config.kpis))
+    .withActionRequirements(buildActionRequirements(config.head, deptId))
+    .build()
 }
 
 module.exports = { buildDepartmentDirective, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildKpiStatus }

@@ -10,9 +10,11 @@
     "start": "node scripts/start.mjs",
     "gateway": "node scripts/start.mjs --gateway-only",
     "ui": "cd ui && npm run dev",
-    "postinstall": "node scripts/patch-openclaw.mjs"
+    "postinstall": "node scripts/patch-openclaw.mjs",
+    "test": "node --test 'shared/**/*.test.cjs'"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "clawhub": "^0.7.0",
     "openclaw": "^2026.3.8",
     "ws": "^8.19.0"

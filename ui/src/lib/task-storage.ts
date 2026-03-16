@@ -1,10 +1,25 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs'
-import { join, resolve } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, renameSync } from 'fs'
+import { join, resolve, dirname } from 'path'
 import type { Task } from './types'
+import { normalizeStatus } from './shared-bridge'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 const TASKS_FILE = join(PROJECT_ROOT, 'config', 'tasks.json')
+
+/** Atomic write: tmp + rename, fallback to direct write */
+function atomicWriteJson(filePath: string, data: unknown) {
+  const dir = dirname(filePath)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  const json = JSON.stringify(data, null, 2) + '\n'
+  const tmp = filePath + '.tmp'
+  try {
+    writeFileSync(tmp, json)
+    renameSync(tmp, filePath)
+  } catch {
+    writeFileSync(filePath, json)
+  }
+}
 
 /** Normalize legacy task fields to new Task shape */
 export function normalizeTask(raw: Record<string, unknown>, projectId?: string): Task {
@@ -14,8 +29,7 @@ export function normalizeTask(raw: Record<string, unknown>, projectId?: string):
       ? [raw.assignedAgent as string]
       : []
 
-  let status = (raw.status as string) || 'pending'
-  if (status === 'running') status = 'in_progress'
+  const status = normalizeStatus((raw.status as string) || 'pending')
 
   return {
     id: raw.id as string,
@@ -55,11 +69,9 @@ export function readStandaloneTasks(): Task[] {
   }
 }
 
-/** Write standalone tasks to config/tasks.json */
+/** Write standalone tasks to config/tasks.json (atomic) */
 export function writeStandaloneTasks(tasks: Task[]) {
-  const dir = join(PROJECT_ROOT, 'config')
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(TASKS_FILE, JSON.stringify({ tasks, lastUpdated: new Date().toISOString() }, null, 2) + '\n')
+  atomicWriteJson(TASKS_FILE, { tasks, lastUpdated: new Date().toISOString() })
 }
 
 /** Read project meta */
@@ -74,10 +86,10 @@ export function readProjectMeta(projectId: string): Record<string, unknown> | nu
   }
 }
 
-/** Write project meta */
+/** Write project meta (atomic) */
 export function writeProjectMeta(projectId: string, meta: Record<string, unknown>) {
   const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
-  writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
+  atomicWriteJson(metaPath, meta)
 }
 
 /** Read all project tasks */
@@ -139,47 +151,65 @@ export function findTaskById(taskId: string): { task: Task; source: 'standalone'
   return null
 }
 
-/** Update a task in a project's .project-meta.json */
+/** Update a task in a project's .project-meta.json (atomic read-mutate-write) */
 export function updateProjectTask(projectId: string, taskId: string, updates: Partial<Task>): boolean {
-  const meta = readProjectMeta(projectId)
-  if (!meta) return false
-  const tasks = (meta.tasks || []) as Record<string, unknown>[]
-  const idx = tasks.findIndex(t => t.id === taskId)
-  if (idx === -1) return false
-  const merged = { ...tasks[idx], ...updates, updatedAt: new Date().toISOString() }
-  if (updates.assignees && updates.assignees.length > 0) {
-    merged.assignedAgent = updates.assignees[0]
+  const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
+  if (!existsSync(metaPath)) return false
+  try {
+    // Atomic: read fresh, mutate, write in one pass
+    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    const tasks = (meta.tasks || []) as Record<string, unknown>[]
+    const idx = tasks.findIndex(t => t.id === taskId)
+    if (idx === -1) return false
+    const merged = { ...tasks[idx], ...updates, updatedAt: new Date().toISOString() }
+    if (updates.assignees && updates.assignees.length > 0) {
+      merged.assignedAgent = updates.assignees[0]
+    }
+    tasks[idx] = merged
+    meta.tasks = tasks
+    atomicWriteJson(metaPath, meta)
+    return true
+  } catch {
+    return false
   }
-  tasks[idx] = merged
-  meta.tasks = tasks
-  writeProjectMeta(projectId, meta)
-  return true
 }
 
-/** Delete a task from a project's .project-meta.json */
+/** Delete a task from a project's .project-meta.json (atomic read-mutate-write) */
 export function deleteProjectTask(projectId: string, taskId: string): boolean {
-  const meta = readProjectMeta(projectId)
-  if (!meta) return false
-  const tasks = (meta.tasks || []) as Record<string, unknown>[]
-  const idx = tasks.findIndex(t => t.id === taskId)
-  if (idx === -1) return false
-  tasks.splice(idx, 1)
-  meta.tasks = tasks
-  writeProjectMeta(projectId, meta)
-  return true
+  const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
+  if (!existsSync(metaPath)) return false
+  try {
+    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    const tasks = (meta.tasks || []) as Record<string, unknown>[]
+    const idx = tasks.findIndex(t => t.id === taskId)
+    if (idx === -1) return false
+    tasks.splice(idx, 1)
+    meta.tasks = tasks
+    atomicWriteJson(metaPath, meta)
+    return true
+  } catch {
+    return false
+  }
 }
 
-/** Update a task in-place (finds it wherever it is) */
+/** Update a task in-place (finds it wherever it is, atomic) */
 export function updateTaskInPlace(taskId: string, updates: Partial<Task>): Task | null {
-  // Try standalone
-  const standalone = readStandaloneTasks()
-  const sIdx = standalone.findIndex(t => t.id === taskId)
-  if (sIdx !== -1) {
-    const merged = { ...standalone[sIdx], ...updates, updatedAt: new Date().toISOString() }
-    if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
-    standalone[sIdx] = merged
-    writeStandaloneTasks(standalone)
-    return merged
+  // Try standalone (atomic read-mutate-write on tasks.json)
+  if (existsSync(TASKS_FILE)) {
+    try {
+      const data = JSON.parse(readFileSync(TASKS_FILE, 'utf-8'))
+      const tasks = (data.tasks || []) as Record<string, unknown>[]
+      const sIdx = tasks.findIndex(t => t.id === taskId)
+      if (sIdx !== -1) {
+        const merged = { ...tasks[sIdx], ...updates, updatedAt: new Date().toISOString() }
+        if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
+        tasks[sIdx] = merged
+        data.tasks = tasks
+        data.lastUpdated = new Date().toISOString()
+        atomicWriteJson(TASKS_FILE, data)
+        return normalizeTask(merged as Record<string, unknown>)
+      }
+    } catch { /* fall through to project tasks */ }
   }
 
   // Try project tasks

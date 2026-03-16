@@ -16,6 +16,7 @@ import {
   persistNewTask,
   getWorkflowForTask,
 } from '@/lib/quality-gate'
+import { canTransition, getValidTransitions } from '@/lib/shared-bridge'
 
 export const dynamic = 'force-dynamic'
 
@@ -140,23 +141,13 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Agent is not assigned to or creator of this task' }, { status: 403 })
     }
 
-    // State transition guard: only allow valid transitions
+    // State transition guard: only allow valid transitions (via shared state machine)
     if (status) {
-      const VALID_TRANSITIONS: Record<string, string[]> = {
-        'pending':     ['assigned', 'in_progress', 'completed', 'failed'],
-        'assigned':    ['in_progress', 'completed', 'failed'],
-        'in_progress': ['review', 'completed', 'rework', 'failed'],
-        'review':      ['completed', 'rework', 'in_progress', 'failed'],
-        'rework':      ['in_progress', 'review', 'completed', 'failed'],
-        'completed':   [],  // terminal
-        'failed':      [],  // terminal
-      }
-      const allowed = VALID_TRANSITIONS[found.task.status] || []
-      if (!allowed.includes(status)) {
+      if (!canTransition(found.task.status, status)) {
         return NextResponse.json({
           error: `Invalid transition: ${found.task.status} → ${status}`,
           currentStatus: found.task.status,
-          allowedTransitions: allowed,
+          allowedTransitions: getValidTransitions(found.task.status),
         }, { status: 409 })
       }
     }

@@ -24,7 +24,8 @@ function resolveModelRef(ref: string): string {
     const [provider, alias] = ref.split('/')
     const modelId = models.providers?.[provider]?.models?.[alias]
     return modelId ? `${provider}/${modelId}` : ref
-  } catch {
+  } catch (e) {
+    console.warn(`[agents-api] Failed to resolve model ref ${ref}: ${e}`)
     return ref
   }
 }
@@ -63,7 +64,9 @@ function generateToolsMd(agentId: string, skills: string[], agentDir: string): s
         if (bins.length > 0) lines.push(`- **Requires:** ${bins.map(b => `\`${b}\``).join(', ')} on PATH`)
         lines.push(`- Full docs: \`skills/${slug}/SKILL.md\``, '')
         continue
-      } catch {}
+      } catch (e) {
+        console.warn(`[agents-api] Failed to parse skill meta for ${slug}: ${e}`)
+      }
     }
     lines.push(`### ${slug}`, `- Full docs: \`skills/${slug}/SKILL.md\``, '')
   }
@@ -92,49 +95,27 @@ function generateToolsMd(agentId: string, skills: string[], agentDir: string): s
   return lines.join('\n')
 }
 
+// Config operations delegated to ConfigRepository (atomic writes)
+import { ConfigRepository, AgentService, BaseRepository } from '@/lib/shared-bridge'
+const localConfigRepo = new ConfigRepository()
+// No-cache BaseRepository for atomic dept config updates in API routes
+const deptConfigWriter = new BaseRepository()
+
 function readOpenlawConfig(): Record<string, any> {
-  if (existsSync(OPENCLAW_CONFIG)) {
-    return JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'))
-  }
-  return {}
+  return localConfigRepo.getConfig()
 }
 
 function writeOpenclawConfig(config: Record<string, any>) {
-  writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n')
+  localConfigRepo.write(OPENCLAW_CONFIG, config)
 }
 
 function addToOpenclawConfig(agentId: string, workspaceDir: string, model: string | undefined) {
-  const config = readOpenlawConfig()
-  if (!config.agents) config.agents = {}
-  if (!config.agents.list) config.agents.list = []
-  if (!config.tools) config.tools = {}
-  if (!config.tools.agentToAgent) config.tools.agentToAgent = { enabled: true, allow: ['*'] }
-
-  const list = config.agents.list as Array<{ id: string; [key: string]: any }>
-  const existingIdx = list.findIndex(a => a.id === agentId)
-
-  const entry: { id: string; [key: string]: any } = {
-    id: agentId,
-    workspace: workspaceDir,
-  }
-  if (model) entry.model = { primary: resolveModelRef(model) }
-  entry.subagents = { allowAgents: [agentId] }
-
-  if (existingIdx >= 0) {
-    list[existingIdx] = { ...list[existingIdx], ...entry }
-  } else {
-    list.push(entry)
-  }
-
-  config.agents.list = list
-  writeOpenclawConfig(config)
+  const resolved = model ? resolveModelRef(model) : undefined
+  localConfigRepo.addAgent(agentId, workspaceDir, resolved)
 }
 
 function removeFromOpenclawConfig(agentId: string) {
-  const config = readOpenlawConfig()
-  if (!config.agents?.list) return
-  config.agents.list = (config.agents.list as Array<{ id: string }>).filter(a => a.id !== agentId)
-  writeOpenclawConfig(config)
+  localConfigRepo.removeAgent(agentId)
 }
 
 const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config/departments')
@@ -143,27 +124,29 @@ function syncAutopilotDeptAgents(department: string, agentId: string, action: 'a
   const configPath = join(DEPARTMENTS_DIR, department, 'config.json')
   if (!existsSync(configPath)) return
   try {
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-    const agents: string[] = config.agents || []
-    if (action === 'add') {
-      if (!agents.includes(agentId)) {
-        agents.push(agentId)
-        config.agents = agents
-        // Auto-set head if empty and agent looks like a head
-        if (!config.head && /chief|head|manager|director/.test(agentId)) {
-          config.head = agentId
+    // Atomic read-mutate-write via BaseRepository.update()
+    deptConfigWriter.update(configPath, (config: Record<string, unknown>) => {
+      const agents: string[] = (config.agents as string[]) || []
+      if (action === 'add') {
+        if (!agents.includes(agentId)) {
+          agents.push(agentId)
+          config.agents = agents
+          if (!config.head && /chief|head|manager|director/.test(agentId)) {
+            config.head = agentId
+          }
         }
-        writeFileSync(configPath, JSON.stringify(config, null, 2))
+      } else {
+        const idx = agents.indexOf(agentId)
+        if (idx >= 0) {
+          agents.splice(idx, 1)
+          config.agents = agents
+        }
       }
-    } else {
-      const idx = agents.indexOf(agentId)
-      if (idx >= 0) {
-        agents.splice(idx, 1)
-        config.agents = agents
-        writeFileSync(configPath, JSON.stringify(config, null, 2))
-      }
-    }
-  } catch { /* skip */ }
+      return config
+    })
+  } catch (e) {
+    console.warn(`[agents-api] Failed to sync dept agents for ${department}/${agentId}: ${e}`)
+  }
 }
 
 function ensureProjectForDepartment(department: string, agentId: string) {
@@ -208,18 +191,21 @@ This project's shared workspace is at:
 `
     writeFileSync(join(projectDir, 'BRIEF.md'), brief)
   } else {
-    // Project exists — ensure agent is in assignedAgents
+    // Project exists — ensure agent is in assignedAgents (atomic update)
     const metaPath = join(projectDir, '.project-meta.json')
     if (existsSync(metaPath)) {
       try {
-        const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-        const assigned: string[] = meta.assignedAgents || []
-        if (!assigned.includes(agentId)) {
-          assigned.push(agentId)
-          meta.assignedAgents = assigned
-          writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
-        }
-      } catch { /* skip */ }
+        deptConfigWriter.update(metaPath, (meta: Record<string, unknown>) => {
+          const assigned: string[] = (meta.assignedAgents as string[]) || []
+          if (!assigned.includes(agentId)) {
+            assigned.push(agentId)
+            meta.assignedAgents = assigned
+          }
+          return meta
+        })
+      } catch (e) {
+        console.warn(`[agents-api] Failed to update project meta for ${department}: ${e}`)
+      }
     }
   }
 }
@@ -609,37 +595,13 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    // 1. Remove from openclaw.json
-    removeFromOpenclawConfig(id)
+    const agentService = new AgentService()
+    const result = await agentService.deleteAgent(id)
 
-    // 2. Remove agents/{id}/
-    const agentDir = join(AGENTS_DIR, id)
-    if (existsSync(agentDir)) {
-      rmSync(agentDir, { recursive: true, force: true })
-    }
-
-    // 3. Remove Gateway runtime state (.openclaw-state/agents/{id}/)
-    const stateDir = join(PROJECT_ROOT, '.openclaw-state', 'agents', id)
-    if (existsSync(stateDir)) {
-      rmSync(stateDir, { recursive: true, force: true })
-    }
-
-    // 4. Archive workspaces/{id}/ to workspaces/.archived/
-    let archivedTo: string | null = null
-    const workspaceDir = join(PROJECT_ROOT, 'workspaces', id)
-    if (existsSync(workspaceDir)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-      const archiveDir = join(PROJECT_ROOT, 'workspaces', '.archived')
-      mkdirSync(archiveDir, { recursive: true })
-      const archivePath = join(archiveDir, `${id}_${timestamp}`)
-      renameSync(workspaceDir, archivePath)
-      archivedTo = `workspaces/.archived/${id}_${timestamp}`
-    }
-
-    // 5. Restart gateway
+    // Restart gateway (AgentService doesn't manage process lifecycle)
     const restarted = await tryRestartGateway()
 
-    return NextResponse.json({ ok: true, restarted, archivedTo })
+    return NextResponse.json({ ...result, restarted })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
@@ -658,7 +620,9 @@ function buildPeersRolesSection(peers: string[]): string {
           lines.push(`- **${peerId}**: ${data.description}`)
         }
       }
-    } catch { /* skip */ }
+    } catch (e) {
+      console.warn(`[agents-api] Failed to read peer meta for ${peerId}: ${e}`)
+    }
   }
   if (lines.length === 0) return ''
   return `\n### Peers 职责\n\n以下是你可以通信的同事及其职责，请将超出你职责范围的工作交给对应的同事：\n\n${lines.join('\n')}\n`

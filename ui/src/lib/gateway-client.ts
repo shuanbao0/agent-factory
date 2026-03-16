@@ -2,7 +2,7 @@
  * Gateway Client — 通过 openclaw CLI 调用内置 Gateway
  * 使用 --url + --token 直接指定内置 Gateway，避免连到本机默认 Gateway
  */
-import { execSync, exec } from 'child_process'
+import { execFileSync, execFile } from 'child_process'
 import { resolve } from 'path'
 import { existsSync } from 'fs'
 
@@ -24,11 +24,11 @@ function getOpenClawBin(): string {
   return 'openclaw'
 }
 
-function buildCmd(method: string, params?: Record<string, unknown>, timeoutMs?: number): string {
-  const bin = getOpenClawBin()
-  const paramsArg = params ? ` --params '${JSON.stringify(params)}'` : ''
-  const timeoutArg = timeoutMs ? ` --timeout ${timeoutMs}` : ''
-  return `${bin} gateway call ${method} --json --url ${GW_URL} --token ${GW_TOKEN}${timeoutArg}${paramsArg}`
+function buildArgs(method: string, params?: Record<string, unknown>, timeoutMs?: number) {
+  const args = ['gateway', 'call', method, '--json', '--url', GW_URL, '--token', GW_TOKEN]
+  if (timeoutMs) args.push('--timeout', String(timeoutMs))
+  if (params) args.push('--params', JSON.stringify(params))
+  return { bin: getOpenClawBin(), args }
 }
 
 function parseGwOutput(raw: string): unknown {
@@ -43,17 +43,22 @@ function parseGwOutput(raw: string): unknown {
 
 /** Synchronous gateway call */
 export function gwCall(method: string, params?: Record<string, unknown>, timeoutMs = 15000): unknown {
-  const raw = execSync(buildCmd(method, params, timeoutMs), {
-    timeout: timeoutMs + 5000, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
+  const { bin, args } = buildArgs(method, params, timeoutMs)
+  const raw = execFileSync(bin, args, {
+    timeout: timeoutMs + 5000, encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, NO_COLOR: '1' },
   })
   return parseGwOutput(raw)
 }
 
 /** Async gateway call — runs in parallel, does not block the event loop */
 export function gwCallAsync(method: string, params?: Record<string, unknown>, timeoutMs = 10000): Promise<unknown> {
+  const { bin, args } = buildArgs(method, params, timeoutMs)
   return new Promise((resolve, reject) => {
-    exec(buildCmd(method, params, timeoutMs), {
-      timeout: timeoutMs + 5000, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' },
+    execFile(bin, args, {
+      timeout: timeoutMs + 5000, encoding: 'utf-8',
+      env: { ...process.env, NO_COLOR: '1' },
     }, (error, stdout) => {
       if (error) return reject(error)
       try { resolve(parseGwOutput(stdout)) } catch (e) { reject(e) }

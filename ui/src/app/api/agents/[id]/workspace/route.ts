@@ -8,8 +8,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve, join, basename } from 'path'
-import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs'
 import { stripMarkerBlock, injectBaseRulesForAgent } from '@/lib/base-rules'
+import { validateAgentId } from '@/lib/shared-bridge'
 
 // Marker constants matching base-rules.ts
 const AGENTS_BEGIN = '<!-- BASE-RULES:BEGIN -->'
@@ -42,13 +43,18 @@ function getWorkspaceDir(id: string) {
   return join(AGENTS_DIR, id)
 }
 
-/** Ensure resolved path is inside workspace dir (prevent path traversal) */
+/** Ensure resolved path is inside workspace dir (prevent path traversal + symlink escape) */
 function safePath(workspaceDir: string, filePath: string): string | null {
   const resolved = resolve(workspaceDir, filePath)
-  if (!resolved.startsWith(workspaceDir + '/') && resolved !== workspaceDir) {
-    return null
+  if (!resolved.startsWith(workspaceDir + '/') && resolved !== workspaceDir) return null
+  try {
+    const real = realpathSync(resolved)
+    const realBase = realpathSync(workspaceDir)
+    if (!real.startsWith(realBase + '/') && real !== realBase) return null
+    return real
+  } catch {
+    return resolved  // file doesn't exist yet (PUT scenario), prefix check already passed
   }
-  return resolved
 }
 
 export async function GET(
@@ -56,6 +62,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const { id } = params
+  if (!validateAgentId(id).valid) {
+    return NextResponse.json({ error: 'Invalid agent ID' }, { status: 400 })
+  }
   const workspaceDir = getWorkspaceDir(id)
 
   if (!existsSync(workspaceDir)) {
@@ -109,6 +118,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const { id } = params
+  if (!validateAgentId(id).valid) {
+    return NextResponse.json({ error: 'Invalid agent ID' }, { status: 400 })
+  }
   const workspaceDir = getWorkspaceDir(id)
 
   if (!existsSync(workspaceDir)) {

@@ -48,7 +48,7 @@ const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000      // Max chars for domain knowledge f
 const SESSION_RESET_INPUT_TOKENS = 80000     // Reset session when inputTokens exceeds this
 const SESSION_FORCE_COMPACT_TOKENS = 50000   // Force compact when inputTokens exceeds this
 
-// Task auto-transition thresholds
+// Task auto-transition thresholds (legacy defaults — see shared/task-strategy.cjs for type-aware thresholds)
 const IDLE_COMPLETE_MINS = 8                // Agent idle N minutes → in_progress task auto-completed (2min margin vs 10min cycle)
 const STALE_TASK_MINS = 30                  // Agent idle N minutes + low progress → task failed
 
