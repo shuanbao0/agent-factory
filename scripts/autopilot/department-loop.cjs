@@ -172,6 +172,16 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
   const transition = (task, assignee, from, to, reason, extras) => {
     updateTaskStatus(assignee, task.id, to, extras)
     transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from, to, reason })
+
+    // Emit task lifecycle events (safe no-op if event bus not yet wired)
+    try {
+      const bus = require('./event-bus.cjs')
+      if (to === 'completed') {
+        bus.emit('task.completed', { taskId: task.id, agentId: assignee, department: deptId })
+      } else if (to === 'failed') {
+        bus.emit('task.failed', { taskId: task.id, agentId: assignee, department: deptId })
+      }
+    } catch { /* event bus not available yet */ }
   }
 
   // 1. Chief-reported completions (skip in idleOnly mode — pre-send has no response)
