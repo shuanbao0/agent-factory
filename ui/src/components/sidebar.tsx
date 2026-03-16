@@ -7,7 +7,7 @@ import { LanguageSwitcher } from './language-switcher'
 import { useMobile } from '@/hooks/use-mobile'
 import {
   LayoutDashboard, Users, FolderKanban, Wrench,
-  Settings, ScrollText, Activity, Zap, Menu, X, MessageSquare, CheckSquare, Rocket
+  Settings, ScrollText, Activity, Zap, Menu, X, MessageSquare, CheckSquare, Rocket, DollarSign
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -19,6 +19,7 @@ const nav = [
   { href: '/tasks', labelKey: 'nav.tasks', icon: CheckSquare },
   { href: '/messages', labelKey: 'nav.messages', icon: MessageSquare },
   { href: '/skills', labelKey: 'nav.skills', icon: Wrench },
+  { href: '/costs', labelKey: 'nav.costs', icon: DollarSign },
   { href: '/logs', labelKey: 'nav.logs', icon: ScrollText },
   { href: '/settings', labelKey: 'nav.settings', icon: Settings },
 ]

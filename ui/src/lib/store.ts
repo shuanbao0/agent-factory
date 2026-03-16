@@ -538,6 +538,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       return () => {} // no-op cleanup — connection already managed
     }
 
+    // Fix 5: close stale connection before creating a new one (SSE leak prevention)
+    if (_activeEventSource) {
+      _activeEventSource.close()
+      _activeEventSource = null
+    }
+
     const es = new EventSource('/api/events')
     _activeEventSource = es
 
@@ -676,7 +682,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ health: null })
     })
 
+    // Fix 5: clean up on page unload to prevent connection leak
+    const onUnload = () => {
+      es.close()
+      if (_activeEventSource === es) _activeEventSource = null
+    }
+    window.addEventListener('beforeunload', onUnload)
+
     return () => {
+      window.removeEventListener('beforeunload', onUnload)
       es.close()
       if (_activeEventSource === es) _activeEventSource = null
     }

@@ -8,6 +8,7 @@
     "settings": "设置",
     "messages": "消息",
     "tasks": "任务",
+    "costs": "成本",
     "autopilot": "自动驾驶"
   },
   "common": {
@@ -484,6 +485,29 @@
       "saved": "已保存",
       "loadFailed": "加载失败"
     }
+  },
+  "costs": {
+    "title": "成本监控",
+    "subtitle": "Autopilot API 使用成本追踪",
+    "period": {
+      "today": "今天",
+      "7d": "7天",
+      "30d": "30天"
+    },
+    "totalCost": "总费用",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "apiCalls": "API 调用",
+    "dailyCost": "每日成本",
+    "bySource": "按来源",
+    "byModel": "按模型",
+    "recentEntries": "最近记录",
+    "colTime": "时间",
+    "colSource": "来源",
+    "colModel": "模型",
+    "colCost": "费用",
+    "noData": "暂无成本数据",
+    "noDataHint": "启动 Autopilot 后会自动追踪 API 调用成本"
   },
   "phases": {
     "research": "调研",

@@ -8,6 +8,7 @@
     "settings": "Settings",
     "messages": "Messages",
     "tasks": "Tasks",
+    "costs": "Costs",
     "autopilot": "Autopilot"
   },
   "common": {
@@ -484,6 +485,29 @@
       "saved": "Saved",
       "loadFailed": "Failed to load"
     }
+  },
+  "costs": {
+    "title": "Cost Monitor",
+    "subtitle": "Autopilot API usage cost tracking",
+    "period": {
+      "today": "Today",
+      "7d": "7 Days",
+      "30d": "30 Days"
+    },
+    "totalCost": "Total Cost",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "apiCalls": "API Calls",
+    "dailyCost": "Daily Cost",
+    "bySource": "By Source",
+    "byModel": "By Model",
+    "recentEntries": "Recent Entries",
+    "colTime": "Time",
+    "colSource": "Source",
+    "colModel": "Model",
+    "colCost": "Cost",
+    "noData": "No cost data yet",
+    "noDataHint": "Cost tracking starts when Autopilot runs API calls"
   },
   "phases": {
     "research": "Research",
