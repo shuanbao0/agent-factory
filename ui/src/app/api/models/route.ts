@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
 import { PROVIDERS } from '@/lib/providers'
+import { logError } from '@/lib/error-logger'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const MODELS_PATH = resolve(PROJECT_ROOT, 'config/models.json')
@@ -273,7 +274,7 @@ function readEnvFile(): Record<string, string> {
       if (eqIdx === -1) continue
       vars[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim()
     }
-  } catch {}
+  } catch (err) { logError('models-api/read-env-file', err) }
   return vars
 }
 

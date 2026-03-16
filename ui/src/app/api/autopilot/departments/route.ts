@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync, readdirSync, renameSync } from 'fs'
 import { resolve, join } from 'path'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,24 +41,24 @@ export async function GET() {
         let directives: string[] = []
 
         if (existsSync(statePath)) {
-          try { state = JSON.parse(readFileSync(statePath, 'utf-8')) } catch {}
+          try { state = JSON.parse(readFileSync(statePath, 'utf-8')) } catch (err) { logError('autopilot-depts/read-state', err) }
         }
         if (existsSync(reportPath)) {
-          try { report = readFileSync(reportPath, 'utf-8').slice(0, 2000) } catch {}
+          try { report = readFileSync(reportPath, 'utf-8').slice(0, 2000) } catch (err) { logError('autopilot-depts/read-report', err) }
         }
         const directivesPath = join(DEPARTMENTS_DIR, dir.name, 'ceo-directives.json')
         if (existsSync(directivesPath)) {
           try {
             const data = JSON.parse(readFileSync(directivesPath, 'utf-8'))
             directives = data.directives || []
-          } catch {}
+          } catch (err) { logError('autopilot-depts/read-directives', err) }
         }
 
         // Read department mission
         let mission = ''
         const missionPath = join(DEPARTMENTS_DIR, dir.name, 'mission.md')
         if (existsSync(missionPath)) {
-          try { mission = readFileSync(missionPath, 'utf-8').slice(0, 3000) } catch {}
+          try { mission = readFileSync(missionPath, 'utf-8').slice(0, 3000) } catch (err) { logError('autopilot-depts/read-mission', err) }
         }
 
         // Check if head agent actually exists
@@ -71,9 +72,9 @@ export async function GET() {
           mission,
           headExists,
         })
-      } catch {}
+      } catch (err) { logError('autopilot-depts/parse-config', err) }
     }
-  } catch {}
+  } catch (err) { logError('autopilot-depts/list-dirs', err) }
 
   return NextResponse.json({ departments })
 }

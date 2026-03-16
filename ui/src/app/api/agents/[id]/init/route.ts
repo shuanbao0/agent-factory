@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server'
 import { spawn } from 'child_process'
 import { resolve, join } from 'path'
 import { existsSync, readFileSync } from 'fs'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,7 +89,7 @@ export async function POST(
 
       const timeout = setTimeout(() => {
         controller.enqueue(enc.encode('event: error\ndata: {"error":"Init timeout"}\n\n'))
-        try { proc.kill() } catch {}
+        try { proc.kill() } catch (err) { logError('agent-init/kill-proc', err) }
         controller.close()
       }, 180_000)
 

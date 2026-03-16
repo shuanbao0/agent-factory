@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve, join } from 'path'
 import { existsSync, readdirSync, statSync, readFileSync, rmSync } from 'fs'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +48,7 @@ function listFiles(dir: string, prefix = ''): { name: string; path: string; size
         }
       }
     }
-  } catch {}
+  } catch (err) { logError('workspaces-api/list-files', err) }
 
   return results
 }

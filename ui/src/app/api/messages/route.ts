@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { gwCallAsync } from '@/lib/gateway-client'
 import { readFileSync, existsSync } from 'fs'
 import { resolve, join } from 'path'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,7 +96,7 @@ function loadAllowAgents(): Record<string, string[]> {
         map[agent.id] = allowed
       }
     }
-  } catch {}
+  } catch (err) { logError('messages-api/load-allow-agents', err) }
   return map
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,7 +76,7 @@ export async function PUT(req: NextRequest) {
       if (existsSync(agentJsonPath)) {
         try {
           data = JSON.parse(readFileSync(agentJsonPath, 'utf-8'))
-        } catch {}
+        } catch (err) { logError('agents-permissions/read-agent-json', err) }
       }
 
       // Update peers

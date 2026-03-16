@@ -14,6 +14,7 @@ import {
 import Link from 'next/link'
 import { formatNumber, timeAgo } from '@/lib/utils'
 import { IdentityDiffReview } from '@/components/identity-diff-review'
+import { logError } from '@/lib/error-logger'
 
 // ── Types ────────────────────────────────────────────────────────
 interface AgentDetail {
@@ -162,7 +163,7 @@ const AgentChat = memo(function AgentChat({ agentId, t }: { agentId: string; t: 
                   }])
                   break
               }
-            } catch {}
+            } catch (err) { logError('agent-detail/parseSSE', err) }
           }
         }
 
@@ -337,7 +338,7 @@ export default function AgentWorkspacePage() {
         const data = await soulRes.json()
         setSoulContent(data.content || '')
       }
-    } catch {}
+    } catch (err) { logError('agent-detail/fetchIdentity', err) }
   }, [id])
 
   // ── Save identity file ──────────────────────────────────────────
@@ -357,7 +358,7 @@ export default function AgentWorkspacePage() {
         setSoulContent(content)
         setEditingSoul(false)
       }
-    } catch {} finally { setSaving(false) }
+    } catch (err) { logError('agent-detail/saveIdentity', err) } finally { setSaving(false) }
   }
 
   // ── Fetch files ────────────────────────────────────────────────
@@ -369,7 +370,7 @@ export default function AgentWorkspacePage() {
         const data = await res.json()
         setFiles(data.files || [])
       }
-    } catch {} finally { setLoadingFiles(false) }
+    } catch (err) { logError('agent-detail/fetchFiles', err) } finally { setLoadingFiles(false) }
   }, [id])
 
   // ── Fetch sessions ─────────────────────────────────────────────
@@ -381,7 +382,7 @@ export default function AgentWorkspacePage() {
         const data = await res.json()
         setSessions(data.sessions || [])
       }
-    } catch {} finally { setLoadingSessions(false) }
+    } catch (err) { logError('agent-detail/fetchSessions', err) } finally { setLoadingSessions(false) }
   }, [id])
 
   // ── Fetch session messages ─────────────────────────────────────
@@ -394,7 +395,7 @@ export default function AgentWorkspacePage() {
         const data = await res.json()
         setMessages(data.messages || [])
       }
-    } catch {} finally { setLoadingMessages(false) }
+    } catch (err) { logError('agent-detail/fetchMessages', err) } finally { setLoadingMessages(false) }
   }, [id])
 
   // ── Fetch file content ─────────────────────────────────────────
@@ -405,7 +406,7 @@ export default function AgentWorkspacePage() {
         const data = await res.json()
         setFileContent({ name, content: data.content || '' })
       }
-    } catch {}
+    } catch (err) { logError('agent-detail/fetchFileContent', err) }
   }
 
   // ── Fetch skills ────────────────────────────────────────────────
@@ -417,7 +418,7 @@ export default function AgentWorkspacePage() {
         const data = await res.json()
         setSkills(data.skills || [])
       }
-    } catch {} finally { setLoadingSkills(false) }
+    } catch (err) { logError('agent-detail/fetchSkills', err) } finally { setLoadingSkills(false) }
   }, [id])
 
   // ── Sync AGENTS.md + TOOLS.md → workspace ──────────────────────
@@ -429,7 +430,7 @@ export default function AgentWorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: id, action: 'sync-config' }),
       })
-    } catch {} finally { setSyncingConfig(false) }
+    } catch (err) { logError('agent-detail/syncConfig', err) } finally { setSyncingConfig(false) }
   }
 
   // ── AI-generate IDENTITY.md + SOUL.md via agent's model ────────
@@ -458,11 +459,11 @@ export default function AgentWorkspacePage() {
             try {
               const d = JSON.parse(dataLine.slice(5))
               if (d.text) setInitLog(d.text)
-            } catch {}
+            } catch (err) { logError('agent-detail/parseInitLog', err) }
           }
         }
       }
-    } catch {} finally {
+    } catch (err) { logError('agent-detail/initAI', err) } finally {
       setInitializingAI(false)
 
       // Fetch new identity files after generation
@@ -481,7 +482,7 @@ export default function AgentWorkspacePage() {
           const data = await soulRes.json()
           newSoul = data.content || ''
         }
-      } catch {}
+      } catch (err) { logError('agent-detail/fetchIdentityAfterInit', err) }
 
       // If content changed, show diff review; otherwise just update
       if ((oldIdentity && newIdentity && oldIdentity !== newIdentity) ||
@@ -515,7 +516,7 @@ export default function AgentWorkspacePage() {
           body: JSON.stringify({ file: 'SOUL.md', content: soul }),
         }),
       ])
-    } catch {}
+    } catch (err) { logError('agent-detail/diffAccept', err) }
     setIdentityContent(identity)
     setSoulContent(soul)
     setShowDiffReview(false)
@@ -538,7 +539,7 @@ export default function AgentWorkspacePage() {
             body: JSON.stringify({ file: 'SOUL.md', content: diffData.oldSoul }),
           }),
         ])
-      } catch {}
+      } catch (err) { logError('agent-detail/diffCancel', err) }
       setIdentityContent(diffData.oldIdentity)
       setSoulContent(diffData.oldSoul)
     }
@@ -567,7 +568,7 @@ export default function AgentWorkspacePage() {
             const data = await res.json()
             if (data.status === 'running') break
           }
-        } catch {}
+        } catch (err) { logError('agent-detail/pollGateway', err) }
         attempts++
         await new Promise(r => setTimeout(r, 2000))
       }
@@ -592,7 +593,7 @@ export default function AgentWorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skills: updated.filter(s => s.enabled).map(s => s.slug) }),
       })
-    } catch {} finally { setSavingSkills(false) }
+    } catch (err) { logError('agent-detail/toggleSkill', err) } finally { setSavingSkills(false) }
   }
 
   const enableAllSkills = async () => {
@@ -605,7 +606,7 @@ export default function AgentWorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skills: updated.map(s => s.slug) }),
       })
-    } catch {} finally { setSavingSkills(false) }
+    } catch (err) { logError('agent-detail/enableAllSkills', err) } finally { setSavingSkills(false) }
   }
 
   const disableAllSkills = async () => {
@@ -618,7 +619,7 @@ export default function AgentWorkspacePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skills: [] }),
       })
-    } catch {} finally { setSavingSkills(false) }
+    } catch (err) { logError('agent-detail/disableAllSkills', err) } finally { setSavingSkills(false) }
   }
 
   useEffect(() => {
@@ -629,7 +630,7 @@ export default function AgentWorkspacePage() {
     // Fetch agent.json for peers/skills config
     fetch(`/api/agents/${id}/workspace?file=agent.json`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.content) try { setAgentConfig(JSON.parse(data.content)) } catch {} })
+      .then(data => { if (data?.content) try { setAgentConfig(JSON.parse(data.content)) } catch (err) { logError('agent-detail/parseAgentConfig', err) } })
       .catch(() => {})
   }, [fetchFiles, fetchSessions, fetchSkills, fetchIdentityFiles, id])
 

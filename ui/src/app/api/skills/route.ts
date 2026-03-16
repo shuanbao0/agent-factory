@@ -6,6 +6,7 @@ import { promisify } from 'util'
 
 const execFileAsync = promisify(execFileCb)
 import { cached } from '@/lib/api-cache'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,7 +20,7 @@ async function findBuiltinSkillsDir(): Promise<string | null> {
     const { stdout } = await execFileAsync('npm', ['root', '-g'], { timeout: 5000 })
     const dir = join(stdout.toString().trim(), 'openclaw', 'skills')
     if (existsSync(dir)) return dir
-  } catch {}
+  } catch (err) { logError('skills-api/find-builtin-dir', err) }
 
   // Fallback: common locations
   const candidates = [

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ function readEnvFile(): Record<string, string> {
       if (eqIdx === -1) continue
       vars[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim()
     }
-  } catch {}
+  } catch (err) { logError('models-test/read-env-file', err) }
   return vars
 }
 

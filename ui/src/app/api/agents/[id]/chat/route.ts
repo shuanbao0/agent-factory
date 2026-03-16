@@ -7,6 +7,7 @@
 import { NextRequest } from 'next/server'
 import { spawn } from 'child_process'
 import { resolve } from 'path'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +56,7 @@ export async function POST(
       })
 
       const cleanup = () => {
-        try { proc.kill() } catch {}
+        try { proc.kill() } catch (err) { logError('agent-chat/kill-proc', err) }
       }
 
       const timeout = setTimeout(() => {

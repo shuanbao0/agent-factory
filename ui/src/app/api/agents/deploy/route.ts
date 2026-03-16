@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +44,7 @@ function generateToolsMd(agentId: string, skills: string[], agentDir: string): s
         if (bins.length > 0) lines.push(`- **Requires:** ${bins.map(b => `\`${b}\``).join(', ')} on PATH`)
         lines.push(`- Full docs: \`skills/${slug}/SKILL.md\``, '')
         continue
-      } catch {}
+      } catch (err) { logError('agents-deploy/parse-skill-md', err) }
     }
     lines.push(`### ${slug}`, `- Full docs: \`skills/${slug}/SKILL.md\``, '')
   }
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
     let agentSkills: string[] = []
     const agentJsonPath = join(agentDir, 'agent.json')
     if (existsSync(agentJsonPath)) {
-      try { agentSkills = JSON.parse(readFileSync(agentJsonPath, 'utf-8')).skills || [] } catch {}
+      try { agentSkills = JSON.parse(readFileSync(agentJsonPath, 'utf-8')).skills || [] } catch (err) { logError('agents-deploy/read-agent-skills', err) }
     }
     const toolsMdContent = generateToolsMd(agentId, agentSkills, agentDir)
     writeFileSync(join(agentDir, 'TOOLS.md'), toolsMdContent)
