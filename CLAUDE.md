@@ -23,12 +23,13 @@ agent-factory/
 │   ├── models.json        # 模型别名定义（Anthropic/MiniMax）
 │   ├── base-rules.md      # 全局强制注入规则（注入到所有 Agent 的 AGENTS.md/SOUL.md）
 │   └── autopilot-state.json # Autopilot 运行状态
-├── core/                  # 核心模块（模块化分层）
-│   ├── repo/              # Repository Pattern — 数据访问层
-│   ├── task/              # State Machine + Strategy — 任务生命周期
+├── core/                  # 核心模块（模块化分层，唯一的业务逻辑源）
+│   ├── repo/              # Repository Pattern — 数据访问层（session, mission, task, config, dept-*, agent-meta）
+│   ├── task/              # State Machine + Strategy — 任务生命周期（quality-gate, quality-validator, quality-orchestrator, auto-transition）
 │   ├── llm/               # LLM 通信与决策
-│   ├── observe/           # 可观测性 — Event Bus + Cost + Reactors
-│   └── common/            # 通用工具（validators, agent-service）
+│   ├── observe/           # 可观测性 — Event Bus + Cost + Budget + KPI + Stall Detection
+│   ├── agent/             # Agent 业务逻辑（memory 管理）
+│   └── common/            # 通用工具（validators, agent-service, task-bridge, autopilot-state）
 ├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿等）
 ├── libs/                  # 本地库（openclaw 源码，不提交）
 ├── scripts/
@@ -85,6 +86,10 @@ ui/src/
 │   ├── template-picker.tsx # 模板选择器
 │   ├── autopilot-card.tsx # Autopilot 控制卡片
 │   └── ...
+├── services/              # 服务层（API 路由 → 服务委托）
+│   ├── agent-crud.ts      # Agent 创建/更新/删除全流程
+│   ├── autopilot-api.ts   # Autopilot 进程管理 + 状态查询
+│   └── task-api.ts        # 任务 CRUD + 质量门
 ├── lib/                   # 核心库
 │   ├── store.ts           # Zustand 全局状态（轮询、Agent、项目、日志等）
 │   ├── gateway-manager.ts # Gateway 进程管理（spawn/kill/status）
