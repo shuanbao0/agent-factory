@@ -2,6 +2,7 @@ import { writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { NextResponse } from 'next/server'
 import core from '@/lib/core-bridge'
+import { DEFAULT_BUDGET } from '@entity/observe'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
@@ -14,9 +15,8 @@ export async function GET() {
     const data = core.observe.loadCompanyBudget() as Record<string, unknown>
     if (!data || Object.keys(data).length === 0) {
       return NextResponse.json({
-        company: { dailyTokenLimit: 5000000, monthlyTokenLimit: 100000000, alertThreshold: 0.8 },
+        ...DEFAULT_BUDGET,
         agentDailyLimit: 5,
-        overBudgetAction: 'pause_and_notify',
       })
     }
     return NextResponse.json(data)
@@ -35,11 +35,12 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: validation.errors.join('; ') }, { status: 400 })
     }
 
+    const defaults = DEFAULT_BUDGET.company
     const config = {
       company: {
-        dailyTokenLimit: Number(body.company.dailyTokenLimit) || 5000000,
-        monthlyTokenLimit: Number(body.company.monthlyTokenLimit) || 100000000,
-        alertThreshold: Math.min(1, Math.max(0, Number(body.company.alertThreshold) || 0.8)),
+        dailyTokenLimit: Number(body.company.dailyTokenLimit) || defaults.dailyTokenLimit,
+        monthlyTokenLimit: Number(body.company.monthlyTokenLimit) || defaults.monthlyTokenLimit,
+        alertThreshold: Math.min(1, Math.max(0, Number(body.company.alertThreshold) || defaults.alertThreshold)),
       },
       agentDailyLimit: Number(body.agentDailyLimit) || 5,
       overBudgetAction: body.overBudgetAction || 'pause_and_notify',

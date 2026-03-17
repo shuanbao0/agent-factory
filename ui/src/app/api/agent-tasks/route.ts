@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Task } from '@/lib/types'
-import { STATUSES, TRANSITIONS, normalizeStatus } from '@entity/task'
+import { STATUSES, TRANSITIONS, normalizeStatus, isTerminal } from '@entity/task'
 import {
   findAllTasks,
   findTaskById,
@@ -200,7 +200,7 @@ export async function PUT(req: NextRequest) {
           const allTasks = findAllTasks()
           const existingRework = allTasks.find(t =>
             t.reworkFromId === taskId &&
-            ['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(t.status)
+            !isTerminal(t.status)
           )
           if (!existingRework) {
             const reworkTask = createReworkTask(updated!, gate.errors)
