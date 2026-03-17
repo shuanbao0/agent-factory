@@ -97,6 +97,12 @@ async function runCycle() {
   const cycleNum = state.cycleCount
   const startTime = Date.now()
 
+  // Emit cycle.start event
+  try {
+    const { eventBus } = require('../../core/observe/event-bus.cjs')
+    eventBus.fire('cycle.start', { deptId: 'ceo', cycleNum })
+  } catch { /* event bus not available */ }
+
   console.log(`\n══════════════════════════════════════════`)
   console.log(`  Autopilot Cycle #${cycleNum}`)
   console.log(`  ${new Date().toLocaleString()}`)
@@ -161,12 +167,22 @@ async function runCycle() {
       }
 
       logger.info('main', `Cycle #${cycleNum} completed in ${elapsed}s`)
+      // Emit cycle.end (success)
+      try {
+        const { eventBus } = require('../../core/observe/event-bus.cjs')
+        eventBus.fire('cycle.end', { deptId: 'ceo', cycleNum, durationMs: Date.now() - startTime, ok: true })
+      } catch { /* event bus not available */ }
       await completeCycleTask('ceo', taskId, result)
     } else {
       logger.error('main', `Cycle #${cycleNum} failed: ${result.error}`)
       state.status = isLoop ? 'running' : 'error'
       state.lastCycleResult = `Error: ${result.error}`
       saveState(state)
+      // Emit cycle.end (failure)
+      try {
+        const { eventBus } = require('../../core/observe/event-bus.cjs')
+        eventBus.fire('cycle.end', { deptId: 'ceo', cycleNum, durationMs: Date.now() - startTime, ok: false, error: result.error })
+      } catch { /* event bus not available */ }
       await completeCycleTask('ceo', taskId, result)
     }
   } catch (err) {
@@ -174,6 +190,11 @@ async function runCycle() {
     state.status = isLoop ? 'running' : 'error'
     state.lastCycleResult = `Error: ${err.message}`
     saveState(state)
+    // Emit cycle.end (error)
+    try {
+      const { eventBus } = require('../../core/observe/event-bus.cjs')
+      eventBus.fire('cycle.end', { deptId: 'ceo', cycleNum, durationMs: Date.now() - startTime, ok: false, error: err.message })
+    } catch { /* event bus not available */ }
     await completeCycleTask('ceo', taskId, { ok: false, error: err.message })
   }
 }
@@ -283,6 +304,12 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
 
   logger.info('main', `CEO ${cycleType} cycle #${cycleNum} started`)
 
+  // Emit cycle.start event
+  try {
+    const { eventBus } = require('../../core/observe/event-bus.cjs')
+    eventBus.fire('cycle.start', { deptId: 'ceo', cycleNum, cycleType })
+  } catch { /* event bus not available */ }
+
   const taskId = await createCycleTask('ceo', cycleType, cycleNum)
 
   try {
@@ -318,12 +345,22 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
       try { compressMemory('ceo', result.text) } catch (e) {
         logger.warn('main', 'Memory compression failed', e)
       }
+      // Emit cycle.end (success)
+      try {
+        const { eventBus } = require('../../core/observe/event-bus.cjs')
+        eventBus.fire('cycle.end', { deptId: 'ceo', cycleNum, cycleType, durationMs: Date.now() - startTime, ok: true })
+      } catch { /* event bus not available */ }
       await completeCycleTask('ceo', taskId, result)
     } else {
       logger.error('main', `CEO cycle #${cycleNum} failed: ${result.error}`)
       state.status = 'running'
       state.lastCycleResult = `Error: ${result.error}`
       saveState(state)
+      // Emit cycle.end (failure)
+      try {
+        const { eventBus } = require('../../core/observe/event-bus.cjs')
+        eventBus.fire('cycle.end', { deptId: 'ceo', cycleNum, cycleType, durationMs: Date.now() - startTime, ok: false, error: result.error })
+      } catch { /* event bus not available */ }
       await completeCycleTask('ceo', taskId, result)
     }
   } catch (err) {
@@ -331,6 +368,11 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
     state.status = 'running'
     state.lastCycleResult = `Error: ${err.message}`
     saveState(state)
+    // Emit cycle.end (error)
+    try {
+      const { eventBus } = require('../../core/observe/event-bus.cjs')
+      eventBus.fire('cycle.end', { deptId: 'ceo', cycleNum, cycleType, durationMs: Date.now() - startTime, ok: false, error: err.message })
+    } catch { /* event bus not available */ }
     await completeCycleTask('ceo', taskId, { ok: false, error: err.message })
   }
 }
@@ -407,9 +449,48 @@ async function startAll() {
 
   logger.info('main', `Start-all mode (PID: ${process.pid})`)
 
+  // ── Phase 1: Activate EventBus + Reactors ──
+  const { eventBus } = require('../../core/observe/event-bus.cjs')
+  const { registerAll } = require('../../core/observe/reactors/index.cjs')
+  registerAll(eventBus)
+  logger.info('main', `Event bus activated: ${eventBus.eventNames().length} event types`)
+
+  // ── Phase 2: Event-driven Scheduler ──
+  const { Scheduler } = require('../../core/observe/scheduler.cjs')
+  const { processQualityGate } = require('./quality-gate.cjs')
+  const scheduler = new Scheduler({
+    runDepartmentCycle,
+    processQualityGate,
+    findTaskById: (id) => {
+      const projects = readProjectTasks()
+      for (const p of projects) {
+        const t = (p.tasks || []).find(t => t.id === id)
+        if (t) return t
+      }
+      return readStandaloneTasks().find(t => t.id === id) || null
+    },
+    logger,
+  })
+  scheduler.register(eventBus)
+  logger.info('main', 'Event-driven scheduler registered')
+
+  // ── Phase 3: Adaptive Timer ──
+  const { AdaptiveTimer } = require('../../core/observe/adaptive-timer.cjs')
+  const { getDeptActivityLevel } = require('./readers.cjs')
+  const timer = new AdaptiveTimer({ getActivityLevel: getDeptActivityLevel })
+
+  // ── Phase 4: Signal Watcher (cross-process event relay) ──
+  const { SignalWatcher } = require('../../core/observe/signal-watcher.cjs')
+  const signalWatcher = new SignalWatcher(eventBus, logger)
+  signalWatcher.start()
+  logger.info('main', 'Signal watcher started')
+
   // Graceful shutdown
   const shutdown = () => {
     logger.info('main', 'Shutting down...')
+    scheduler.disable()
+    signalWatcher.stop()
+    eventBus.removeAllListeners()
     const s = loadState()
     s.status = 'stopped'
     s.pid = null
@@ -457,20 +538,22 @@ async function startAll() {
   }
   setTimeout(ceoStrategyLoop, CEO_STRATEGY_INTERVAL_SEC * 1000)
 
-  // 4. Start department loops
+  // 4. Start department loops with adaptive timers
   const departments = discoverActiveDepartments()
   logger.info('main', `Found ${departments.length} active departments`)
 
   for (const dept of departments) {
-    logger.info('main', `Starting department loop: ${dept.id} (interval: ${dept.interval}s)`)
+    logger.info('main', `Starting department loop: ${dept.id} (base interval: ${dept.interval}s)`)
 
     await runDepartmentCycle(dept.id)
 
     const deptLoop = async () => {
       await runDepartmentCycle(dept.id)
-      setTimeout(deptLoop, dept.interval * 1000)
+      const interval = timer.nextInterval(dept.id)
+      logger.debug('main', `Department ${dept.id} next interval: ${(interval / 1000).toFixed(0)}s`)
+      setTimeout(deptLoop, interval)
     }
-    setTimeout(deptLoop, dept.interval * 1000)
+    setTimeout(deptLoop, timer.nextInterval(dept.id))
   }
 
   logger.info('main', 'All loops scheduled. Running...')

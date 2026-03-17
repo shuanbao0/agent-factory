@@ -32,6 +32,40 @@ function readAgentMeta(agentId) {
   return { description: meta.description || '', role: meta.role || agentId, name: meta.name || agentId }
 }
 
+/**
+ * 判断部门活跃度（供 AdaptiveTimer 使用）
+ * @param {string} deptId
+ * @returns {'active' | 'idle' | 'budget_constrained'}
+ */
+function getDeptActivityLevel(deptId) {
+  // Check budget first
+  try {
+    const { checkBudget } = require('../../core/observe/budget.cjs')
+    const budget = checkBudget(deptId)
+    if (!budget.allowed) return 'budget_constrained'
+  } catch { /* proceed without budget check */ }
+
+  // Check if department has active tasks
+  const config = loadDeptConfig(deptId)
+  if (!config) return 'idle'
+
+  const agents = config.agents || []
+  const projects = readProjectTasks()
+  const activeStatuses = ['in_progress', 'review', 'rework']
+
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      if (!activeStatuses.includes(t.status)) continue
+      const assignees = [t.assignedAgent, ...(t.assignees || [])]
+      if (assignees.some(a => agents.includes(a))) {
+        return 'active'
+      }
+    }
+  }
+
+  return 'idle'
+}
+
 module.exports = {
   readMission,
   readBaseMission,
@@ -50,4 +84,5 @@ module.exports = {
   getSessionTokenInfo,
   readMemorySummary,
   readAgentMeta,
+  getDeptActivityLevel,
 }

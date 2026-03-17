@@ -173,15 +173,14 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
     updateTaskStatus(assignee, task.id, to, extras)
     transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from, to, reason })
 
-    // Emit task lifecycle events (safe no-op if event bus not yet wired)
+    // Emit task status change event (fire-and-forget)
     try {
-      const bus = require('./event-bus.cjs')
-      if (to === 'completed') {
-        bus.emit('task.completed', { taskId: task.id, agentId: assignee, department: deptId })
-      } else if (to === 'failed') {
-        bus.emit('task.failed', { taskId: task.id, agentId: assignee, department: deptId })
-      }
-    } catch { /* event bus not available yet */ }
+      const { eventBus } = require('../../core/observe/event-bus.cjs')
+      eventBus.fire('task.status_changed', {
+        taskId: task.id, taskName: task.name || '',
+        agentId: assignee, department: deptId, from, to,
+      })
+    } catch { /* event bus not available */ }
   }
 
   // 1. Chief-reported completions (skip in idleOnly mode — pre-send has no response)
@@ -231,6 +230,11 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
               `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
               { quality: task.quality })
             logger.info('dept-loop', `Task ${task.id} passed quality gate in ${deptId}`)
+            // Emit quality gate completed event
+            try {
+              const { eventBus } = require('../../core/observe/event-bus.cjs')
+              eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: true })
+            } catch { /* event bus not available */ }
           } else {
             // Check rework count — fail after 3 rounds (use persisted reworkCount from API)
             const reworkCount = (task.reworkCount || 0) + 1
@@ -245,6 +249,11 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
                 `质量审核不通过 (第${reworkCount}次返工): ${gate.reason}`,
                 { quality: task.quality, reworkCount })
               logger.info('dept-loop', `Task ${task.id} sent to rework #${reworkCount}: ${gate.reason}`)
+              // Emit quality gate completed event (not passed)
+              try {
+                const { eventBus } = require('../../core/observe/event-bus.cjs')
+                eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: false, reason: gate.reason })
+              } catch { /* event bus not available */ }
               notifyAgentTaskChange(config.head, assignee, task.id, task.name || '', 'rework', gate.reason)
             }
           }
@@ -313,6 +322,12 @@ async function runDepartmentCycle(deptId) {
 
   const startTime = Date.now()
   logger.info('dept-loop', `Department ${deptId} cycle #${state.cycleCount} started`)
+
+  // Emit cycle.start event
+  try {
+    const { eventBus } = require('../../core/observe/event-bus.cjs')
+    eventBus.fire('cycle.start', { deptId, cycleNum: state.cycleCount })
+  } catch { /* event bus not available */ }
 
   const taskId = await createCycleTask(config.head, `dept-${deptId}-cycle`, state.cycleCount)
 
@@ -500,6 +515,12 @@ async function runDepartmentCycle(deptId) {
       }
       saveDeptState(deptId, state)
 
+      // Emit cycle.end (success)
+      try {
+        const { eventBus } = require('../../core/observe/event-bus.cjs')
+        eventBus.fire('cycle.end', { deptId, cycleNum: state.cycleCount, durationMs: Date.now() - startTime, ok: true })
+      } catch { /* event bus not available */ }
+
       await completeCycleTask(config.head, taskId, result)
       return { ok: true, text: result.text }
     } else {
@@ -512,6 +533,12 @@ async function runDepartmentCycle(deptId) {
       state.status = 'error'
       state.lastCycleResult = `Error: ${result.error}`
       saveDeptState(deptId, state)
+      // Emit cycle.end (failure)
+      try {
+        const { eventBus } = require('../../core/observe/event-bus.cjs')
+        eventBus.fire('cycle.end', { deptId, cycleNum: state.cycleCount, durationMs: Date.now() - startTime, ok: false, error: result.error })
+      } catch { /* event bus not available */ }
+
       await completeCycleTask(config.head, taskId, result)
       return { ok: false, error: result.error }
     }
@@ -523,6 +550,12 @@ async function runDepartmentCycle(deptId) {
     state.status = 'error'
     state.lastCycleResult = `Error: ${err.message}`
     saveDeptState(deptId, state)
+    // Emit cycle.end (error)
+    try {
+      const { eventBus } = require('../../core/observe/event-bus.cjs')
+      eventBus.fire('cycle.end', { deptId, cycleNum: state.cycleCount, durationMs: Date.now() - startTime, ok: false, error: err.message })
+    } catch { /* event bus not available */ }
+
     await completeCycleTask(config.head, taskId, { ok: false, error: err.message })
     return { ok: false, error: err.message }
   }

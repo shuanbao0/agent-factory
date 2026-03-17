@@ -69,9 +69,19 @@ function checkBudget(deptId) {
   const threshold = config.budget.alertThreshold || 0.8
 
   if (ratio >= 1.0) {
+    // Emit budget blocked event (fire-and-forget)
+    try {
+      const { eventBus } = require('./event-bus.cjs')
+      eventBus.fire('budget.dept_blocked', { deptId, reason: 'daily budget exceeded', ratio })
+    } catch { /* event bus not available */ }
     return { allowed: false, reason: 'daily budget exceeded', ratio }
   }
   if (ratio >= threshold) {
+    // Emit budget warning event (fire-and-forget)
+    try {
+      const { eventBus } = require('./event-bus.cjs')
+      eventBus.fire('budget.dept_warning', { deptId, ratio, threshold })
+    } catch { /* event bus not available */ }
     return { allowed: true, warning: true, ratio }
   }
   return { allowed: true, ratio }

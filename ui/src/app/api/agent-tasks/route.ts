@@ -17,6 +17,7 @@ import {
   persistNewTask,
   getWorkflowForTask,
 } from '@/lib/quality-gate'
+import { relayEvent } from '@/lib/event-relay'
 
 export const dynamic = 'force-dynamic'
 
@@ -190,12 +191,20 @@ export async function PUT(req: NextRequest) {
           updates.status = 'failed'
           updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
           const updated = updateTaskInPlace(taskId, updates)
+          relayEvent('task.status_changed', {
+            taskId, taskName: found.task.name || '', agentId: agent,
+            department: found.task.projectId || '', from: found.task.status, to: 'failed',
+          })
           return NextResponse.json({ task: updated, qualityGate: gate, ok: true })
         }
         if (gate.shouldRework) {
           updates.status = 'rework'
           updates.validationErrors = gate.errors
           const updated = updateTaskInPlace(taskId, updates)
+          relayEvent('task.status_changed', {
+            taskId, taskName: found.task.name || '', agentId: agent,
+            department: found.task.projectId || '', from: found.task.status, to: 'rework',
+          })
           // Dedup: skip if there's already an active rework task from this task
           const allTasks = findAllTasks()
           const existingRework = allTasks.find(t =>
@@ -213,6 +222,15 @@ export async function PUT(req: NextRequest) {
       }
 
       updates.completedAt = new Date().toISOString()
+      // Relay completion event to Autopilot
+      relayEvent('task.status_changed', {
+        taskId,
+        taskName: found.task.name || '',
+        agentId: agent,
+        department: found.task.projectId || '',
+        from: found.task.status,
+        to: 'completed',
+      })
       const updated = updateTaskInPlace(taskId, updates)
 
       // Close parent chain: walk up reworkFromId links and close all rework ancestors
@@ -249,6 +267,18 @@ export async function PUT(req: NextRequest) {
     const updated = updateTaskInPlace(taskId, updates)
     if (!updated) {
       return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
+    }
+
+    // Relay status change to Autopilot via signal file
+    if (status && status !== found.task.status) {
+      relayEvent('task.status_changed', {
+        taskId,
+        taskName: found.task.name || '',
+        agentId: agent,
+        department: found.task.projectId || '',
+        from: found.task.status,
+        to: status,
+      })
     }
 
     return NextResponse.json({ task: updated, ok: true })
