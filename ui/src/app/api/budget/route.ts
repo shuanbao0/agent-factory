@@ -8,7 +8,9 @@ const PROJECT_ROOT = resolve(process.cwd(), '..')
 const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { validateBudgetConfig } = require(join(PROJECT_ROOT, 'core', 'common', 'config-validator.cjs'))
+const { createRequire } = require('module')
+const _nativeRequire = createRequire(__filename)
+const { validateBudgetConfig } = _nativeRequire(join(PROJECT_ROOT, 'core', 'common', 'config-validator.cjs'))
 
 export async function GET() {
   try {

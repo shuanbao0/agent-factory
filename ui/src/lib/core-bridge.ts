@@ -14,8 +14,11 @@ import type { AgentMeta } from '@entity/agent'
 import type { ProjectMeta } from '@entity/project'
 
 const _path = require('path')
-const _corePath = _path.resolve(process.cwd(), '..', 'core')
-const _core = require(_corePath)
+const _corePath = _path.resolve(process.cwd(), '..', 'core', 'index.cjs')
+// 使用 createRequire 绕过 webpack 静态分析（webpack 不会改写 module.createRequire 产生的 require）
+const { createRequire } = require('module')
+const _nativeRequire = createRequire(__filename)
+const _core = _nativeRequire(_corePath)
 
 export default _core as {
   repo: {
