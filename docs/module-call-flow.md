@@ -13,6 +13,7 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │  Layer 1 ── API Routes        (ui/src/app/api/)                  │
 │             薄路由层：解析请求 → 委托 Service → 返回 JSON         │
+│             ⚠ agent-tasks/models 路由含内联业务逻辑（待重构）     │
 └──────────────┬───────────────────────────────────────────────────┘
                │ import
                ▼
@@ -28,6 +29,13 @@
 │             task-storage / quality-gate 为薄 Facade 委托 core/   │
 └──────────────┬───────────────────────────────────────────────────┘
                │ require (via core-bridge.ts)
+               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  Entity ── 实体定义层         (entity/)                           │
+│             常量 / 类型 / 默认值的唯一来源（@entity/* 路径别名）   │
+│             Dashboard (TS) + Core (CJS) 双向共享                  │
+└──────────────────────────────────────────────────────────────────┘
+               │ import / require
                ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  Layer 6 ── Core 业务内核     (core/)                            │
@@ -64,6 +72,9 @@
 ## Layer 1: API Routes
 
 > 职责：解析 HTTP 请求参数，委托给 Service/Lib，封装为 JSON 响应。零业务逻辑。
+>
+> ⚠ **例外**：`agent-tasks/route.ts` 和 `models/route.ts` 包含内联业务逻辑（状态机、混合 fs 读写），
+> 尚未抽取到 Service 层。`budget/route.ts` 的 PUT 也直接 writeFileSync 而非走 core/ Repository。
 
 ### `agents/route.ts` (61 行)
 
@@ -144,23 +155,33 @@ PUT  /api/memory-config  → core.repo.configRepo.updateConfig(mutator)
 
 ```
 imports:
+  writeFileSync                    ← fs
   core                             ← @/lib/core-bridge
+  DEFAULT_BUDGET                   ← @entity/observe
+  validateBudgetConfig             ← core/common/config-validator.cjs (CJS 动态 require)
 
 GET  /api/budget         → core.observe.loadCompanyBudget()
-PUT  /api/budget         → validateBudgetConfig() + writeFileSync
+PUT  /api/budget         → validateBudgetConfig() + writeFileSync (⚠ 直接 fs 写入，未走 core/ Repository)
 ```
 
-### `models/route.ts` (397 行)
+### `models/route.ts` (397 行) ⚠ 混合模式
 
 ```
 imports:
+  readFileSync, writeFileSync,     ← fs (⚠ 直接 fs 读写 models.json / auth-profiles.json)
+  copyFileSync, existsSync
   restartGateway, getStatus        ← @/lib/gateway-manager
   PROVIDERS                        ← @/lib/providers
+  logError                         ← @/lib/error-logger
   core                             ← @/lib/core-bridge
+  OpenClawConfig, ...              ← @entity/config (类型)
 
-GET  /api/models         → readModels() (models.json) + authProfiles
-PUT  /api/models         → writeModelsAndSync() → core.repo.configRepo.updateConfig()
-内部: syncOpenClawConfig() 使用 core.repo.configRepo.updateConfig() 原子写入
+GET  /api/models         → readFileSync(models.json) + readFileSync(auth-profiles.json)
+                           ⚠ 直接 fs 读取，未走 core/ Repository
+PUT  /api/models         → writeModelsAndSync() → writeFileSync(models.json)
+                           → syncOpenClawConfig() → core.repo.configRepo.updateConfig()
+                           → 自动 restartGateway() (如果 Gateway 运行中)
+内部: 混合模式 — models.json 用 fs 直读/直写，openclaw.json 走 core/ 原子写入
 ```
 
 ### `messages/route.ts` (425 行)
@@ -185,7 +206,7 @@ GET  /api/autopilot/departments   → getDepartments() (委托 autopilot-api)
 POST /api/autopilot/departments   → core.repo.deptConfigRepo.load/save()
 ```
 
-### `agent-tasks/route.ts` (267 行，通过 Facade 间接使用 core/)
+### `agent-tasks/route.ts` (267 行) ⚠ 含内联业务逻辑
 
 ```
 imports:
@@ -198,9 +219,17 @@ imports:
   createReworkTask, persistNewTask,
   getWorkflowForTask
 
-GET  /api/agent-tasks?agent&projectId     → findAllTasks() + filter
-POST /api/agent-tasks                      → 创建任务 (inline)
-PUT  /api/agent-tasks {taskId,status,...}  → updateTaskInPlace() + 质量门
+  STATUSES, TRANSITIONS,                  ← @entity/task (⚠ 直接引用实体层常量)
+  normalizeStatus, isTerminal
+
+特殊: Bearer token 认证 (AGENT_FACTORY_TOKEN，仅此路由要求)
+      内联状态机转换验证 (TRANSITIONS 白名单检查)
+      内联依赖检查 (in_progress 前置任务验证)
+      → 违反 Layer 1 "零业务逻辑" 原则，应抽取到 Service 层
+
+GET  /api/agent-tasks?agent&projectId     → findAllTasks() + filter (需 Bearer 认证)
+POST /api/agent-tasks                      → 创建任务 (inline，需 Bearer 认证)
+PUT  /api/agent-tasks {taskId,status,...}  → 内联状态机 + updateTaskInPlace() + 质量门
 ```
 
 ---
@@ -255,7 +284,7 @@ imports:
         → 归档 workspaces/{id}/ → 重启 Gateway
 ```
 
-### `autopilot-api.ts` (~334 行)
+### `autopilot-api.ts` (~327 行)
 
 ```
 imports:
@@ -292,7 +321,7 @@ imports:
   setMission(content)            → 写 config/mission.md
 ```
 
-### `task-api.ts` (280 行)
+### `task-api.ts` (276 行)
 
 ```
 imports:
@@ -422,11 +451,57 @@ persistNewTask(task) → void
 
 ---
 
+## Entity 层：实体定义（常量/类型/默认值的唯一来源）
+
+> 职责：定义所有跨层共享的常量、类型、默认值。Dashboard (TS) 通过 `@entity/*` 路径别名引用，
+> Core (CJS) 通过 `require('../../entity/...')` 引用。**零业务逻辑，纯数据定义。**
+
+```
+entity/
+├── index.ts                        ★ Barrel 导出 (re-export all)
+├── task/
+│   ├── task.ts                     → STATUSES, TRANSITIONS, TERMINAL
+│   │                                 canTransition, getValidTransitions,
+│   │                                 isTerminal, isValidStatus, normalizeStatus
+│   ├── quality-gate.ts             → GATE_STAGES, GATE_TRANSITIONS, GATE_TERMINAL
+│   │                                 canAdvanceGate, isGateDone
+│   └── quality-validator.ts        → DEFAULT_GATE_CONFIG, PipelineStep
+├── agent/
+│   └── agent.ts                    → AgentRole, Agent, AgentMeta, AgentTemplate
+├── dept/
+│   └── dept.ts                     → DepartmentConfig, DepartmentWorkflow,
+│                                     DepartmentLoopState, DEFAULT_DEPT_STATE
+├── config/
+│   └── config.ts                   → OpenClawConfig, OpenClawModelEntry,
+│                                     OpenClawProviderConfig, GatewayConfig
+├── observe/
+│   ├── budget.ts                   → DEFAULT_BUDGET, CompanyBudget, BudgetSummary
+│   └── cost.ts                     → PRICING, CostEntry, DailyCostSummary
+├── autopilot/
+│   └── autopilot.ts                → DEFAULT_INTERVAL_SEC, DEFAULT_AUTOPILOT_STATE,
+│                                     AutopilotState, DeptInfo
+├── project/
+│   └── project.ts                  → Project, ProjectMeta
+└── ui/
+    └── ui.ts                       → Skill, LogEntry, TimelineMessage, Channel
+
+主要消费者:
+  UI 层:  ui/src/lib/types.ts 作为中转 re-export hub
+          agent-tasks/route.ts 直接引用 @entity/task
+          budget/route.ts 直接引用 @entity/observe
+          models/route.ts 直接引用 @entity/config
+  Core 层: core/task/*.cjs re-export entity/ 常量
+           core/observe/*.cjs 引用 entity/ 默认值
+           core/common/*.cjs 引用 entity/ 校验函数
+```
+
+---
+
 ## Layer 4: Autopilot 编排层
 
 > 职责：CEO 主循环 + 部门循环的调度编排。通过 Facade 调用 core/ 模块。
 
-### `index.cjs` — CEO 主循环
+### `index.cjs` — CEO 主循环 (479 行)
 
 ```
 require('./state.cjs')            → loadState, saveState
@@ -453,7 +528,7 @@ require('./constants.cjs')        → DEFAULT_INTERVAL_SEC, MAX_HISTORY_ENTRIES,
   → 如果 --all 模式, 遍历启动各部门 runDepartmentCycle()
 ```
 
-### `department-loop.cjs` — 部门循环
+### `department-loop.cjs` — 部门循环 (876 行)
 
 ```
 require('./readers.cjs')          → loadDeptConfig, loadDeptState, saveDeptState,
@@ -470,12 +545,23 @@ require('./quality-gate.cjs')     → processQualityGate
 require('./logger.cjs')           → logger
 require('./constants.cjs')        → DEPARTMENTS_DIR, IDLE_COMPLETE_MINS, ...
 
-部门循环流程:
+导出:
+  runDepartmentCycle(deptId)       — 完整部门循环 (核心)
+  autoTransitionTasks(response)    — 131 行，根据 idle/stale 自动状态流转
+  ensureSessionHealth(agentId)     — 会话膨胀管理 (compaction/reset 阈值检查)
+  fallbackDispatch(deptId, tasks)  — 107 行，主管无响应时的降级派发
+  generateDepartmentReport(deptId) — 生成部门报告
+  parseTaskAssignments(text)       — 解析 [任务分配] 段落
+  parseTaskCompletions(text)       — 解析 [任务完成] 信号
+
+部门循环流程 (runDepartmentCycle):
   loadDeptConfig(deptId)
   → checkBudget(deptId)                 // 预算检查
   → loadDeptState(deptId)
+  → ensureSessionHealth(headId)         // 会话健康检查 (compaction/reset)
   → buildDepartmentDirective(...)       // 构建部门指令
   → sendToAgent(headId, directive)      // 发送给部门主管
+  → 如果空响应 → fallbackDispatch()     // 降级派发 (直接分配任务给成员)
   → trackTokenUsage(deptId, usage)      // 记录 token 消耗
   → compressMemoryByRole(headId, response, 'leader')  // 压缩记忆
   → autoTransitionTasks(response)       // 自动状态流转
@@ -485,7 +571,7 @@ require('./constants.cjs')        → DEPARTMENTS_DIR, IDLE_COMPLETE_MINS, ...
   → saveDeptState(deptId, state)
 ```
 
-### `directive.cjs` — CEO 指令构建
+### `directive.cjs` — CEO 指令构建 (230 行)
 
 ```
 require('./readers.cjs')          → readMission, readCeoWorkspaceFile,
@@ -494,12 +580,14 @@ require('./readers.cjs')          → readMission, readCeoWorkspaceFile,
                                     readEscalations
 require('./logger.cjs')           → logger
 
-buildDirective() → string
-  读取: mission.md + 部门报告 + 项目任务 + Agent 活跃度 + 升级信息
+buildDirective(cycleType) → string
+  路由: cycleType → buildCoordinationDirective() 或 buildStrategyDirective()
+  coordination: mission + memory + 项目任务 + Agent 活跃度 + 独立任务
+  strategy:     mission + 项目摘要 + 部门报告 (长期规划视角)
   输出: CEO 需要处理的综合指令文本
 ```
 
-### `dept-directive.cjs` — 部门指令构建
+### `dept-directive.cjs` — 部门指令构建 (315 行)
 
 ```
 require('./readers.cjs')          → readAgentActivity, readProjectTasks,
@@ -508,13 +596,19 @@ require('./memory.cjs')           → buildMemoryContext
 require('./constants.cjs')        → DEPARTMENTS_DIR, PROJECTS_DIR
 require('./logger.cjs')           → logger
 
+内部函数:
+  buildTeamStatus(config, activity)     → 格式化团队成员状态 (idle/busy/任务数)
+  buildDeptTasks(projects, standalone)  → 按项目+类型组织任务
+  buildKpiStatus(config)               → 展示 KPI 定义
+  readCeoDirectives(deptId)            → 提取 CEO 对本部门的特定指令
+
 buildDepartmentDirective(deptId, config, state, transitions) → string
   读取: 部门 mission + base-mission + 项目任务 + Agent 活跃度
-  注入: 记忆上下文 + 状态转换结果
+  注入: 记忆上下文 + 状态转换结果 + 团队状态 + KPI + CEO 指令
   输出: 部门主管需要处理的综合指令文本
 ```
 
-### `gateway.cjs` — WebSocket 通信 (非 Facade，保持原样)
+### `gateway.cjs` — WebSocket 通信 (300 行，非 Facade，含协议实现)
 
 ```
 require('ws')                     → WebSocket
@@ -527,18 +621,22 @@ require('./logger.cjs')           → logger
   sendToAgent(agentId, sessionKey, message, timeoutMs=60000)
     → Promise<{ok, text?, error?, usage?, aborted?}>
     连接 ws://127.0.0.1:{port} → connect + token → chat.send → 收集 delta → final
+    内含: 空响应检测 + retry-kill 恢复机制 (注入 memory 后重试)
 
   sendToCeo(message, timeoutMs?)
     → sendToAgent('ceo', 'agent:ceo:autopilot', message, timeoutMs)
 
+  sendSessionCommand(sessionKey, command, timeoutMs)
+    → 通用会话管理命令
+
   compactSession(sessionKey, timeoutMs)
-    → 压缩会话上下文
+    → 压缩会话上下文 (via sendSessionCommand)
 
   killSession(sessionKey, timeoutMs)
-    → 关闭会话
+    → 重置会话 (via sendSessionCommand)
 ```
 
-### `sync.cjs` — 项目同步
+### `sync.cjs` — 项目同步 (137 行)
 
 ```
 require('./readers.cjs')          → readCeoWorkspaceFile, fetchSessionTokens
@@ -553,7 +651,7 @@ syncProjects()
 
 ## Layer 5: Facade 适配层
 
-> 职责：保持 autopilot 调用方的 API 不变，将实现 100% 委托给 core/。每个 Facade ≤ 15 行。
+> 职责：保持 autopilot 调用方的 API 不变，将实现 100% 委托给 core/。每个 Facade ≤ 53 行。
 
 ```
 ┌────────────────────────┬──────────────────────────────────┬──────────────────────┐
@@ -627,13 +725,18 @@ module.exports = {
 ### 依赖方向 (单向，无循环)
 
 ```
-common/   ← 无依赖
-repo/     ← common/ (validators)
-task/     ← (无 core 内部依赖，通过 DI 注入)
+entity/   ← 无依赖 (常量/类型的唯一来源，所有层共享)
+common/   ← entity/ (validators 引用 entity/ 常量)
+repo/     ← entity/ (默认值)
+task/     ← entity/ (re-export 常量，DI 注入外部依赖)
 agent/    ← (无 core 内部依赖，直接读 fs)
-observe/  ← repo/ (lazy require，避免循环)
-llm/      ← (无 core 内部依赖)
+observe/  ← repo/ (lazy require，避免循环) + entity/ (默认值/定价)
+llm/      ← repo/ (lazy require gateway config)
+common/agent-service.cjs ← repo/ (ConfigRepository + AgentMetaRepository)
 ```
+
+> 注：`common/agent-service.cjs` 依赖 `repo/` 是例外。大部分 `common/` 模块无 core 内部依赖。
+> `observe/` 和 `llm/` 通过 lazy require 引用 `repo/`，避免模块加载时的循环依赖。
 
 ### `core/repo/` — Repository Pattern 数据访问层
 
@@ -674,14 +777,19 @@ task.cjs (extends BaseRepository)
   └── updateTaskInPlace(taskId, updates)
 
 dept-config.cjs (extends BaseRepository)
-  └── load(deptId) → config/departments/{deptId}/config.json | null
+  ├── load(deptId) → config/departments/{deptId}/config.json | null
+  ├── save(deptId, config)
+  ├── updateConfig(deptId, mutator) → 原子更新
+  └── 双实例: deptConfigRepo (30s 缓存, Autopilot 用) / deptConfigRepoNoCache (API 用)
 
 dept-state.cjs (extends BaseRepository)
   ├── load(deptId)  → config/departments/{deptId}/state.json | DEFAULT_STATE
   └── save(deptId, state)
 
 agent-meta.cjs (extends BaseRepository)
-  └── readMeta(agentId) → agents/{agentId}/agent.json | null
+  ├── readMeta(agentId) → agents/{agentId}/agent.json | null
+  ├── writeMeta(agentId, data)
+  └── updateMeta(agentId, mutator) → 原子更新
 
 config.cjs (extends BaseRepository)
   ├── getConfig()   → config/openclaw.json
@@ -690,8 +798,10 @@ config.cjs (extends BaseRepository)
   └── removeAgent(agentId)
 
 project-meta.cjs (extends BaseRepository)
-  ├── read(projectId)  → projects/{id}/.project-meta.json
-  └── write(projectId, meta)
+  ├── readMeta(projectId)  → projects/{id}/.project-meta.json
+  ├── writeMeta(projectId, meta) → 原子写入
+  ├── updateMeta(projectId, mutator) → 原子更新
+  └── readAll() → 扫描所有项目 (支持 1-2 级嵌套目录)
 ```
 
 ### `core/task/` — 任务生命周期
@@ -735,8 +845,10 @@ quality-orchestrator.cjs — 评审编排 (DI Pattern)
   └── findTasksInReview(deptId, projects) → Task[]
 
 strategy.cjs — 任务类型策略
-  ├── getStrategy(taskType?, deptConfig?) → TaskStrategy
-  └── BUILTIN_STRATEGIES — writing/editing/worldbuilding/character/plotting
+  ├── getStrategy(taskType?, deptConfig?) → TaskStrategy (未命中时返回 _fallback)
+  ├── BUILTIN_STRATEGIES — writing/editing/worldbuilding/character/plotting/
+  │                         coding/analysis/research + _fallback (共 9 个)
+  └── REQUIRED_FIELDS — 策略必填字段校验列表
 
 auto-transition.cjs — 自动状态流转
   ├── parseTaskAssignments(text) → [{agentId, summary}]
@@ -776,11 +888,18 @@ stall-detector.cjs — 停滞检测
   └── detectDepartmentStall(deptId) → {stalled, reason?}
         检查: 连续 3 次相同结果 / 连续 3 次 Error
 
-event-bus.cjs — 事件总线 (Singleton)
-  └── eventBus: emit(event, data) / on(event, handler)
+event-bus.cjs — 事件总线 (Singleton, extends EventEmitter)
+  └── eventBus.fire(eventType, payload) / eventBus.on(event, handler)
+      fire-and-forget 模式 (错误静默吞掉)
 
 cost-tracker.cjs — 成本记录
-  └── trackCost / queryCosts / getDailySummary (JSONL append-only)
+  ├── calculateCost(model, usage) → USD 成本 (基于 entity/observe/cost.ts PRICING)
+  ├── trackCost(opts) → JSONL 追加 + 触发 event-bus
+  ├── queryCosts(opts) → 过滤 + 聚合
+  └── getDailySummary(days) → 按天+来源分组汇总
+
+reactors/ — 事件响应子系统
+  └── observe/index.cjs 通过 reactors: require('./reactors/index.cjs') 导出
 ```
 
 ### `core/agent/` — Agent 业务逻辑
@@ -831,7 +950,12 @@ validators.cjs — 输入校验
   ├── validateTaskStatus(status) → boolean
   └── sanitizePath(p) → string | null
 
+config-validator.cjs — 配置校验
+  ├── validateBudgetConfig(config) → 校验 budget.json 结构
+  └── validateOpenclawConfig(config) → 校验 openclaw.json 结构
+
 agent-service.cjs — Agent 删除服务
+  依赖: repo/config.cjs (ConfigRepository), repo/agent-meta.cjs (AgentMetaRepository)
   └── AgentService.deleteAgent(id) → {ok, archivedTo}
 ```
 
@@ -1012,8 +1136,14 @@ task-bridge.cjs (core/common/)                [Layer 6]
                │  │  observe/agent/ │    │              ▼
                │  └────────┬────────┘    │         ┌─────────┐
                │           │             │         │  Agent   │
-               │  ★ Dashboard + Autopilot│         │ (Claude) │
-               │    共用同一 core/ 实例   │         └─────────┘
+               │  ┌────────┴────────┐    │         │ (Claude) │
+               │  │  Entity 实体层   │    │         └─────────┘
+               │  │  常量/类型/默认值│    │
+               │  └─────────────────┘    │
+               │                         │
+               │  ★ Dashboard + Autopilot│
+               │    共用同一 core/ 实例   │
+               │    共用同一 entity/ 定义 │
                │           │ 读写        │
                │           ▼             │
                │    config/departments/  │
