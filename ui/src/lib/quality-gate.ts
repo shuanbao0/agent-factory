@@ -21,7 +21,9 @@ export function getWorkflowForTask(task: Task): DepartmentWorkflow {
   if (!task.projectId) return getDepartmentWorkflow()
   const meta = readProjectMeta(task.projectId)
   if (!meta) return getDepartmentWorkflow()
-  const dept = meta.department || undefined
+  // Fallback: if meta has no explicit department, use projectId as dept ID
+  // (projects are typically created under their department name)
+  const dept = meta.department || task.projectId
   return getDepartmentWorkflow(dept)
 }
 
