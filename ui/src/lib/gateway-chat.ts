@@ -16,15 +16,11 @@ import { logError } from '@/lib/error-logger'
 import { randomUUID } from 'crypto'
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import type { GatewayConfig } from '@entity/config'
 
 // ── 配置 ─────────────────────────────────────────────────────────
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const CONFIG_PATH = resolve(PROJECT_ROOT, 'config/openclaw.json')
-
-interface GatewayConfig {
-  port: number
-  token: string
-}
 
 function loadGatewayConfig(): GatewayConfig {
   const port = parseInt(process.env.AGENT_FACTORY_PORT || '19100')

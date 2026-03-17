@@ -7,18 +7,13 @@ import { PhaseProgress } from '@/components/phase-progress'
 import { FolderKanban, Clock, Zap, Plus, Trash2, Loader2, FolderOpen, FileText, FolderTree, Code2, ListChecks, AlertTriangle, Play, Square, ExternalLink, Monitor, ChevronRight, ChevronDown, Bot } from 'lucide-react'
 import { formatNumber, formatDate, encodeProjectId } from '@/lib/utils'
 import { Task } from '@/lib/types'
+import type { PhaseDefinition } from '@entity/dept'
 import { logError } from '@/lib/error-logger'
 
 const ROLE_EMOJI: Record<string, string> = {
   ceo: '👔', pm: '📋', product: '📦', designer: '🎨',
   frontend: '💻', backend: '⚙️', tester: '🧪', researcher: '🔬',
   marketing: '📣', analyst: '📊', writer: '✍️',
-}
-
-interface PhaseDefinition {
-  key: string
-  labelZh: string
-  labelEn: string
 }
 
 interface FsProject {

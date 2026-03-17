@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Task } from '@/lib/types'
+import { STATUSES, TRANSITIONS, normalizeStatus } from '@entity/task'
 import {
   findAllTasks,
   findTaskById,
@@ -121,12 +122,12 @@ export async function PUT(req: NextRequest) {
     }
 
     // Validate status value to prevent non-standard states
-    const VALID_STATUSES = ['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed', 'rework']
-    if (status && !VALID_STATUSES.includes(status)) {
-      if (status === 'running') {
-        status = 'in_progress'
-      } else {
-        return NextResponse.json({ error: `Invalid status: ${status}. Valid values: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
+    if (status) {
+      const normalized = normalizeStatus(status)
+      if (normalized !== status) {
+        status = normalized
+      } else if (!STATUSES.includes(status)) {
+        return NextResponse.json({ error: `Invalid status: ${status}. Valid values: ${STATUSES.join(', ')}` }, { status: 400 })
       }
     }
 
@@ -142,16 +143,7 @@ export async function PUT(req: NextRequest) {
 
     // State transition guard: only allow valid transitions
     if (status) {
-      const VALID_TRANSITIONS: Record<string, string[]> = {
-        'pending':     ['assigned', 'in_progress', 'completed', 'failed'],
-        'assigned':    ['in_progress', 'completed', 'failed'],
-        'in_progress': ['review', 'completed', 'rework', 'failed'],
-        'review':      ['completed', 'rework', 'in_progress', 'failed'],
-        'rework':      ['in_progress', 'review', 'completed', 'failed'],
-        'completed':   [],  // terminal
-        'failed':      [],  // terminal
-      }
-      const allowed = VALID_TRANSITIONS[found.task.status] || []
+      const allowed = TRANSITIONS[found.task.status as keyof typeof TRANSITIONS] || []
       if (!allowed.includes(status)) {
         return NextResponse.json({
           error: `Invalid transition: ${found.task.status} → ${status}`,

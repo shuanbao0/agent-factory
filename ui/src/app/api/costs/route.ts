@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve, join } from 'path'
 import { existsSync, readFileSync } from 'fs'
-
 export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const COSTS_FILE = join(PROJECT_ROOT, 'config', 'autopilot-costs.jsonl')
 
+/** Raw JSONL entry — stricter than entity CostEntry (all fields present in log) */
 interface CostEntry {
   ts: string
   date: string

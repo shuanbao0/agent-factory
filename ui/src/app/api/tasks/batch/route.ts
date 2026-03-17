@@ -10,6 +10,7 @@ import {
   updateTaskInPlace,
   deleteProjectTask,
 } from '@/lib/task-storage'
+import { isTerminal } from '@entity/task'
 
 export const dynamic = 'force-dynamic'
 
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
       for (let i = 1; i < group.length; i++) {
         const task = group[i]
         // Only delete if not completed/failed (don't touch finished work)
-        if (['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(task.status)) {
+        if (!isTerminal(task.status)) {
           deleteTask(task)
           deletedDuplicates++
         }
@@ -121,10 +122,10 @@ export async function POST(req: NextRequest) {
     const freshTasks = findAllTasks() // re-read after deletions
     for (const t of freshTasks) {
       if (!t.reworkFromId) continue
-      if (!['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(t.status)) continue
+      if (!!isTerminal(t.status)) continue
 
       const parent = freshTasks.find(p => p.id === t.reworkFromId)
-      if (parent && ['completed', 'failed'].includes(parent.status)) {
+      if (parent && isTerminal(parent.status)) {
         updateTaskInPlace(t.id, {
           status: 'failed',
           output: `Closed: parent task ${t.reworkFromId} already ${parent.status}`,
