@@ -4,7 +4,8 @@
 const { readFileSync, writeFileSync, existsSync, readdirSync } = require('fs')
 const { join } = require('path')
 const { PROJECTS_DIR, CEO_WORKSPACE, PROJECT_ROOT } = require('./constants.cjs')
-const { readCeoWorkspaceFile, fetchSessionTokens } = require('./readers.cjs')
+const { missionRepo } = require('../repo/mission.cjs')
+const { sessionRepo } = require('../repo/session.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -14,7 +15,7 @@ const logger = require('./logger.cjs')
  * and NEVER goes below the current phase.
  */
 function syncProjects(ceoResponseText) {
-  const memory = readCeoWorkspaceFile('MEMORY.md')
+  const memory = missionRepo.readCeoWorkspaceFile('MEMORY.md')
 
   // Combine CEO memory + latest response for signal detection
   const signals = (memory || '') + '\n' + (ceoResponseText || '')
@@ -70,7 +71,7 @@ function syncProjects(ceoResponseText) {
         }
 
         // Calculate tokens from gateway session files (real data)
-        const sessionTokens = fetchSessionTokens()
+        const sessionTokens = sessionRepo.fetchSessionTokens()
         const assignedAgents = meta.assignedAgents || []
         let projectTokens = 0
         if (assignedAgents.length > 0) {

@@ -1,10 +1,14 @@
 'use strict'
+/**
+ * Logger — Autopilot 日志系统单元测试
+ * （从 core/autopilot/logger.test.cjs 迁移）
+ */
 const { describe, it, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, readdirSync } = require('fs')
 const { join } = require('path')
 
-const TEST_DIR = join(__dirname, '..', '..', '_test_logger_tmp')
+const TEST_DIR = join(__dirname, '..', '..', '..', '_test_logger_tmp')
 
 describe('logger', () => {
   afterEach(() => {
@@ -36,13 +40,11 @@ describe('logger', () => {
   describe('cleanOldLogs logic', () => {
     it('removes logs older than maxDays', () => {
       mkdirSync(TEST_DIR, { recursive: true })
-      // Create an old log file (30 days ago)
       const oldDate = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10)
       const todayDate = new Date().toISOString().slice(0, 10)
       writeFileSync(join(TEST_DIR, `${oldDate}.log`), 'old log')
       writeFileSync(join(TEST_DIR, `${todayDate}.log`), 'today log')
 
-      // Simulate cleanOldLogs
       const maxDays = 14
       const cutoff = Date.now() - maxDays * 86400_000
       for (const file of readdirSync(TEST_DIR)) {

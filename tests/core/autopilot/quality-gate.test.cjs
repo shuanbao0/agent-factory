@@ -1,37 +1,17 @@
 'use strict'
-const { describe, it, beforeEach, afterEach } = require('node:test')
+/**
+ * QualityGate — 质量门内联 DI 单元测试
+ * （从 core/autopilot/quality-gate.test.cjs 迁移）
+ */
+const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
-// We need to mock readAgentActivity before requiring quality-gate.cjs.
-// Since quality-gate.cjs uses `const { readAgentActivity } = require('./readers.cjs')`,
-// we need to patch the readers module's export object which quality-gate destructures from.
-
-const readers = require('./readers.cjs')
-let mockActivity = {}
-let originalReadAgentActivity
-
-describe('quality-gate', () => {
-  beforeEach(() => {
-    originalReadAgentActivity = readers.readAgentActivity
-    readers.readAgentActivity = () => mockActivity
-  })
-
-  afterEach(() => {
-    readers.readAgentActivity = originalReadAgentActivity
-  })
-
-  // We need to test selectReviewer — but it captures readAgentActivity at import time
-  // via destructuring. So we test the logic inline instead.
-
+describe('quality-gate (inline DI)', () => {
   describe('selectReviewer logic', () => {
-    // Re-implement the selection logic for testing since the import-time binding
-    // prevents clean mocking of the destructured function.
-
     function selectReviewerTestable(deptId, task, config, activity) {
       const agents = config.agents || []
       const assignedAgent = task.assignedAgent || task.assignees?.[0]
 
-      // Simplified: no strategy-based preferred reviewers (shared/task-strategy.cjs not available)
       const preferredReviewers = []
 
       const candidates = agents.filter(a => a !== assignedAgent && a !== config.head)

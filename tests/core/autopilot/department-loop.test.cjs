@@ -1,4 +1,8 @@
 'use strict'
+/**
+ * DepartmentLoop — 部门循环逻辑单元测试
+ * （从 core/autopilot/department-loop.test.cjs 迁移，更新 require 路径）
+ */
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
@@ -8,12 +12,9 @@ describe('department-loop', () => {
       const sessionResetCooldowns = new Map()
       const COOLDOWN_TTL = 3600_000 // 1h
 
-      // Add an expired entry (2 hours ago)
       sessionResetCooldowns.set('agent:test:main', Date.now() - 7200_000)
-      // Add a recent entry (30 seconds ago)
       sessionResetCooldowns.set('agent:test:other', Date.now() - 30_000)
 
-      // Cleanup
       const now = Date.now()
       for (const [key, ts] of sessionResetCooldowns) {
         if (now - ts > COOLDOWN_TTL) sessionResetCooldowns.delete(key)
@@ -45,12 +46,9 @@ describe('department-loop', () => {
       const gateErrorCounts = new Map()
       const ERROR_TTL = 86400_000 // 24h
 
-      // Add a stale entry (2 days ago)
       gateErrorCounts.set('task-old', { count: 3, lastError: Date.now() - 172800_000 })
-      // Add a recent entry
       gateErrorCounts.set('task-new', { count: 1, lastError: Date.now() - 1000 })
 
-      // Cleanup
       const now = Date.now()
       for (const [key, entry] of gateErrorCounts) {
         if (now - (entry.lastError || 0) > ERROR_TTL) gateErrorCounts.delete(key)
@@ -103,19 +101,16 @@ describe('department-loop', () => {
       const noResponseCounts = new Map()
       const MAX_NO_RESPONSE_COUNT = 2
 
-      // First timeout
       const count1 = (noResponseCounts.get('agent-a') || 0) + 1
       noResponseCounts.set('agent-a', count1)
       assert.equal(count1, 1)
       assert.ok(count1 < MAX_NO_RESPONSE_COUNT)
 
-      // Second timeout — should trigger failure
       const count2 = (noResponseCounts.get('agent-a') || 0) + 1
       noResponseCounts.set('agent-a', count2)
       assert.equal(count2, 2)
       assert.ok(count2 >= MAX_NO_RESPONSE_COUNT)
 
-      // Reset after failure
       noResponseCounts.delete('agent-a')
       assert.equal(noResponseCounts.get('agent-a'), undefined)
     })
@@ -133,8 +128,7 @@ describe('department-loop', () => {
 
   describe('isDualSessionEnabled', () => {
     it('returns true by default (dual-session is on by default)', () => {
-      const { isDualSessionEnabled } = require('./constants.cjs')
-      // Dual-session is enabled by default (AF_DUAL_SESSION !== '0')
+      const { isDualSessionEnabled } = require('../../../core/autopilot/constants.cjs')
       const result = isDualSessionEnabled('random-dept')
       assert.equal(result, true)
     })

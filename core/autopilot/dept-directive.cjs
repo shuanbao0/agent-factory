@@ -4,9 +4,21 @@
 const { join } = require('path')
 const { readFileSync, existsSync } = require('fs')
 const { DEPARTMENTS_DIR, PROJECTS_DIR } = require('./constants.cjs')
-const { readAgentActivity, readProjectTasks, readDeptMission, readBaseMission, readAgentMeta } = require('./readers.cjs')
-const { buildMemoryContext } = require('./memory.cjs')
+const { sessionRepo } = require('../repo/session.cjs')
+const { taskRepo } = require('../repo/task.cjs')
+const { missionRepo } = require('../repo/mission.cjs')
+const { agentMetaRepo } = require('../repo/agent-meta.cjs')
+const { buildMemoryContext } = require('../agent/memory.cjs')
 const logger = require('./logger.cjs')
+
+/**
+ * Read agent meta and extract display fields.
+ */
+function readAgentMeta(agentId) {
+  const meta = agentMetaRepo.readMeta(agentId)
+  if (!meta) return null
+  return { description: meta.description || '', role: meta.role || agentId, name: meta.name || agentId }
+}
 
 /**
  * Read CEO directives for a specific department
@@ -178,8 +190,8 @@ function buildKpiStatus(deptId, kpiDefs) {
  * @returns {string} The directive text
  */
 function buildDepartmentDirective(deptId, config, state, transitions, statusQueryResults) {
-  const agentActivity = readAgentActivity()
-  const projects = readProjectTasks()
+  const agentActivity = sessionRepo.readAgentActivity()
+  const projects = taskRepo.readProjectsWithTasks()
 
   // Try to get structured memory for the department head
   let memorySection = ''
@@ -195,8 +207,8 @@ function buildDepartmentDirective(deptId, config, state, transitions, statusQuer
     : '(无预算限制)'
 
   // Read base mission + department mission
-  const baseMission = readBaseMission()
-  const deptMission = readDeptMission(deptId)
+  const baseMission = missionRepo.readBaseMission()
+  const deptMission = missionRepo.readDeptMission(deptId)
 
   let missionSection = ''
   if (baseMission || deptMission) {

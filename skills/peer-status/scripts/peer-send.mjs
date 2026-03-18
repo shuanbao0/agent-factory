@@ -51,12 +51,15 @@ const PROJECT_ROOT = findProjectRoot()
 const require = createRequire(join(PROJECT_ROOT, 'package.json'))
 const WebSocket = require('ws')
 
-// Load autopilot modules for session token checking
-const { getSessionTokenInfo, readMemorySummary } = require('./scripts/autopilot/readers.cjs')
+// Load core modules for session token checking
+const { sessionRepo } = require('./core/repo/session.cjs')
+const { missionRepo } = require('./core/repo/mission.cjs')
 const {
   COMPACT_TOKEN_RATIO, RESET_COMPACT_COUNT, RESET_TOKEN_RATIO,
   DEFAULT_CONTEXT_TOKENS,
-} = require('./scripts/autopilot/constants.cjs')
+} = require('./core/autopilot/constants.cjs')
+const getSessionTokenInfo = (agentId, sessionKey) => sessionRepo.getSessionTokenInfo(agentId, sessionKey)
+const readMemorySummary = (agentId) => missionRepo.readMemorySummary(agentId)
 
 // ── Gateway config ───────────────────────────────────────────────
 

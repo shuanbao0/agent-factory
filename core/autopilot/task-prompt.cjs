@@ -5,10 +5,20 @@
  * Pure function module. Assembles all context an agent needs to execute
  * a task in an isolated worker session (clean context, no history).
  */
-const { readAgentMeta, readDeptMission } = require('./readers.cjs')
-const { buildMemoryContext, loadTaskMemories } = require('./memory.cjs')
-const { getStrategy } = require('../../core/task/strategy.cjs')
+const { agentMetaRepo } = require('../repo/agent-meta.cjs')
+const { missionRepo } = require('../repo/mission.cjs')
+const { buildMemoryContext, loadTaskMemories } = require('../agent/memory.cjs')
+const { getStrategy } = require('../task/strategy.cjs')
 const { MAX_TASK_MEMORIES, MEMORY_MAX_CHARS } = require('./constants.cjs')
+
+/**
+ * Read agent meta and extract display fields.
+ */
+function readAgentMeta(agentId) {
+  const meta = agentMetaRepo.readMeta(agentId)
+  if (!meta) return null
+  return { description: meta.description || '', role: meta.role || agentId, name: meta.name || agentId }
+}
 
 /**
  * Build a self-contained prompt for a worker session to execute a task.
@@ -47,7 +57,7 @@ function buildTaskPrompt(agentId, task, options = {}) {
 
   // 3. Project background
   if (deptId) {
-    const mission = readDeptMission(deptId)
+    const mission = missionRepo.readDeptMission(deptId)
     if (mission) {
       sections.push(`## 项目背景\n${mission.slice(0, 1000)}`)
     }

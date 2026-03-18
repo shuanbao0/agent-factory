@@ -11,4 +11,5 @@ module.exports = {
   observe: require('./observe/index.cjs'),
   agent: require('./agent/index.cjs'),
   common: require('./common/index.cjs'),
+  autopilot: require('./autopilot/index.cjs'),
 }

@@ -1,10 +1,14 @@
 'use strict'
+/**
+ * Sync — 项目状态同步单元测试
+ * （从 core/autopilot/sync.test.cjs 迁移）
+ */
 const { describe, it, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { mkdirSync, writeFileSync, readFileSync, rmSync } = require('fs')
 const { join } = require('path')
 
-const TEST_DIR = join(__dirname, '..', '..', '_test_sync_tmp')
+const TEST_DIR = join(__dirname, '..', '..', '..', '_test_sync_tmp')
 
 describe('sync', () => {
   afterEach(() => {

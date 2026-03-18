@@ -1,7 +1,9 @@
 /**
  * Directive — build CEO directives (supports strategy/coordination cycle types)
  */
-const { readMission, readCeoWorkspaceFile, readProjectTasks, readStandaloneTasks, readAgentActivity, readAllDepartmentReports, readEscalations } = require('./readers.cjs')
+const { missionRepo } = require('../repo/mission.cjs')
+const { taskRepo } = require('../repo/task.cjs')
+const { sessionRepo } = require('../repo/session.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -20,7 +22,7 @@ function buildDirective(cycleNum, cycleType = 'coordination', memoryContext = nu
 }
 
 function buildCoordinationDirective(cycleNum, memoryContext) {
-  const mission = readMission()
+  const mission = missionRepo.readMission()
 
   let context = `## 公司使命\n${mission}\n`
 
@@ -36,14 +38,14 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
       context += `\n## 各部门最新状态\n${memoryContext.departmentStatus}\n`
     }
   } else {
-    const memory = readCeoWorkspaceFile('MEMORY.md')
+    const memory = missionRepo.readCeoWorkspaceFile('MEMORY.md')
     if (memory) {
       context += `\n## 你的上次记忆 (MEMORY.md)\n${memory.slice(0, 4000)}\n`
     }
   }
 
   // Department reports (if available, prefer over raw agent data)
-  const deptReports = readAllDepartmentReports()
+  const deptReports = missionRepo.readAllDepartmentReports()
   const hasDeptReports = Object.keys(deptReports).length > 0
 
   if (hasDeptReports) {
@@ -53,7 +55,7 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
     }
 
     // Escalations
-    const escalations = readEscalations()
+    const escalations = missionRepo.readEscalations()
     if (escalations.length > 0) {
       context += `\n## 🚨 需要CEO决策的升级事项\n`
       for (const esc of escalations) {
@@ -63,8 +65,8 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
   }
 
   // Always include real project data
-  const projects = readProjectTasks()
-  const agentActivity = readAgentActivity()
+  const projects = taskRepo.readProjectsWithTasks()
+  const agentActivity = sessionRepo.readAgentActivity()
 
   if (projects.length > 0) {
     context += `\n## 📊 项目实时数据（来自系统，非记忆）\n`
@@ -100,7 +102,7 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
   }
 
   // Standalone tasks
-  const standaloneTasks = readStandaloneTasks()
+  const standaloneTasks = taskRepo.readStandaloneTasks()
   const activeStandalone = standaloneTasks.filter(t => t.status !== 'completed')
   if (activeStandalone.length > 0) {
     context += `\n## 📋 独立任务（用户通过任务面板分配）\n`
@@ -175,9 +177,9 @@ ${context}
 }
 
 function buildStrategyDirective(cycleNum, memoryContext) {
-  const mission = readMission()
-  const projects = readProjectTasks()
-  const deptReports = readAllDepartmentReports()
+  const mission = missionRepo.readMission()
+  const projects = taskRepo.readProjectsWithTasks()
+  const deptReports = missionRepo.readAllDepartmentReports()
 
   let context = `## 公司使命\n${mission}\n`
 

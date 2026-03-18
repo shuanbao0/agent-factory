@@ -1,5 +1,5 @@
 /**
- * Gateway — WebSocket communication with agents
+ * Gateway Client — WebSocket communication with agents
  *
  * Generalized from the original sendToCeo() to support any agent.
  */
@@ -8,7 +8,7 @@ const { randomUUID } = require('crypto')
 const { readFileSync, existsSync } = require('fs')
 const { join } = require('path')
 const { CONFIG_DIR, DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_COMPACT_TIMEOUT_MS } = require('./constants.cjs')
-const { readMemorySummary } = require('./readers.cjs')
+const { missionRepo } = require('../repo/mission.cjs')
 const logger = require('./logger.cjs')
 
 function getGatewayConfig() {
@@ -121,7 +121,7 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
         fullText = ''
         // Inject memory summary so the fresh session has context
         let retryMessage = message
-        const summary = readMemorySummary(agentId)
+        const summary = missionRepo.readMemorySummary(agentId)
         if (summary) {
           retryMessage = `[Context from previous session]\n${summary}\n\n${message}`
           logger.debug('gateway', `Injected memory summary for ${agentId} (${summary.length} chars)`)
