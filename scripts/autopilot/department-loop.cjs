@@ -15,9 +15,10 @@ const {
   SESSIONS_DIR, SESSION_RESET_INPUT_TOKENS, SESSION_FORCE_COMPACT_TOKENS,
   MIN_EFFECTIVE_RESPONSE_LENGTH, MAX_CONSECUTIVE_FAILURES,
   IDLE_COMPLETE_MINS, STALE_TASK_MINS,
+  isDualSessionEnabled, STATUS_QUERY_TIMEOUT_MS, MAX_NO_RESPONSE_COUNT,
 } = require('./constants.cjs')
 const { loadDeptConfig, loadDeptState, saveDeptState, getSessionTokenInfo, readAgentActivity, readProjectTasks, readStandaloneTasks } = require('./readers.cjs')
-const { sendToAgent, compactSession, killSession } = require('./gateway.cjs')
+const { sendToAgent, compactSession, killSession, queryAgentStatus } = require('./gateway.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('./memory.cjs')
 const { checkBudget, trackTokenUsage } = require('./budget.cjs')
@@ -32,6 +33,9 @@ const RESET_COOLDOWN_MS = 120_000
 // Quality gate error tracking: consecutive exceptions per task
 const gateErrorCounts = new Map()  // taskId → count
 const MAX_GATE_ERRORS = 3
+
+// Dual-session: no-response tracking per agent
+const noResponseCounts = new Map()  // agentId → count
 
 /**
  * Notify agent about task status change via peer-send (fire-and-forget).
@@ -140,6 +144,7 @@ function parseTaskCompletions(text) {
  * @param {string} chiefResponseText - Chief's response text
  * @param {object} [options] - Options
  * @param {boolean} [options.idleOnly=false] - If true, skip chief-reported completions (for pre-send calls)
+ * @param {Object} [options.statusQueryResults] - Pre-queried agent status results (avoids re-querying)
  * @returns {Promise<Array<{taskId: string, taskName: string, agentId: string, from: string, to: string, reason: string}>>} - List of transitions made
  */
 async function autoTransitionTasks(deptId, config, chiefResponseText, options = {}) {
@@ -198,7 +203,27 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
     }
   }
 
-  // 2. Idle-based transitions
+  // 2. Idle-based transitions (or dual-session status-based transitions)
+  const dualEnabled = isDualSessionEnabled(deptId)
+
+  // Dual-session: use pre-queried results or batch query agent statuses
+  let statusQueryResults = options.statusQueryResults || null
+  if (dualEnabled && !statusQueryResults) {
+    const agentsToQuery = new Set()
+    for (const task of allTasks) {
+      if (!['in_progress', 'rework'].includes(task.status)) continue
+      const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
+      if (assignee) agentsToQuery.add(assignee)
+    }
+    if (agentsToQuery.size > 0) {
+      statusQueryResults = {}
+      for (const aid of agentsToQuery) {
+        statusQueryResults[aid] = await queryAgentStatus(aid, `agent:${aid}:main`, STATUS_QUERY_TIMEOUT_MS)
+      }
+      logger.debug('dept-loop', `Dual-session status queries for ${deptId}: ${JSON.stringify(statusQueryResults)}`)
+    }
+  }
+
   for (const task of allTasks) {
     if (!['in_progress', 'rework', 'assigned', 'review'].includes(task.status)) continue
     if (chiefCompletions.includes(task.id)) continue
@@ -270,18 +295,89 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
         }
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
-      if (idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
-        transition(task, assignee, task.status, 'failed', `agent 空闲 ${idleMins}m 且进度 <50%`)
-        logger.warn('dept-loop', `Stale task ${task.id} marked failed (idle ${idleMins}m, progress ${task.progress || 0}%)`)
-      } else if (idleMins >= IDLE_COMPLETE_MINS) {
-        // Mark as review instead of completed — let chief confirm in next cycle
-        transition(task, assignee, task.status, 'review', `agent 空闲 ${idleMins}m, 待 chief 确认`)
-        logger.info('dept-loop', `Task ${task.id} moved to review (agent ${assignee} idle ${idleMins}m)`)
+      if (dualEnabled && statusQueryResults) {
+        // Dual-session path: use explicit status query instead of idle guessing
+        const status = statusQueryResults[assignee]
+        if (status?.working) {
+          logger.debug('dept-loop', `Dual-session: ${assignee} reports working on ${task.id}, skipping`)
+          continue
+        }
+        if (status?.completed || status?.idle) {
+          transition(task, assignee, task.status, 'review', 'agent 报告完成/空闲')
+          noResponseCounts.delete(assignee)
+          logger.info('dept-loop', `Dual-session: ${assignee} reports ${status.completed ? 'completed' : 'idle'}, task ${task.id} → review`)
+        }
+        if (status?.timeout) {
+          const count = (noResponseCounts.get(assignee) || 0) + 1
+          noResponseCounts.set(assignee, count)
+          if (count >= MAX_NO_RESPONSE_COUNT) {
+            transition(task, assignee, task.status, 'failed', `agent 连续 ${count} 次无响应`)
+            noResponseCounts.delete(assignee)
+            logger.warn('dept-loop', `Dual-session: ${assignee} no response ${count} times, task ${task.id} → failed`)
+          } else {
+            logger.warn('dept-loop', `Dual-session: ${assignee} no response (${count}/${MAX_NO_RESPONSE_COUNT}), task ${task.id} stays ${task.status}`)
+          }
+        }
+      } else {
+        // Legacy idle-based path
+        if (idleMins >= STALE_TASK_MINS && (task.progress || 0) < 50) {
+          transition(task, assignee, task.status, 'failed', `agent 空闲 ${idleMins}m 且进度 <50%`)
+          logger.warn('dept-loop', `Stale task ${task.id} marked failed (idle ${idleMins}m, progress ${task.progress || 0}%)`)
+        } else if (idleMins >= IDLE_COMPLETE_MINS) {
+          // Mark as review instead of completed — let chief confirm in next cycle
+          transition(task, assignee, task.status, 'review', `agent 空闲 ${idleMins}m, 待 chief 确认`)
+          logger.info('dept-loop', `Task ${task.id} moved to review (agent ${assignee} idle ${idleMins}m)`)
+        }
       }
     }
   }
 
   return transitions
+}
+
+/**
+ * Query statuses for all in_progress/rework agents in a department.
+ * Returns null if dual-session is not enabled for this department.
+ *
+ * @param {string} deptId
+ * @param {object} config - Department config
+ * @returns {Promise<Object|null>} - {[agentId]: statusResult} or null
+ */
+async function queryDeptAgentStatuses(deptId, config) {
+  if (!isDualSessionEnabled(deptId)) return null
+
+  const agentActivity = readAgentActivity()
+  const agents = config.agents || []
+  const projects = readProjectTasks()
+  const standalone = readStandaloneTasks()
+
+  // Find agents with in_progress/rework tasks
+  const agentsToQuery = new Set()
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      if (!['in_progress', 'rework'].includes(t.status)) continue
+      const assignees = [t.assignedAgent, ...(t.assignees || [])].filter(Boolean)
+      for (const a of assignees) {
+        if (agents.includes(a)) agentsToQuery.add(a)
+      }
+    }
+  }
+  for (const t of standalone) {
+    if (!['in_progress', 'rework'].includes(t.status)) continue
+    const assignees = [t.assignedAgent, ...(t.assignees || [])].filter(Boolean)
+    for (const a of assignees) {
+      if (agents.includes(a)) agentsToQuery.add(a)
+    }
+  }
+
+  if (agentsToQuery.size === 0) return {}
+
+  const results = {}
+  for (const aid of agentsToQuery) {
+    results[aid] = await queryAgentStatus(aid, `agent:${aid}:main`, STATUS_QUERY_TIMEOUT_MS)
+  }
+  logger.debug('dept-loop', `Dual-session status queries for ${deptId}: ${JSON.stringify(results)}`)
+  return results
 }
 
 /**
@@ -337,13 +433,20 @@ async function runDepartmentCycle(deptId) {
     // ── Step 1: Session health check before sending ──
     await ensureSessionHealth(config.head, sessionKey, deptId)
 
-    // ── Step 1.5: Auto-transition stale tasks BEFORE sending ──
+    // ── Step 1.5: Query agent statuses (dual-session) + auto-transition BEFORE sending ──
     // Workers have been idle ~10min since last cycle; checking now ensures
     // idle-based completion fires before sendToAgent resets idle timers.
     // idleOnly: skip chief completions (no response yet)
+    let deptStatusResults = null
+    try {
+      deptStatusResults = await queryDeptAgentStatuses(deptId, config)
+    } catch (e) {
+      logger.debug('dept-loop', `Status query error for ${deptId}`, e)
+    }
+
     let preSendTransitions = []
     try {
-      preSendTransitions = await autoTransitionTasks(deptId, config, '', { idleOnly: true }) || []
+      preSendTransitions = await autoTransitionTasks(deptId, config, '', { idleOnly: true, statusQueryResults: deptStatusResults }) || []
       // Notify agents about auto-fail transitions (not review — notification would wake agent)
       for (const t of preSendTransitions) {
         if (t.to === 'failed') {
@@ -357,8 +460,8 @@ async function runDepartmentCycle(deptId) {
     // Identify idle workers (no in_progress tasks + idle activity)
     const workers = (config.agents || []).filter(id => id !== config.head)
 
-    // Build directive for department head (include transition info so chief sees what changed)
-    const directive = buildDepartmentDirective(deptId, config, state, preSendTransitions)
+    // Build directive for department head (include transition info + agent statuses so chief can make informed decisions)
+    const directive = buildDepartmentDirective(deptId, config, state, preSendTransitions, deptStatusResults)
 
     // Send to department head
     const result = await sendToAgent(config.head, sessionKey, directive)
@@ -375,6 +478,11 @@ async function runDepartmentCycle(deptId) {
         const seen = new Set()
         const uniqueAssignments = assignments.filter(({ agentId }) => {
           if (seen.has(agentId)) return false
+          // Dual-session: skip agents currently working (worker session active)
+          if (deptStatusResults && deptStatusResults[agentId]?.working) {
+            logger.info('dept-loop', `Skipping assignment to ${agentId}: agent is working (dual-session)`)
+            return false
+          }
           seen.add(agentId)
           return true
         })
@@ -394,7 +502,7 @@ async function runDepartmentCycle(deptId) {
       }
 
       // ── Auto-transition stale tasks (with chief response for completion parsing) ──
-      autoTransitionTasks(deptId, config, result.text).then(postTransitions => {
+      autoTransitionTasks(deptId, config, result.text, { statusQueryResults: deptStatusResults }).then(postTransitions => {
         if (!postTransitions) return
         for (const t of postTransitions) {
           if (t.to === 'failed') {
@@ -419,6 +527,8 @@ async function runDepartmentCycle(deptId) {
       let dispatchNeeded = false
       const activityNow = readAgentActivity()
       const idleWorkers = workers.filter(id => {
+        // Dual-session: agents with active workers are not idle
+        if (deptStatusResults && deptStatusResults[id]?.working) return false
         const a = activityNow[id]
         return !a || a.idleMins >= 5
       })

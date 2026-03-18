@@ -297,4 +297,42 @@ function killSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
   return sendSessionCommand('sessions.reset', sessionKey, timeoutMs)
 }
 
-module.exports = { getGatewayConfig, sendToAgent, sendToCeo, compactSession, killSession }
+/**
+ * Parse a status response from an agent.
+ * Expected format: STATUS: working|completed|idle, optionally SUBAGENT: <runId>
+ *
+ * @param {string} text
+ * @returns {{working?: boolean, completed?: boolean, idle?: boolean, timeout?: boolean, subagentRunId?: string|null}}
+ */
+function parseStatusResponse(text) {
+  if (!text) return { timeout: true }
+  const subagentMatch = text.match(/SUBAGENT:\s*(\S+)/i)
+  if (/status:\s*working/i.test(text))
+    return { working: true, subagentRunId: subagentMatch?.[1] || null }
+  if (/status:\s*completed/i.test(text))
+    return { completed: true }
+  if (/status:\s*idle/i.test(text))
+    return { idle: true }
+  return { idle: true }  // conservative fallback
+}
+
+/**
+ * Query an agent's current task status via the chat session.
+ * Uses a short timeout to avoid blocking the autopilot loop.
+ *
+ * @param {string} agentId
+ * @param {string} sessionKey
+ * @param {number} timeoutMs
+ * @returns {Promise<{working?: boolean, completed?: boolean, idle?: boolean, timeout?: boolean, subagentRunId?: string|null}>}
+ */
+async function queryAgentStatus(agentId, sessionKey, timeoutMs) {
+  try {
+    const result = await sendToAgent(agentId, sessionKey, '[系统查询] 当前任务状态？', timeoutMs)
+    if (!result.ok) return { timeout: true }
+    return parseStatusResponse(result.text)
+  } catch {
+    return { timeout: true }
+  }
+}
+
+module.exports = { getGatewayConfig, sendToAgent, sendToCeo, compactSession, killSession, parseStatusResponse, queryAgentStatus }

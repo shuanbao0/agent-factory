@@ -56,6 +56,23 @@ const STALE_TASK_MINS = 30                  // Agent idle N minutes + low progre
 const MIN_EFFECTIVE_RESPONSE_LENGTH = 50    // Below this char count = ineffective response
 const MAX_CONSECUTIVE_FAILURES = 3           // Trigger fallback dispatch after N consecutive failures
 
+// Dual-session mode (Chat + Worker)
+const DUAL_SESSION_ENABLED = process.env.AF_DUAL_SESSION !== '0'  // on by default
+const DUAL_SESSION_DEPTS = (process.env.AF_DUAL_SESSION_DEPTS || '').split(',').filter(Boolean)
+const STATUS_QUERY_TIMEOUT_MS = 30000
+const MAX_NO_RESPONSE_COUNT = 2
+const MAX_TASK_MEMORIES = 5
+const MEMORY_MAX_CHARS = 3000
+
+/**
+ * Check if dual-session mode is enabled for a department.
+ * @param {string} deptId
+ * @returns {boolean}
+ */
+function isDualSessionEnabled(deptId) {
+  return DUAL_SESSION_ENABLED || DUAL_SESSION_DEPTS.includes(deptId)
+}
+
 module.exports = {
   PROJECT_ROOT,
   CONFIG_DIR,
@@ -94,4 +111,11 @@ module.exports = {
   STALE_TASK_MINS,
   MIN_EFFECTIVE_RESPONSE_LENGTH,
   MAX_CONSECUTIVE_FAILURES,
+  DUAL_SESSION_ENABLED,
+  DUAL_SESSION_DEPTS,
+  STATUS_QUERY_TIMEOUT_MS,
+  MAX_NO_RESPONSE_COUNT,
+  MAX_TASK_MEMORIES,
+  MEMORY_MAX_CHARS,
+  isDualSessionEnabled,
 }

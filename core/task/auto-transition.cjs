@@ -72,6 +72,8 @@ function parseTaskCompletions(text) {
  * @param {boolean} [opts.idleOnly=false] - Skip chief completions
  * @param {number} [opts.idleCompleteMins] - Override IDLE_COMPLETE_MINS
  * @param {number} [opts.staleTaskMins] - Override STALE_TASK_MINS
+ * @param {boolean} [opts.dualSessionEnabled=false] - Use status query results instead of idle-based logic
+ * @param {Object} [opts.statusQueryResults] - {[agentId]: {working?, completed?, idle?, timeout?}}
  * @returns {Array<{taskId, taskName, agentId, from, to, reason, extras?}>}
  */
 function computeTransitions(opts) {
@@ -82,6 +84,8 @@ function computeTransitions(opts) {
     idleOnly = false,
     idleCompleteMins = IDLE_COMPLETE_MINS,
     staleTaskMins = STALE_TASK_MINS,
+    dualSessionEnabled = false,
+    statusQueryResults,
   } = opts
 
   const transitions = []
@@ -124,10 +128,23 @@ function computeTransitions(opts) {
         transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: 'review', to: '_quality_gate', reason: `agent 空闲 ${idleMins}m, 需要质量审核`, _task: task })
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
-      if (idleMins >= staleTaskMins && (task.progress || 0) < 50) {
-        transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: task.status, to: 'failed', reason: `agent 空闲 ${idleMins}m 且进度 <50%` })
-      } else if (idleMins >= idleCompleteMins) {
-        transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: task.status, to: 'review', reason: `agent 空闲 ${idleMins}m, 待 chief 确认` })
+      if (dualSessionEnabled && statusQueryResults) {
+        // Dual-session path: use explicit status query instead of idle guessing
+        const status = statusQueryResults[assignee]
+        if (status?.working) continue  // worker is running, don't interfere
+        if (status?.completed || status?.idle) {
+          transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: task.status, to: 'review', reason: 'agent 报告完成/空闲' })
+        }
+        if (status?.timeout) {
+          transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: task.status, to: '_no_response', reason: 'agent 无响应' })
+        }
+      } else {
+        // Legacy idle-based path
+        if (idleMins >= staleTaskMins && (task.progress || 0) < 50) {
+          transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: task.status, to: 'failed', reason: `agent 空闲 ${idleMins}m 且进度 <50%` })
+        } else if (idleMins >= idleCompleteMins) {
+          transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from: task.status, to: 'review', reason: `agent 空闲 ${idleMins}m, 待 chief 确认` })
+        }
       }
     }
   }

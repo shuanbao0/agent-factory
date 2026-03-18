@@ -8,4 +8,6 @@ module.exports = {
   compressMemory: coreMemory.compressMemory,
   compressMemoryByRole: coreMemory.compressMemoryByRole,
   extractSummaryFromMemory: coreMemory.extractSummaryFromMemory,
+  extractTaskMemory: coreMemory.extractTaskMemory,
+  loadTaskMemories: coreMemory.loadTaskMemories,
 }

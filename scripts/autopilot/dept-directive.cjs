@@ -24,9 +24,14 @@ function readCeoDirectives(deptId) {
 }
 
 /**
- * Build team status for agents in a department
+ * Build team status for agents in a department.
+ *
+ * @param {string[]} agentIds
+ * @param {Object} agentActivity - {[agentId]: {idleMins, ...}}
+ * @param {Array} projects
+ * @param {Object} [statusQueryResults] - Dual-session status: {[agentId]: {working?, completed?, idle?, timeout?, subagentRunId?}}
  */
-function buildTeamStatus(agentIds, agentActivity, projects) {
+function buildTeamStatus(agentIds, agentActivity, projects, statusQueryResults) {
   if (!agentIds || agentIds.length === 0) return '(无团队成员)'
 
   // Count in_progress tasks per agent
@@ -50,7 +55,30 @@ function buildTeamStatus(agentIds, agentActivity, projects) {
     const roleSuffix = meta && meta.description ? ` | 职责: ${meta.description}` : ''
     const taskCount = inProgressCount[agentId] || 0
     const taskSuffix = taskCount > 0 ? `, ${taskCount}个进行中任务` : ''
-    if (a) {
+
+    // Dual-session: use real-time status query results when available
+    const queryStatus = statusQueryResults && statusQueryResults[agentId]
+    if (queryStatus) {
+      let status, detail
+      if (queryStatus.working) {
+        status = '🔵 工作中'
+        detail = 'worker session 活跃'
+        if (queryStatus.subagentRunId) detail += `, runId: ${queryStatus.subagentRunId}`
+      } else if (queryStatus.completed) {
+        status = '✅ 已完成'
+        detail = '报告任务完成'
+      } else if (queryStatus.idle) {
+        status = '🟢 空闲'
+        detail = '可分配任务'
+      } else if (queryStatus.timeout) {
+        status = '⚠️ 无响应'
+        detail = '状态查询超时'
+      } else {
+        status = '❓ 未知'
+        detail = ''
+      }
+      result += `- ${agentId}: ${status}（${detail}${taskSuffix}）${roleSuffix}\n`
+    } else if (a) {
       const status = a.idleMins < 5 ? '🔴 忙碌' : a.idleMins < 30 ? '🟡 刚完成' : '🟢 空闲'
       result += `- ${agentId}: ${status}（${a.idleMins}分钟无活动${taskSuffix}）${roleSuffix}\n`
     } else {
@@ -146,9 +174,10 @@ function buildKpiStatus(deptId, kpiDefs) {
  * @param {object} config - Department config
  * @param {object} state - Department state
  * @param {Array<{taskId: string, taskName: string, agentId: string, from: string, to: string, reason: string}>} [transitions] - Task transitions from pre-send auto-transition
+ * @param {Object} [statusQueryResults] - Dual-session status query results {[agentId]: statusResult}
  * @returns {string} The directive text
  */
-function buildDepartmentDirective(deptId, config, state, transitions) {
+function buildDepartmentDirective(deptId, config, state, transitions, statusQueryResults) {
   const agentActivity = readAgentActivity()
   const projects = readProjectTasks()
 
@@ -217,7 +246,7 @@ ${readCeoDirectives(deptId)}
 ${budgetInfo}
 ${transitionSection}
 ## 团队状态
-${buildTeamStatus(config.agents, agentActivity, projects)}
+${buildTeamStatus(config.agents, agentActivity, projects, statusQueryResults)}
 
 ## 部门任务
 ${buildDeptTasks(deptId, config, projects)}
@@ -237,9 +266,10 @@ ${buildKpiStatus(deptId, config.kpis)}
 - 项目整体进度如何？是否需要调整优先级？
 
 **第二步：判断 agent 是否可分配**
+- agent 🔵 工作中 → **绝对不要**分配新任务，worker session 正在执行
 - agent 已有进行中(in_progress)任务 → **不要**分配新任务，让他专注完成现有工作
-- agent 无进行中任务且 🟢 空闲 或 ⚪ 无记录 → 可以分配
-- agent 🟡 刚完成但无进行中任务 → 可以分配
+- agent ✅ 已完成 或 🟢 空闲 → 可以分配
+- agent ⚠️ 无响应 → 暂不分配，等待下轮状态确认
 
 **第三步：选择合适的任务**
 - 优先分配已有的 pending/assigned 待办任务，而非凭空创建新任务

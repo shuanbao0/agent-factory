@@ -287,6 +287,93 @@ function compressMemoryByRole(agentId, fullResponse, role) {
   }
 }
 
+/**
+ * Extract a structured task memory from worker output and persist it.
+ *
+ * @param {string} agentId
+ * @param {object} task - { id, name, type, description }
+ * @param {string} workerOutput - Raw text output from the worker session
+ * @param {object} [options]
+ * @param {number} [options.maxChars=3000] - Maximum chars for the memory file
+ */
+function extractTaskMemory(agentId, task, workerOutput, options = {}) {
+  if (!workerOutput || workerOutput.length < 20) return
+  const maxChars = options.maxChars || 3000
+
+  const tasksDir = join(AGENTS_DIR, agentId, 'memory', 'tasks')
+  if (!existsSync(tasksDir)) {
+    try { mkdirSync(tasksDir, { recursive: true }) } catch { /* skip */ }
+  }
+
+  const lines = workerOutput.split('\n').filter(l => l.trim())
+  // Extract key outcomes
+  const outcomeKeywords = ['完成', '创建', '生成', '输出', '结论', '结果',
+    'completed', 'created', 'generated', 'output', 'conclusion', 'result']
+  const outcomeLines = lines.filter(l => {
+    const lower = l.toLowerCase()
+    return outcomeKeywords.some(k => lower.includes(k))
+  })
+  const summary = outcomeLines.length > 0
+    ? outcomeLines.slice(0, 10).join('\n')
+    : lines.slice(0, 8).join('\n')
+
+  const today = new Date().toISOString().slice(0, 10)
+  const content = [
+    `# Task Memory: ${task.name || task.id}`,
+    '',
+    `- **Task ID**: ${task.id}`,
+    `- **Type**: ${task.type || 'unknown'}`,
+    `- **Date**: ${today}`,
+    task.description ? `- **Description**: ${task.description.slice(0, 200)}` : '',
+    '',
+    '## Outcome',
+    summary.slice(0, maxChars - 300),
+  ].filter(Boolean).join('\n')
+
+  const filePath = join(tasksDir, `${task.id}.md`)
+  try {
+    writeFileSync(filePath, content.slice(0, maxChars))
+  } catch { /* skip */ }
+}
+
+/**
+ * Load task memories for an agent.
+ *
+ * @param {string} agentId
+ * @param {object} [options]
+ * @param {number} [options.limit=5] - Maximum number of memories to return
+ * @param {string} [options.taskType] - Filter by task type (if present in filename or content)
+ * @returns {Array<{taskId: string, content: string}>}
+ */
+function loadTaskMemories(agentId, options = {}) {
+  const limit = options.limit || 5
+  const tasksDir = join(AGENTS_DIR, agentId, 'memory', 'tasks')
+  if (!existsSync(tasksDir)) return []
+
+  try {
+    const { readdirSync, statSync } = require('fs')
+    const files = readdirSync(tasksDir)
+      .filter(f => f.endsWith('.md'))
+      .map(f => {
+        try {
+          const st = statSync(join(tasksDir, f))
+          return { name: f, mtime: st.mtimeMs }
+        } catch { return null }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.mtime - a.mtime)
+      .slice(0, limit)
+
+    return files.map(f => {
+      try {
+        const content = readFileSync(join(tasksDir, f.name), 'utf-8')
+        const taskId = f.name.replace('.md', '')
+        return { taskId, content: content.slice(0, 2000) }
+      } catch { return null }
+    }).filter(Boolean)
+  } catch { return [] }
+}
+
 module.exports = {
   buildMemoryContext,
   compressMemory,
@@ -297,5 +384,7 @@ module.exports = {
   extractWorkOutput,
   updateDomainKnowledge,
   updateLessons,
+  extractTaskMemory,
+  loadTaskMemories,
   MAX_DOMAIN_KNOWLEDGE_CHARS,
 }

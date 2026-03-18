@@ -37,4 +37,32 @@ describe('MemoryManager', () => {
     const { buildSummaryFromResponse } = require('../../../core/agent/memory.cjs')
     assert.equal(buildSummaryFromResponse('hi', '2026-03-16'), null)
   })
+
+  it('exports extractTaskMemory and loadTaskMemories', () => {
+    const mod = require('../../../core/agent/memory.cjs')
+    assert.ok(typeof mod.extractTaskMemory === 'function')
+    assert.ok(typeof mod.loadTaskMemories === 'function')
+  })
+
+  it('extractTaskMemory skips short output', () => {
+    const { extractTaskMemory } = require('../../../core/agent/memory.cjs')
+    // Should not throw for short/empty input
+    extractTaskMemory('test-agent', { id: 'task-1', name: 'Test' }, 'short')
+    extractTaskMemory('test-agent', { id: 'task-2', name: 'Test' }, '')
+    extractTaskMemory('test-agent', { id: 'task-3', name: 'Test' }, null)
+  })
+
+  it('loadTaskMemories returns empty array for non-existent agent', () => {
+    const { loadTaskMemories } = require('../../../core/agent/memory.cjs')
+    const result = loadTaskMemories('non-existent-agent-xyz')
+    assert.ok(Array.isArray(result))
+    assert.equal(result.length, 0)
+  })
+
+  it('loadTaskMemories respects limit option', () => {
+    const { loadTaskMemories } = require('../../../core/agent/memory.cjs')
+    const result = loadTaskMemories('non-existent-agent-xyz', { limit: 3 })
+    assert.ok(Array.isArray(result))
+    assert.equal(result.length, 0)
+  })
 })
