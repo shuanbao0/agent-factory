@@ -2,104 +2,344 @@
 
 ## 项目概述
 
-Agent Factory 是一个自包含的多 Agent 协作平台，内置 OpenClaw 引擎，提供 Dashboard UI 进行管理。
+Agent Factory 是一个自包含的多 Agent 协作平台，内置 OpenClaw 引擎，提供 Dashboard UI 进行管理。支持自主 Autopilot 循环、多部门协作、任务质量门、成本追踪与预算管控。
 
 - 版本: 0.4.48
 - 仓库: https://github.com/shuanbao0/agent-factory
 - 运行时: Node.js >= 22
 - 许可: GPL-3.0
 
+## 架构总览
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Dashboard UI (3100)                        │
+│               Next.js 14 + React 18 + Zustand               │
+└────────────────────┬────────────────────────────────────────┘
+                     │ fetch /api/* (48+ 路由)
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  API Routes (Next.js)                        │
+│        agents, autopilot, tasks, projects, skills...        │
+└────────┬──────────────────────────────┬─────────────────────┘
+         │                              │
+         ▼                              ▼
+┌────────────────────┐    ┌───────────────────────────────────┐
+│  Services 层       │    │  core-bridge.ts (CJS↔TS 桥接)     │
+│  agent-crud.ts     │───▶│  唯一入口访问 core/ 模块           │
+│  autopilot-api.ts  │    └───────────────┬───────────────────┘
+│  task-api.ts       │                    │ require()
+└────────────────────┘                    ▼
+         │              ┌─────────────────────────────────────┐
+         │              │           core/ (CJS)                │
+         │              │  repo → task → llm → observe → agent │
+         │              │  autopilot → common                  │
+         │              └────────────────┬────────────────────┘
+         │                               │
+         ▼                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│            OpenClaw Gateway (19100) — LLM 路由引擎           │
+│  多 LLM 路由 (Anthropic/MiniMax/OpenAI/DeepSeek)            │
+│  Memory 搜索 + Session 持久化 + Token 计数                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 设计模式与代码原则
+
+### 核心设计模式
+
+| 模式 | 应用位置 | 说明 |
+|------|----------|------|
+| **Repository Pattern** | `core/repo/` | BaseRepository 抽象 JSON 文件 I/O，带 TTL 缓存（30s）+ 原子写入（tmp+rename） |
+| **State Machine** | `core/task/state-machine.cjs` | 任务状态转换表：pending→assigned→in_progress→review→completed/failed/rework |
+| **Strategy Pattern** | `core/task/strategy.cjs` | 8 种任务类型策略（writing/coding/research...），各有不同超时、分数阈值 |
+| **Observer/Pub-Sub** | `core/observe/event-bus.cjs` | EventBus 继承 EventEmitter，fire-and-forget 语义 + JSONL 持久化 |
+| **Circuit Breaker** | `core/llm/retry.cjs` | 三态断路器（CLOSED→OPEN→HALF_OPEN），防止 LLM 级联失败 |
+| **Connection Pool** | `core/llm/gateway-pool.cjs` | 单 WebSocket 连接复用，惰性连接 + 自动重连 + 心跳保活 |
+| **Dependency Injection** | `core/task/quality-orchestrator.cjs` | 注入 sendFn、readAgentActivity 等，解耦质量门与 Gateway 实现 |
+| **Facade Pattern** | `ui/src/lib/task-storage.ts` 等 | UI 层薄包装器，保留旧接口签名但委托给 core |
+| **Marker-based Injection** | `ui/src/lib/base-rules.ts` | HTML 注释标记实现幂等注入，支持反复执行不重复 |
+
+### 代码编写原则
+
+#### 简洁与逻辑
+
+1. **最小必要复杂度**：只写当前需求所需的代码，三行相似代码优于一个过早抽象。不为假设性的未来需求设计
+2. **不过度工程化**：不添加未要求的功能、重构、注释、docstring、类型注解。bug 修复不需要顺手清理周围代码
+3. **不添加冗余防御**：不为不可能发生的场景添加错误处理/回退/校验。只在系统边界（用户输入、外部 API）做校验，信任内部代码和框架保证
+4. **删除即删除**：确认无用的代码直接删除，不留 `_unused` 变量、`// removed` 注释、re-export 兼容 shim
+5. **单一职责**：模块级——每个 core/ 子目录只负责一个领域（repo 只管数据访问、task 只管状态机、observe 只管可观测性）；函数级——每个函数只做一件事，逻辑线性，复杂条件拆成命名清晰的子函数而非嵌套 if-else；文件级——一个文件围绕一个概念（如 `quality-gate.cjs` 只管质量门 FSM，不混入任务创建逻辑）
+6. **命名即文档**：变量名和函数名应自解释意图，减少注释依赖。只在逻辑不自明处（如 workaround、业务规则）加注释
+
+#### 架构与分层
+
+7. **业务逻辑集中在 core/**：UI 层不含业务逻辑，所有持久化/决策/校验在 core/ 中完成
+8. **Entity 是类型单一真相源**：`entity/` 目录定义所有 TypeScript 接口和常量（同时提供 `.ts` 和 `.cjs` 双格式），core/ 和 UI 都从这里引用
+9. **CJS↔TS 桥接隔离**：`core-bridge.ts` 是 UI 访问 core/ 的唯一入口，用 `createRequire` 绕过 webpack 静态分析
+10. **新模块通过 barrel export 暴露**：每个 core/ 子目录的 `index.cjs` 统一导出，`core/index.cjs` 按命名空间聚合
+
+#### 可靠性
+
+11. **Fire-and-forget 容错**：EventBus 监听器错误不影响主流程；TaskBridge 的 Dashboard API 调用失败不阻塞 Autopilot
+12. **幂等操作**：所有迁移脚本、base-rules 注入、技能 symlink 同步均可重复执行
+13. **原子服务操作**：`createAgent()` 一次完成 6 步（建文件→注入规则→注册配置→建工作空间→创建项目→重启 Gateway），无中间态
+14. **惰性依赖加载**：circular dependency 用 lazy require 预防（如 `budget.cjs`）
+15. **JSONL Append-Only**：成本和事件日志用 JSONL 追加写，避免 read-modify-write 竞争
+
 ## 项目结构
 
 ```
 agent-factory/
-├── agents/                # Agent 核心定义（AGENTS.md, SOUL.md, memory/, skills/）
-├── workspaces/            # Agent 产出空间（文档、代码等工作产出）
-├── projects/              # 项目级共享空间（按 department 分目录）
+├── entity/                # 实体定义层（TypeScript 类型 + 常量，单一真相源）
+│   ├── task/              # Task 状态机常量、接口、质量门类型
+│   ├── agent/             # Agent/AgentMeta/AgentTemplate 接口
+│   ├── dept/              # Department 配置、工作流、运行状态类型
+│   ├── config/            # OpenClawConfig、GatewayConfig 接口
+│   ├── autopilot/         # AutopilotState 接口
+│   ├── observe/           # Budget、Cost 接口
+│   ├── project/           # ProjectMeta 接口
+│   └── ui/                # UI 专用类型
+├── core/                  # 核心业务模块（CJS，唯一的业务逻辑源）
+│   ├── repo/              # Repository Pattern — 数据访问层
+│   ├── task/              # State Machine + Strategy — 任务生命周期
+│   ├── llm/               # LLM 通信与决策引擎
+│   ├── observe/           # 可观测性 — Event Bus + Cost + Budget + KPI
+│   ├── agent/             # Agent 记忆管理
+│   ├── autopilot/         # Autopilot 自主循环（CEO + 部门循环）
+│   └── common/            # 通用工具（validators, task-bridge, autopilot-state）
+├── ui/                    # Next.js Dashboard（详见下方）
+├── agents/                # Agent 核心定义（运行时创建，不提交）
+├── workspaces/            # Agent 产出空间（不提交）
+├── projects/              # 项目级共享空间（按 department 分目录，不提交）
 ├── bin/
-│   └── agent-factory.mjs  # CLI 入口（agent-factory 命令）
+│   └── agent-factory.mjs  # CLI 入口（start/stop/update/doctor 等命令）
 ├── config/
 │   ├── openclaw.json      # Gateway 配置（端口、模型、插件、Agent 列表）
 │   ├── models.json        # 模型别名定义（Anthropic/MiniMax）
-│   ├── base-rules.md      # 全局强制注入规则（注入到所有 Agent 的 AGENTS.md/SOUL.md）
-│   └── autopilot-state.json # Autopilot 运行状态
-├── core/                  # 核心模块（模块化分层，唯一的业务逻辑源）
-│   ├── repo/              # Repository Pattern — 数据访问层（session, mission, task, config, dept-*, agent-meta）
-│   ├── task/              # State Machine + Strategy — 任务生命周期（quality-gate, quality-validator, quality-orchestrator, auto-transition）
-│   ├── llm/               # LLM 通信与决策
-│   ├── observe/           # 可观测性 — Event Bus + Cost + Budget + KPI + Stall Detection
-│   ├── agent/             # Agent 业务逻辑（memory 管理）
-│   └── common/            # 通用工具（validators, agent-service, task-bridge, autopilot-state）
-├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿等）
-├── libs/                  # 本地库（openclaw 源码，不提交）
-├── scripts/
-│   ├── start.mjs          # 统一启动脚本（Dashboard + Gateway）
-│   ├── autopilot.cjs      # Autopilot 循环脚本
-│   ├── inject-base-rules.mjs # 重新注入 base-rules 到所有 Agent
-│   ├── migrate-sync-builtin.mjs # 统一同步内置模板到已有 Agent（peers/skills/AGENTS.md/SOUL.md/IDENTITY.md）
-│   ├── migrate-sync-config.mjs # 智能同步 config/ 下的部门配置和预算文件（AF_UPDATE_DIR 支持）
-│   ├── migrate-sync-gateway.mjs # 智能同步 openclaw.json 和 models.json（AF_UPDATE_DIR 支持）
-│   ├── migrate-workspaces.mjs # 工作空间迁移（产出从 agents/ 移到 workspaces/）
-│   ├── migrate-to-templates.mjs
-│   └── patch-openclaw.mjs     # postinstall 自动补丁（修复 OpenClaw enforceFinalTag/MiniMax 问题）
-├── skills/                # 共享技能（project-init、wechat-mp-cn）
+│   ├── base-rules.md      # 全局强制注入规则（三段：AGENTS_RULES/SOUL_RULES/REMINDER）
+│   ├── autopilot-state.json # Autopilot 运行状态
+│   ├── departments.json   # 部门注册表
+│   ├── departments/       # 按部门的 config.json + state.json
+│   ├── budget.json        # 全局预算配置
+│   ├── autopilot-costs.jsonl  # 成本审计日志（append-only）
+│   └── autopilot-events.jsonl # 事件审计日志（append-only）
 ├── templates/
-│   ├── builtin/           # 内置 Agent 模板（14 个）
+│   ├── builtin/           # 内置 Agent 模板（14 个角色）
 │   └── custom/            # 用户自定义模板（不提交）
-├── ui/                    # Next.js Dashboard（详见下方）
+├── skills/                # 共享技能（project-init、peer-status、task-api 等）
+├── scripts/               # 运维与迁移脚本
+├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿）
+├── libs/                  # 本地库（openclaw 源码，不提交）
 ├── .env                   # API Key 等敏感配置（不提交）
 ├── .env.example           # 环境变量模板
-├── package.json           # 根依赖（openclaw 引擎）+ bin 定义
-└── BLUEPRINT.md           # 架构蓝图（34KB，详细设计）
+├── package.json           # 根依赖 + bin 定义
+└── BLUEPRINT.md           # 架构蓝图
 ```
+
+## 各模块详解
+
+### entity/ — 实体定义层
+
+项目所有 TypeScript 类型和常量的单一真相源。每个子模块同时提供 `.ts`（供 UI）和 `.cjs`（供 core）两种格式。
+
+| 模块 | 关键导出 |
+|------|----------|
+| `task/` | `STATUSES`, `TRANSITIONS`, `TERMINAL`, `canTransition()`, `Task`, `TaskQuality`, `PipelineStep` |
+| `agent/` | `Agent`, `AgentMeta`, `AgentTemplate`, `AgentConfigEntry` |
+| `dept/` | `DepartmentConfig`, `DepartmentWorkflow`, `DepartmentLoopState`, `DEFAULT_DEPT_STATE` |
+| `config/` | `OpenClawConfig`, `GatewayConfig` |
+| `autopilot/` | `AutopilotState` |
+| `observe/` | `CompanyBudget`, `CostEntry`, `DailyCostSummary` |
+| `project/` | `ProjectMeta` |
+
+### core/repo/ — 数据访问层（Repository Pattern）
+
+所有持久化数据通过 Repository 访问，屏蔽文件 I/O 细节。
+
+| Repository | 管理数据 | 缓存 TTL |
+|------------|----------|----------|
+| `BaseRepository` | 抽象基类：JSON 文件读写 + TTL 缓存 + 原子写入（tmp+rename） | 可配置 |
+| `ConfigRepository` | `config/openclaw.json` — Gateway 配置 + Agent 注册 | 30s |
+| `TaskRepository` | `config/tasks.json` + `projects/{id}/.project-meta.json` — 独立/项目任务 | 0（API 实时） |
+| `SessionRepository` | `.openclaw-state/` — Session token 用量 | 0 |
+| `DeptConfigRepository` | `config/departments/{id}/config.json` — 部门策略 | 30s |
+| `DeptStateRepository` | `config/departments/{id}/state.json` — 部门运行时状态 | 30s |
+| `MissionRepository` | `config/mission.md` / `config/departments/{id}/mission.md` | 0 |
+| `AgentMetaRepository` | `agents/{id}/agent.json` — Agent 元数据 | 0 |
+| `ProjectMetaRepository` | `projects/{id}/.project-meta.json` — 项目元数据 | 0 |
+
+### core/task/ — 任务生命周期（State Machine + Strategy + Quality Gate）
+
+| 模块 | 职责 |
+|------|------|
+| `state-machine.cjs` | 状态转换验证（引用 entity/task 常量），记录转换历史（actor, reason, timestamp） |
+| `strategy.cjs` | 8 种内置策略（writing/editing/worldbuilding/character/plotting/coding/analysis/research），定义 idleThresholdMins、staleThresholdMins、minPassingScore、preferredReviewers |
+| `quality-gate.cjs` | 三阶段质量门 FSM：self_checking → peer_reviewing → head_approving → done，每阶段在独立 Autopilot 周期运行 |
+| `quality-validator.cjs` | 质量校验规则（格式、必填字段） |
+| `quality-orchestrator.cjs` | 质量门编排器（DI：注入 sendFn、readAgentActivity、loadDeptConfig） |
+| `auto-transition.cjs` | 基于 idle 时间的自动状态转换（idle > 18min → auto-complete，idle > 30min → auto-fail） |
+
+**任务状态机：**
+```
+pending → assigned → in_progress → review → completed
+                  ↘          ↗         ↘
+                   rework  ←──────────  failed
+```
+
+### core/llm/ — LLM 通信与决策
+
+| 模块 | 职责 |
+|------|------|
+| `anthropic-client.cjs` | Anthropic SDK 封装（tool-use），支持 `sendWithTools()` |
+| `gateway-pool.cjs` | 持久 WebSocket 连接池（单连接复用），惰性连接 + 自动重连 + 心跳 + idle 超时 |
+| `retry.cjs` | 指数退避重试 + 三态断路器（CLOSED→OPEN→HALF_OPEN） |
+| `decision-engine.cjs` | 结构化决策生成：`makeChiefDecision()`、`makeCeoDecision()` |
+| `directive-builder.cjs` | Prompt 组合：`buildDirective()`、`buildDepartmentDirective()` |
+| `chief-tools.cjs` | Chief/CEO 可用的 tool 定义 |
+| `review-tools.cjs` | 质量评审 tool 定义 |
+
+### core/observe/ — 可观测性
+
+| 模块 | 职责 |
+|------|------|
+| `event-bus.cjs` | Pub-Sub 事件系统（继承 EventEmitter），自动时间戳 + JSONL 持久化，错误隔离 |
+| `cost-tracker.cjs` | Token→USD 成本计算，JSONL 追加写入 `autopilot-costs.jsonl` |
+| `budget.cjs` | 按部门每日 Token 预算执行：`checkBudget()` + `trackTokenUsage()` |
+| `kpi.cjs` | 部门 KPI 计算：成功率、平均延迟、产出质量 |
+| `stall-detector.cjs` | 任务/部门停滞检测 |
+| `scheduler.cjs` | 周期调度器 |
+| `adaptive-timer.cjs` | 基于历史模式的动态超时调整 |
+| `signal-watcher.cjs` | OS 信号处理（优雅关闭） |
+| `reactors/` | 事件监听器注册：cost-alert（成本阈值告警）、cycle-monitor（周期追踪） |
+
+### core/autopilot/ — 自主循环引擎
+
+Autopilot 是 Agent Factory 的核心自动化机制，包含 CEO 协调循环和部门执行循环。
+
+| 模块 | 职责 |
+|------|------|
+| `orchestrator.cjs` | CEO 协调循环（默认 30min/次）：buildMemoryContext → sendToCeo → syncProjects → 触发部门循环 |
+| `department-loop.cjs` | 部门执行循环（默认 10min/次）：buildDirective → sendToAgent(chief) → parseTaskAssignments → autoTransitionTasks → processQualityGate |
+| `gateway-client.cjs` | Agent WebSocket 通信：sendToAgent、sendToCeo、compactSession、queryAgentStatus |
+| `directive.cjs` | CEO 指令构建 |
+| `dept-directive.cjs` | 部门 Chief 指令构建 |
+| `sync.cjs` | 项目状态同步（根据 CEO 信号更新阶段/状态） |
+| `task-prompt.cjs` | 任务 Prompt 渲染 |
+| `dept-activity.cjs` | 部门活动追踪 |
+| `constants.cjs` | 共享常量（超时、重试、轮询间隔） |
+| `logger.cjs` | 结构化日志 |
+
+**Autopilot 执行流程：**
+```
+CEO 协调周期 (30min)
+  ├─ buildMemoryContext() + buildDirective()
+  ├─ sendToCeo() → WebSocket → Gateway
+  ├─ eventBus.fire('cycle.start')
+  ├─ syncProjects() — 阶段推进
+  └─ 触发各部门循环
+
+部门执行周期 (10min/部门)
+  ├─ buildDepartmentDirective() + memory
+  ├─ sendToAgent(chief) → WebSocket
+  ├─ parseTaskAssignments + parseTaskCompletions
+  ├─ autoTransitionTasks()
+  │   ├─ checkBudget()
+  │   ├─ queryAgentStatus() → 双 Session 模式
+  │   ├─ idle > 18min → auto-complete
+  │   ├─ idle > 30min → auto-fail
+  │   └─ processQualityGate() — 三阶段评审
+  ├─ trackTokenUsage() → cost-tracker
+  └─ eventBus.fire() → Reactors
+```
+
+### core/agent/ — Agent 记忆管理
+
+| 模块 | 职责 |
+|------|------|
+| `memory.cjs` | 构建记忆上下文：`buildMemoryContext(agentId, cycleType)` → {summary, recentDecisions, lessonsLearned}；从 `agents/{id}/memory/` 读取 |
+
+### core/common/ — 通用工具
+
+| 模块 | 职责 |
+|------|------|
+| `task-bridge.cjs` | Dashboard API 客户端（fire-and-forget HTTP），用于 Autopilot 同步任务状态到 UI |
+| `autopilot-state.cjs` | 管理 `config/autopilot-state.json`（PID、周期计数） |
+| `validators.cjs` | 通用配置校验 |
+| `config-validator.cjs` | 配置结构验证 |
+| `agent-service.cjs` | Agent 元数据服务 |
 
 ### UI 目录结构（`ui/`）
 
 ```
 ui/src/
 ├── app/                   # Next.js App Router
-│   ├── api/               # API 路由（30+ 端点）
-│   │   ├── agents/        # Agent CRUD、chat、sessions、skills
+│   ├── api/               # API 路由（48+ 端点）
+│   │   ├── agents/        # Agent CRUD、chat、sessions、skills、deploy、permissions
 │   │   ├── gateway/       # start/stop/restart/status
-│   │   ├── projects/      # 项目管理
+│   │   ├── projects/      # 项目 CRUD + 文件浏览
+│   │   ├── tasks/         # 任务 CRUD + 质量门 + 批量操作
+│   │   ├── autopilot/     # Autopilot 控制 + 部门循环管理
 │   │   ├── skills/        # 技能安装管理
-│   │   ├── models/        # 模型配置
-│   │   ├── autopilot/     # Autopilot 控制
-│   │   ├── platform/      # 平台更新（check/update Agent Factory）
-│   │   └── ...            # health, logs, usage, env, templates, auth-profiles, messages, sessions
+│   │   ├── models/        # 模型配置 + 测试
+│   │   ├── departments/   # 部门配置
+│   │   ├── costs/         # 成本追踪
+│   │   ├── budget/        # 预算管理
+│   │   ├── events/        # SSE 事件流
+│   │   ├── platform/      # 平台更新（check/update）
+│   │   └── ...            # health, logs, usage, env, templates, sessions, messages, workspaces
 │   ├── agents/            # Agent 管理页
 │   ├── projects/          # 项目页
 │   ├── skills/            # 技能商店页
 │   ├── messages/          # 消息中心
 │   ├── logs/              # 日志监控页
 │   ├── settings/          # 设置页（Provider、Gateway、模型、平台更新）
-│   ├── setup/             # 初始配置向导（可选入口）
+│   ├── setup/             # 初始配置向导
 │   ├── layout.tsx         # 根布局
 │   └── page.tsx           # Dashboard 首页
-├── components/            # React 组件（20+）
-│   ├── ui/                # 基础 UI（Card、Badge）
+├── components/            # React 组件（70+）
+│   ├── ui/                # 基础 UI（Card、Badge、Button、Dialog 等）
 │   ├── layout-shell.tsx   # 主布局壳（sidebar + content）
 │   ├── sidebar.tsx        # 导航侧边栏
-│   ├── data-provider.tsx  # 全局数据轮询启动器
-│   ├── gateway-guard.tsx  # Gateway 访问守卫（当前为透传）
+│   ├── data-provider.tsx  # SSE 连接 + 轮询初始化
+│   ├── gateway-guard.tsx  # Gateway 访问守卫（当前透传）
 │   ├── agent-form.tsx     # Agent 创建/编辑表单
+│   ├── agent-card.tsx     # Agent 列表卡片
+│   ├── agent-graph.tsx    # Agent 网络关系图
 │   ├── template-picker.tsx # 模板选择器
-│   ├── autopilot-card.tsx # Autopilot 控制卡片
+│   ├── autopilot-card.tsx # Autopilot 控制面板
+│   ├── department-loop-card.tsx # 部门循环控制
+│   ├── task-card.tsx      # 任务卡片
+│   ├── task-pipeline.tsx  # 流水线可视化
+│   ├── task-quality.tsx   # 质量门 UI
+│   ├── mission-editor.tsx # Mission 编辑器
+│   ├── budget-dashboard.tsx # 预算仪表板
+│   ├── token-chart.tsx    # Token 用量图表（Recharts）
+│   ├── comm-matrix.tsx    # Agent 通信矩阵
+│   ├── pixel-office/      # 像素风办公室可视化
 │   └── ...
 ├── services/              # 服务层（API 路由 → 服务委托）
-│   ├── agent-crud.ts      # Agent 创建/更新/删除全流程
-│   ├── autopilot-api.ts   # Autopilot 进程管理 + 状态查询
-│   └── task-api.ts        # 任务 CRUD + 质量门
+│   ├── agent-crud.ts      # Agent 创建/更新/删除全流程（原子操作）
+│   ├── autopilot-api.ts   # Autopilot 进程管理（spawn/kill）+ 状态查询
+│   └── task-api.ts        # 任务 CRUD + 质量门触发 + 流水线任务生成
 ├── lib/                   # 核心库
-│   ├── store.ts           # Zustand 全局状态（轮询、Agent、项目、日志等）
+│   ├── core-bridge.ts     # CJS↔TS 桥接（core/ 的唯一访问入口）
+│   ├── store.ts           # Zustand 全局状态 + SSE + 轮询 + Tab 可见性优化
 │   ├── gateway-manager.ts # Gateway 进程管理（spawn/kill/status）
-│   ├── gateway-client.ts  # Gateway CLI 调用封装（gwCall）
-│   ├── gateway-chat.ts    # WebSocket 聊天协议
+│   ├── gateway-client.ts  # Gateway CLI 调用封装（gwCall / gwCallAsync）
+│   ├── gateway-chat.ts    # WebSocket 聊天协议（独立子进程）
+│   ├── base-rules.ts      # Base-rules 解析与幂等注入（marker 机制）
+│   ├── task-storage.ts    # 任务存储 Facade（委托 core.repo.taskRepo）
+│   ├── quality-gate.ts    # 质量门 Facade（委托 core.task）
+│   ├── department-workflow.ts # 部门工作流配置
+│   ├── data-fetchers.ts   # 异步数据获取（gwCallAsync 非阻塞）
+│   ├── skill-symlinks.ts  # 技能 symlink 同步
+│   ├── event-relay.ts     # SSE 事件广播
+│   ├── autopilot-shared.ts # Autopilot 状态配置辅助
 │   ├── i18n.ts            # i18n（zh/en，localStorage 持久化）
 │   ├── providers.ts       # AI Provider 定义（15+ 供应商）
 │   ├── template-meta.ts   # 模板读取
 │   ├── clawhub.ts         # ClawHub 技能市场 CLI 封装
-│   ├── types.ts           # TypeScript 类型定义
+│   ├── types.ts           # TypeScript 类型定义（从 entity/ 重导出）
 │   └── utils.ts           # 工具函数
 ├── locales/               # 翻译文件
 │   ├── en.json
@@ -107,18 +347,126 @@ ui/src/
 └── styles/globals.css     # Tailwind + 自定义样式（暗色主题）
 ```
 
+### scripts/ — 运维与迁移脚本
+
+| 脚本 | 用途 | 设计特点 |
+|------|------|----------|
+| `start.mjs` | 统一启动 Dashboard + Gateway | 后台 spawn + PID 文件 |
+| `autopilot.cjs` | Autopilot 入口（委托 core/autopilot） | detached 进程 |
+| `inject-base-rules.mjs` | 注入 base-rules 到 Agent | 幂等 marker 机制 + `--dry-run` |
+| `migrate-sync-builtin.mjs` | 同步内置模板到已有 Agent | peers/skills/AGENTS.md 对齐 |
+| `migrate-sync-config.mjs` | 同步部门配置 | `AF_UPDATE_DIR` 支持 + 智能合并 |
+| `migrate-sync-gateway.mjs` | 同步 openclaw.json + models.json | 深度合并，保留用户值 |
+| `migrate-workspaces.mjs` | 迁移产出到 workspaces/ | `--dry-run` 支持 |
+| `patch-openclaw.mjs` | postinstall 自动补丁 | 幂等，版本 >= 2026.4.0 自动跳过 |
+
+### templates/builtin/ — 内置 Agent 模板
+
+每个模板包含 4 个文件：`template.json`（元数据 + 默认配置）、`AGENTS.md`（行为定义）、`SOUL.md`（人格定义）、`IDENTITY.md`（简介）。
+
+角色覆盖：
+- **高管层**：CEO、COO、CFO、Chief Scientist
+- **管理层**：PM、Sales Director、Legal Director
+- **运营层**：Accountant、Contract Specialist、Compliance Officer
+- **创意层**：Designer、Content Creator、Brand Director、Anime Director
+- **技术层**：Backend、Frontend、Data Engineer、Code Instructor、AI Researcher
+
+### skills/ — 共享技能库
+
+| 技能 | 用途 |
+|------|------|
+| `project-init` | 项目脚手架（vite/express/fullstack 模板）+ `.project-meta.json` |
+| `peer-status` | 查询 peer Agent 状态 + 跨 Agent 消息 |
+| `task-api` | 任务 CRUD + 质量门集成 |
+| `find-skills` | 从 ClawHub 市场发现技能 |
+| `skill-creator` | 自定义技能脚手架向导 |
+| `wechat-mp-cn` | 微信小程序集成 |
+
+## 关键数据结构
+
+### Task（任务）
+
+```typescript
+interface Task {
+  id: string
+  name: string
+  status: 'pending' | 'assigned' | 'in_progress' | 'review' | 'completed' | 'failed' | 'rework'
+  priority: 'P0' | 'P1' | 'P2'
+  assignees: string[]
+  assignedAgent?: string
+  creator: 'user' | string
+  progress: number
+  projectId?: string | null
+  phase?: number
+  type?: string
+  quality?: TaskQuality          // 自检/同行评审/主管审批结果
+  reworkCount?: number
+  dependencies: string[]
+  output?: string
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+}
+```
+
+### DepartmentConfig（部门配置）
+
+```typescript
+interface DepartmentConfig {
+  id: string
+  name: string
+  head: string                   // 部门 Chief Agent ID
+  interval: number               // 循环间隔（秒）
+  enabled: boolean
+  agents: string[]               // 部门成员 Agent ID 列表
+  budget?: { dailyTokenLimit: number; alertThreshold: number }
+  kpis?: Record<string, { target: number; unit: string }>
+  workflow?: DepartmentWorkflow  // 阶段、任务类型、流水线
+}
+```
+
+### DepartmentLoopState（部门运行状态）
+
+```typescript
+interface DepartmentLoopState {
+  status: 'running' | 'stopped' | 'cycling' | 'idle' | 'error'
+  pid: number | null
+  cycleCount: number
+  lastCycleAt: string | null
+  history: Array<{ cycle, startedAt, completedAt, elapsedSec, result }>
+  tokensUsedToday: number
+  budgetResetAt: string | null
+}
+```
+
+## 关键文件 I/O 一览
+
+| 文件 | 用途 | 模式 |
+|------|------|------|
+| `config/openclaw.json` | Gateway 配置 + Agent 注册 | ConfigRepository (30s 缓存) |
+| `config/departments/{id}/config.json` | 部门策略 | DeptConfigRepository (30s 缓存) |
+| `config/departments/{id}/state.json` | 部门运行时状态 | DeptStateRepository (30s 缓存) |
+| `config/tasks.json` | 独立任务 | TaskRepository (实时) |
+| `projects/{id}/.project-meta.json` | 项目元数据 + 任务 | TaskRepository (实时) |
+| `config/autopilot-state.json` | Autopilot 进程状态 | AutopilotState (实时) |
+| `config/autopilot-costs.jsonl` | 成本审计日志 | CostTracker (append-only) |
+| `config/autopilot-events.jsonl` | 事件审计日志 | EventBus (append-only) |
+| `config/budget.json` | 全局预算 | Budget (实时) |
+| `agents/{id}/memory/` | Agent 记忆 | MemoryManager (实时) |
+
 ## 技术栈
 
 | 层 | 技术 |
 |----|------|
 | UI 框架 | Next.js 14 (App Router) + React 18 |
-| 状态管理 | Zustand 4.5 |
+| 状态管理 | Zustand 4.5 + SSE 推送 + 轮询降级 |
 | 样式 | Tailwind CSS 3.4（暗色主题）+ clsx + tailwind-merge + CVA |
 | 图标 | lucide-react |
 | 图表 | Recharts |
 | 语言 | TypeScript 5.3（strict 模式） |
-| 路径别名 | `@/*` → `./src/*` |
+| 路径别名 | `@/*` → `./src/*`，`@entity/*` → `../entity/*` |
 | Gateway 引擎 | OpenClaw（npm 依赖，本地运行） |
+| 核心模块 | CommonJS (.cjs) — Node.js require 生态兼容 |
 | 运行时 | Node.js >= 22 |
 
 ## CLI 命令（`agent-factory`）
@@ -126,22 +474,22 @@ ui/src/
 安装后可全局使用 `agent-factory` 命令（通过 `package.json` bin 字段 + `install.sh` 注册）：
 
 ```bash
-agent-factory start            # 启动 Dashboard + Gateway（前台）
-agent-factory stop             # 停止所有服务
+agent-factory start            # 启动 Dashboard + Gateway（后台，PID 追踪）
+agent-factory stop             # 停止所有服务（级联 SIGTERM）
 agent-factory restart          # 重启
 agent-factory status           # 查看运行状态（端口、PID、版本）
 agent-factory logs             # 实时查看日志（tail -f）
-agent-factory update           # 自动升级到最新版本
+agent-factory update           # 自动升级到最新版本（原子更新）
 agent-factory version          # 显示版本号
-agent-factory doctor           # 检查环境（Node、依赖、配置）
+agent-factory doctor           # 检查环境（Node、依赖、配置、目录）
 ```
 
-`agent-factory update` 流程（下载与合并完全分离）：
-1. 查询最新 release → 停止服务
-2. 下载 tarball → rsync 覆盖代码（跳过用户数据目录/文件）
-3. npm install
-4. 运行 migrate-\*.mjs 迁移脚本（通过 `AF_UPDATE_DIR` 环境变量传入 tmpDir 路径，脚本从中读取新版 config 做智能合并）
-5. 清理 tmpDir → 重新注入 base-rules → 提示重启
+`agent-factory update` 流程（原子更新）：
+1. 查询 GitHub 最新 release → 停止服务
+2. 下载 tarball → rsync 覆盖代码（保留 agents/、projects/、templates/custom/、.env、openclaw.json）
+3. npm install（root + ui）
+4. 运行 migrate-\*.mjs 迁移脚本（通过 `AF_UPDATE_DIR` 传入 tmpDir）
+5. 重新注入 base-rules → 清理 tmpDir → 提示重启
 
 也可通过 Dashboard Settings 页面的「Agent Factory 更新」卡片触发（`/api/platform/update`）。
 
@@ -195,19 +543,26 @@ npm run lint                   # ESLint 检查
 ### 数据流
 
 ```
-UI 组件 → Zustand Store → fetch /api/* → gwCall() → OpenClaw Gateway (CLI/WebSocket)
-                                                        ↓
-Store 更新 ← JSON 响应 ←──────────────────────────────────┘
+UI 组件 → Zustand Store → fetch /api/* → Services → core-bridge → core/ → 文件 I/O
+                ↑                                                            │
+                └──── SSE 推送 / 轮询降级 ←─────────────────────────────────────┘
+
+Autopilot:
+orchestrator → gateway-client → WebSocket → OpenClaw Gateway → LLM APIs
+     ↓              ↑
+ core/repo     core/observe (EventBus + CostTracker + Budget)
 ```
 
 ### 轮询机制（DataProvider）
 
-| 数据 | 间隔 |
-|------|------|
-| Health | 15s |
-| Agents | 10s |
-| Logs | 5s |
-| Usage | 30s |
+| 数据 | 间隔 | 说明 |
+|------|------|------|
+| Health | 15s | Gateway 健康状态 |
+| Agents | 10s | Agent 列表 + 状态 |
+| Logs | 5s | 日志流 |
+| Usage | 30s | Token 用量统计 |
+
+优化：Tab 不可见时暂停轮询，SSE 可用时优先使用推送。
 
 ### Gateway 状态
 
@@ -257,6 +612,8 @@ WebSocket 连接 `ws://127.0.0.1:19100`，帧协议：
 
 ## 编码规范
 
+### UI 层
+
 - 所有 UI 组件使用 `'use client'` 指令（客户端组件）
 - 数据获取通过 `/api/*` 路由，不直接在客户端访问文件系统
 - 使用 Tailwind 暗色主题，颜色变量定义在 `globals.css`
@@ -265,6 +622,24 @@ WebSocket 连接 `ws://127.0.0.1:19100`，帧协议：
 - i18n：所有用户可见文案必须经过 `t()` 翻译函数，同时更新 `en.json` 和 `zh.json`
 - TypeScript strict 模式，避免 `any`
 - 组件变体使用 CVA（class-variance-authority）
+- Gateway 调用优先使用 `gwCallAsync()`（非阻塞），避免 `gwCall()`（阻塞）
+- Store enrichment 用 `setTimeout(0)` 延迟合并，避免阻塞事件循环
+
+### core 层
+
+- 使用 CommonJS (.cjs) 格式，确保 Node.js require 兼容
+- 所有数据访问通过 `core/repo/` Repository，不直接 `fs.readFileSync`
+- 事件用 EventBus fire-and-forget，监听器错误不影响主流程
+- LLM 调用必须通过 retry + circuit breaker 包装
+- JSONL 日志用 `fs.appendFileSync()`，避免 read-modify-write 竞争
+- 惰性 require 预防循环依赖
+
+### 全局
+
+- 类型定义放 `entity/`，同时提供 `.ts` 和 `.cjs` 格式
+- 常量放 `entity/`，core/ 和 UI 统一引用
+- 新增模块通过 `index.cjs` barrel export 暴露
+- 核心模块用全局单例（EventBus、ConfigRepository、CircuitBreaker、GatewayConnectionPool）
 
 ## i18n 系统
 
@@ -295,6 +670,7 @@ Gateway 核心配置，包含：模型定义、Agent 列表、端口、认证 To
   "description": "...",
   "emoji": "📋",
   "category": "builtin",
+  "group": "executive",
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": ["tmux", "github", "session-logs"],
