@@ -1,7 +1,6 @@
 'use strict'
 /**
  * GatewayClient — Autopilot Gateway 通信客户端单元测试
- * （从 core/autopilot/gateway-client.test.cjs 迁移，更新 require 路径）
  */
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
@@ -10,16 +9,19 @@ const SOURCE_PATH = require('path').join(__dirname, '..', '..', '..', 'core', 'a
 
 describe('gateway-client module exports', () => {
   it('exports expected functions', () => {
+    const mod = require('../../../core/autopilot/gateway-client.cjs')
     const expectedExports = [
-      'getGatewayConfig',
       'sendToAgent',
       'sendToCeo',
       'compactSession',
       'killSession',
+      'parseStatusResponse',
+      'queryAgentStatus',
+      'closePool',
     ]
 
     for (const name of expectedExports) {
-      assert.ok(typeof name === 'string', `Expected export: ${name}`)
+      assert.equal(typeof mod[name], 'function', `Expected export: ${name}`)
     }
   })
 
@@ -46,6 +48,13 @@ describe('gateway-client module exports', () => {
     const { readFileSync } = require('fs')
     const source = readFileSync(SOURCE_PATH, 'utf-8')
     assert.ok(source.includes("'sessions.reset'"))
+  })
+
+  it('uses GatewayConnectionPool internally', () => {
+    const { readFileSync } = require('fs')
+    const source = readFileSync(SOURCE_PATH, 'utf-8')
+    assert.ok(source.includes('GatewayConnectionPool'))
+    assert.ok(source.includes('getPool()'))
   })
 })
 

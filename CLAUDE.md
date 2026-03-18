@@ -193,10 +193,7 @@ pending → assigned → in_progress → review → completed
 | `anthropic-client.cjs` | Anthropic SDK 封装（tool-use），支持 `sendWithTools()` |
 | `gateway-pool.cjs` | 持久 WebSocket 连接池（单连接复用），惰性连接 + 自动重连 + 心跳 + idle 超时 |
 | `retry.cjs` | 指数退避重试 + 三态断路器（CLOSED→OPEN→HALF_OPEN） |
-| `decision-engine.cjs` | 结构化决策生成：`makeChiefDecision()`、`makeCeoDecision()` |
 | `directive-builder.cjs` | Prompt 组合：`buildDirective()`、`buildDepartmentDirective()` |
-| `chief-tools.cjs` | Chief/CEO 可用的 tool 定义 |
-| `review-tools.cjs` | 质量评审 tool 定义 |
 
 ### core/observe/ — 可观测性
 

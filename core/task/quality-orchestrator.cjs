@@ -11,6 +11,7 @@
  */
 const { existsSync, statSync, readFileSync } = require('fs')
 const { resolve, join } = require('path')
+const { getStrategy } = require('./strategy.cjs')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
 
@@ -99,18 +100,11 @@ class QualityOrchestrator {
     const agents = config.agents || []
     const assignedAgent = task.assignedAgent || task.assignees?.[0]
 
-    const REVIEWER_MAP = {
-      'writing':       ['reader-analyst', 'style-editor', 'continuity-mgr'],
-      'editing':       ['reader-analyst', 'continuity-mgr'],
-      'worldbuilding': ['worldbuilder', 'continuity-mgr'],
-      'character':     ['character-designer', 'continuity-mgr'],
-      'plotting':      ['plot-architect', 'pacing-designer'],
-    }
-
     const candidates = agents.filter(a => a !== assignedAgent && a !== config.head)
     if (candidates.length === 0) return null
 
-    const preferredReviewers = REVIEWER_MAP[task.type] || []
+    const strategy = getStrategy(task.type, config)
+    const preferredReviewers = strategy.preferredReviewers || []
     const preferred = candidates.filter(a => preferredReviewers.includes(a))
     const taskTags = task.tags || []
     const tagMatching = taskTags.length > 0

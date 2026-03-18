@@ -404,6 +404,8 @@ async function startAll(options = {}) {
     logger.info('main', 'Shutting down...')
     scheduler.disable()
     signalWatcher.stop()
+    const { closePool } = require('./gateway-client.cjs')
+    closePool()
     eventBus.removeAllListeners()
     const s = loadState()
     s.status = 'stopped'
