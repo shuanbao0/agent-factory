@@ -1,16 +1,6 @@
-import { writeFileSync } from 'fs'
-import { join, resolve } from 'path'
 import { NextResponse } from 'next/server'
 import core from '@/lib/core-bridge'
 import { DEFAULT_BUDGET } from '@entity/observe'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { createRequire } = require('module')
-const _nativeRequire = createRequire(__filename)
-const { validateBudgetConfig } = _nativeRequire(join(PROJECT_ROOT, 'core', 'common', 'config-validator.cjs'))
 
 export async function GET() {
   try {
@@ -32,7 +22,7 @@ export async function PUT(req: Request) {
     const body = await req.json()
 
     // Validate with config-validator
-    const validation = validateBudgetConfig(body)
+    const validation = core.common.validateBudgetConfig(body)
     if (!validation.valid) {
       return NextResponse.json({ error: validation.errors.join('; ') }, { status: 400 })
     }
@@ -48,7 +38,7 @@ export async function PUT(req: Request) {
       overBudgetAction: body.overBudgetAction || 'pause_and_notify',
     }
 
-    writeFileSync(BUDGET_FILE, JSON.stringify(config, null, 2) + '\n')
+    core.observe.saveCompanyBudget(config)
     return NextResponse.json({ ok: true, config })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

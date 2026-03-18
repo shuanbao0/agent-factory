@@ -60,7 +60,20 @@ export default _core as {
       readMission(): string
       readBaseMission(): string
       readDeptMission(deptId: string): string
+      writeMission(content: string): void
+      writeBaseMission(content: string): void
+      writeDeptMission(deptId: string, content: string): void
     }
+    projectMetaRepo: {
+      readMeta(projectId: string): ProjectMeta | null
+      writeMeta(projectId: string, meta: ProjectMeta): void
+      updateMeta(projectId: string, mutator: (meta: ProjectMeta) => ProjectMeta): ProjectMeta
+      readAll(): Array<{ projectId: string; meta: ProjectMeta }>
+      deleteProject(projectId: string): void
+    }
+    readTemplate(id: string): { id: string; name: string; description: string; emoji: string; category: string; group?: string; hidden?: boolean; hasIdentityFiles: boolean; defaults: { model: string; skills: string[]; peers: string[] } } | null
+    getTemplateDir(id: string): string | null
+    readTemplateFile(tmplDir: string, filename: string): string | null
   }
   task: {
     checkQualityGate(task: Task, pipelineStep: PipelineStep | null): {
@@ -75,6 +88,7 @@ export default _core as {
       departments: Record<string, { limit: number; used: number; ratio: number }>
     }
     loadCompanyBudget(): CompanyBudget
+    saveCompanyBudget(config: CompanyBudget): void
     queryCosts(opts?: { date?: string; from?: string; to?: string; source?: string }): {
       entries: CostEntry[]
       totalCost: number
@@ -86,5 +100,11 @@ export default _core as {
   common: {
     loadState(): AutopilotState
     saveState(state: AutopilotState): void
+    validateBudgetConfig(config: unknown): { valid: boolean; errors: string[] }
+    agentService: {
+      createAgent(body: Record<string, unknown>, hooks?: Record<string, Function>): Promise<{ ok: boolean; id?: string; deployed?: boolean; restarted?: boolean; hasIdentityFiles?: boolean; error?: string; status?: number }>
+      updateAgent(body: Record<string, unknown>, hooks?: Record<string, Function>): Promise<{ ok: boolean; error?: string; status?: number }>
+      deleteAgent(id: string): Promise<{ ok: boolean; archivedTo: string | null }>
+    }
   }
 }

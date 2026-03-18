@@ -9,7 +9,7 @@
  * - config/departments/{deptId}/mission.md
  * - agents/{agentId}/memory/SUMMARY.md
  */
-const { readFileSync, existsSync, readdirSync } = require('fs')
+const { readFileSync, writeFileSync, renameSync, existsSync, readdirSync, mkdirSync } = require('fs')
 const { join, resolve } = require('path')
 const { BaseRepository } = require('./base.cjs')
 
@@ -104,6 +104,30 @@ class MissionRepository extends BaseRepository {
   /** Read a file from the CEO workspace */
   readCeoWorkspaceFile(filename) {
     return this.readWorkspaceFile(join(AGENTS_DIR, 'ceo'), filename)
+  }
+
+  /** Atomic write company mission (config/mission.md) */
+  writeMission(content) {
+    const tmp = MISSION_FILE + '.tmp.' + process.pid
+    writeFileSync(tmp, content)
+    renameSync(tmp, MISSION_FILE)
+  }
+
+  /** Atomic write base mission (config/base-mission.md) */
+  writeBaseMission(content) {
+    const tmp = BASE_MISSION_FILE + '.tmp.' + process.pid
+    writeFileSync(tmp, content)
+    renameSync(tmp, BASE_MISSION_FILE)
+  }
+
+  /** Atomic write department mission */
+  writeDeptMission(deptId, content) {
+    const dir = join(DEPARTMENTS_DIR, deptId)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, 'mission.md')
+    const tmp = filePath + '.tmp.' + process.pid
+    writeFileSync(tmp, content)
+    renameSync(tmp, filePath)
   }
 
   /** Read an agent's memory SUMMARY.md (first 2000 chars) */

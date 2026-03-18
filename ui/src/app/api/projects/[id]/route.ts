@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { existsSync, rmSync } from 'fs'
-import { join, resolve } from 'path'
 import { decodeProjectId } from '@/lib/utils'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 export async function DELETE(
   _req: NextRequest,
@@ -14,22 +10,21 @@ export async function DELETE(
 ) {
   try {
     const id = decodeProjectId(params.id)
-    // Security: resolve and verify path stays within PROJECTS_DIR
+    // Security: reject path traversal at API boundary
     if (!id || id.includes('..')) {
       return NextResponse.json({ error: 'invalid project id' }, { status: 400 })
     }
 
-    const projectDir = resolve(PROJECTS_DIR, id)
-    if (!projectDir.startsWith(PROJECTS_DIR + '/')) {
-      return NextResponse.json({ error: 'invalid project id' }, { status: 400 })
-    }
-    if (!existsSync(projectDir)) {
-      return NextResponse.json({ error: `Project not found: ${id}` }, { status: 404 })
-    }
-
-    rmSync(projectDir, { recursive: true })
+    core.repo.projectMetaRepo.deleteProject(id)
     return NextResponse.json({ ok: true, id })
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    const msg = String(e)
+    if (msg.includes('not found')) {
+      return NextResponse.json({ error: msg }, { status: 404 })
+    }
+    if (msg.includes('invalid')) {
+      return NextResponse.json({ error: msg }, { status: 400 })
+    }
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

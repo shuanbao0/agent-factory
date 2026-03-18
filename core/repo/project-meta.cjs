@@ -11,8 +11,8 @@
  *
  * 无缓存实例（API 路由场景，需要实时数据）
  */
-const { join } = require('path')
-const { existsSync, readdirSync } = require('fs')
+const { join, resolve } = require('path')
+const { existsSync, readdirSync, rmSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -57,6 +57,24 @@ class ProjectMetaRepository extends BaseRepository {
    *
    * @returns {Array<{projectId: string, meta: object}>} 项目列表
    */
+  /**
+   * 删除项目目录（含路径安全校验）
+   * @param {string} projectId - 项目 ID
+   */
+  deleteProject(projectId) {
+    if (!projectId || projectId.includes('..')) {
+      throw new Error('invalid project id')
+    }
+    const projectDir = resolve(PROJECTS_DIR, projectId)
+    if (!projectDir.startsWith(PROJECTS_DIR + '/')) {
+      throw new Error('invalid project id')
+    }
+    if (!existsSync(projectDir)) {
+      throw new Error(`Project not found: ${projectId}`)
+    }
+    rmSync(projectDir, { recursive: true })
+  }
+
   readAll() {
     const results = []
     if (!existsSync(PROJECTS_DIR)) return results

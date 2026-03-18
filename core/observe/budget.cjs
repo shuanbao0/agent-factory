@@ -4,7 +4,7 @@
  *
  * 设计模式：Repository + Observer
  */
-const { readFileSync, existsSync, readdirSync } = require('fs')
+const { readFileSync, writeFileSync, renameSync, existsSync, readdirSync } = require('fs')
 const { join, resolve } = require('path')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
@@ -134,4 +134,17 @@ function getBudgetSummary() {
   }
 }
 
-module.exports = { checkBudget, trackTokenUsage, loadCompanyBudget, getBudgetSummary, shouldResetDaily }
+/**
+ * Save company-level budget config (atomic write).
+ * @param {object} config - Budget config object
+ */
+function saveCompanyBudget(config) {
+  const dir = join(PROJECT_ROOT, 'config')
+  if (!existsSync(dir)) { const { mkdirSync } = require('fs'); mkdirSync(dir, { recursive: true }) }
+  const json = JSON.stringify(config, null, 2) + '\n'
+  const tmp = BUDGET_FILE + '.tmp.' + process.pid
+  writeFileSync(tmp, json)
+  renameSync(tmp, BUDGET_FILE)
+}
+
+module.exports = { checkBudget, trackTokenUsage, loadCompanyBudget, saveCompanyBudget, getBudgetSummary, shouldResetDaily }

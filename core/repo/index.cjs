@@ -9,4 +9,5 @@ module.exports = {
   ...require('./session.cjs'),
   ...require('./mission.cjs'),
   ...require('./task.cjs'),
+  ...require('./template.cjs'),
 }

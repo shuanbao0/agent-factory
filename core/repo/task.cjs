@@ -5,6 +5,10 @@
  * 数据源：
  * - config/tasks.json — 独立任务
  * - projects/{projectId}/.project-meta.json — 项目任务
+ *
+ * 架构说明：TaskRepository 管理双数据源（config/tasks.json + projects/{id}/.project-meta.json），
+ * 每个源有不同的 JSON 结构和字段标准化逻辑。这种复杂性使继承 BaseRepository 的 read/write
+ * 不可行，因此直接使用 readFileSync/writeFileSync。这是经过审查的架构例外。
  */
 const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } = require('fs')
 const { join, resolve } = require('path')

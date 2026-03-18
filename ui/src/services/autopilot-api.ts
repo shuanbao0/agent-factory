@@ -40,13 +40,6 @@ function isProcessRunning(pid: number): boolean {
   try { process.kill(pid, 0); return true } catch (err) { logError('autopilot/check-pid', err); return false }
 }
 
-function atomicWriteSync(filePath: string, data: string) {
-  const { writeFileSync, renameSync } = require('fs')
-  const tmpPath = filePath + '.tmp.' + process.pid
-  writeFileSync(tmpPath, data)
-  renameSync(tmpPath, filePath)
-}
-
 function loadDepartments(): DeptInfo[] {
   const results: DeptInfo[] = []
   if (!existsSync(DEPARTMENTS_DIR)) return results
@@ -313,14 +306,12 @@ export function runDeptCycle(deptId: string): ServiceResult {
 
 export function setBaseMission(content: string): ServiceResult {
   if (typeof content !== 'string') return { ok: false, error: 'content required', status: 400 }
-  const BASE_MISSION_FILE = join(PROJECT_ROOT, 'config/base-mission.md')
-  atomicWriteSync(BASE_MISSION_FILE, content)
+  core.repo.missionRepo.writeBaseMission(content)
   return { ok: true }
 }
 
 export function setMission(content: string): ServiceResult {
   if (typeof content !== 'string') return { ok: false, error: 'content required', status: 400 }
-  const MISSION_FILE = join(PROJECT_ROOT, 'config/mission.md')
-  atomicWriteSync(MISSION_FILE, content)
+  core.repo.missionRepo.writeMission(content)
   return { ok: true }
 }
