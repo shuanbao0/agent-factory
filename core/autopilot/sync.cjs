@@ -1,12 +1,13 @@
 /**
  * Sync — project state synchronization (with phase regression fix)
  */
-const { existsSync, readdirSync, readFileSync } = require('fs')
+const { existsSync } = require('fs')
 const { join } = require('path')
 const { PROJECTS_DIR, CEO_WORKSPACE, PROJECT_ROOT } = require('./constants.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
+const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const fileBrowser = require('../common/file-browser.cjs')
 const logger = require('./logger.cjs')
 
@@ -90,7 +91,9 @@ function syncProjects(ceoResponseText) {
       for (const src of [ceoDocsDir, pmDocsDir]) {
         if (!existsSync(src)) continue
         try {
-          const files = readdirSync(src)
+          const agentId = src.includes('/ceo/') ? 'ceo' : 'pm'
+          const entries = agentMetaRepo.listAgentDir(agentId, 'docs')
+          const files = entries.filter(e => e.isFile).map(e => e.name)
           for (const f of files) {
             const srcResult = fileBrowser.getFileContent(src, f)
             if (srcResult.error) continue

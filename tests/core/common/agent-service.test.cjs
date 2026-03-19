@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, writeFileSync, rmSync } = require('fs')
 const { join } = require('path')
 const { AgentService } = require('../../../core/common/agent-service.cjs')
+const { AgentMetaRepository } = require('../../../core/repo/agent-meta.cjs')
 
 // Use a temp directory to avoid touching real project data
 const TEST_DIR = join(__dirname, '..', '_test_agent_service_tmp')
@@ -21,7 +22,7 @@ describe('AgentService', () => {
     const mockConfigRepo = {
       removeAgent: (id) => { removedAgents.push(id) },
     }
-    const mockAgentMetaRepo = {}
+    const mockAgentMetaRepo = new AgentMetaRepository({ cacheTtlMs: 0 })
     service = new AgentService(mockConfigRepo, mockAgentMetaRepo)
 
     // Create temp directories

@@ -188,6 +188,17 @@ export default _core as {
     }
     modelsService: {
       resolveEnvVar(value: string, envVars?: Record<string, string>): string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      syncOpenClawConfig(modelsConfig: any, providerDefs?: any[]): void
+      getAuthProfilesByProvider(): Record<string, { profileId: string; type: string; hasToken: boolean; tokenPreview: string }>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resolveAuthMode(providerName: string, providerConfig: any, authProfiles: Record<string, unknown>, envVars: Record<string, string>): { mode: 'setup-token' | 'oauth' | 'env-var' | 'config' | 'none'; detail?: string }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      buildModelsListForApi(config: any, envVars: Record<string, string>): Array<{ ref: string; provider: string; alias: string; modelId: string; hasApiKey: boolean; baseUrl?: string; isDefault: boolean }>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      buildProvidersForApi(config: any, authProfiles: Record<string, unknown>, envVars: Record<string, string>): Record<string, unknown>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      applyMutation(config: any, body: Record<string, unknown>): { ok: boolean; error?: string; status?: number }
     }
     baseRulesInjector: {
       parseBaseRules(raw: string): { agentsRules: string; soulRules: string; reminder: string }

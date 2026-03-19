@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } = require('fs')
 const { join } = require('path')
 const { AgentService } = require('../../../core/common/agent-service.cjs')
+const { AgentMetaRepository } = require('../../../core/repo/agent-meta.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..', '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
@@ -24,7 +25,7 @@ describe('AgentService.createAgent', () => {
       addAgent: (id, dir, model) => { addedAgents.push({ id, dir, model }) },
       removeAgent: () => {},
     }
-    const mockAgentMetaRepo = {}
+    const mockAgentMetaRepo = new AgentMetaRepository({ cacheTtlMs: 0 })
     const mockDeptConfigRepo = { load: () => null, save: () => {} }
     const mockTemplateRepo = {
       readTemplate: () => null,
@@ -62,6 +63,7 @@ describe('AgentService.createAgent', () => {
 
   it('rejects duplicate agent', async () => {
     mkdirSync(join(AGENTS_DIR, TEST_AGENT_ID), { recursive: true })
+    writeFileSync(join(AGENTS_DIR, TEST_AGENT_ID, 'agent.json'), JSON.stringify({ id: TEST_AGENT_ID }))
     const result = await service.createAgent({ id: TEST_AGENT_ID, name: 'Test' })
     assert.equal(result.ok, false)
     assert.equal(result.status, 409)

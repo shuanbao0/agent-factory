@@ -4,8 +4,9 @@
  */
 import { spawn, ChildProcess } from 'child_process'
 import { resolve, join } from 'path'
-import { existsSync, readFileSync, copyFileSync, readdirSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, copyFileSync } from 'fs'
 import net from 'net'
+import core from '@/lib/core-bridge'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 
@@ -118,23 +119,19 @@ export async function getStatus(): Promise<{ status: GatewayStatus; port: number
 
 /** Ensure all existing agents have peer-status in their skills list */
 function ensureAgentsPeerStatus() {
-  const agentsDir = join(PROJECT_ROOT, 'agents')
-  if (!existsSync(agentsDir)) return
   try {
-    const dirs = readdirSync(agentsDir).filter(d =>
-      existsSync(join(agentsDir, d, 'agent.json'))
-    )
-    for (const d of dirs) {
-      const fp = join(agentsDir, d, 'agent.json')
+    const agents = core.repo.agentMetaRepo.listAllAgentIds()
+    for (const id of agents) {
       try {
-        const data = JSON.parse(readFileSync(fp, 'utf-8'))
+        const data = core.repo.agentMetaRepo.readMeta(id)
+        if (!data) continue
         const skills: string[] = data.skills || []
         if (!skills.includes('peer-status')) {
           data.skills = [...skills, 'peer-status']
           data.updatedAt = new Date().toISOString()
-          writeFileSync(fp, JSON.stringify(data, null, 2) + '\n')
+          core.repo.agentMetaRepo.writeMeta(id, data)
         }
-      } catch { /* skip malformed agent.json */ }
+      } catch { /* skip */ }
     }
   } catch { /* skip if agents dir unreadable */ }
 }

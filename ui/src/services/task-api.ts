@@ -16,6 +16,8 @@ import {
 } from '@/lib/quality-gate'
 import core from '@/lib/core-bridge'
 
+const DEFAULT_TASK_NAME = 'Untitled Task'
+
 // ── Types ────────────────────────────────────────────────────────
 
 export interface TaskFilters {
@@ -94,7 +96,7 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
 
   const task: Task = {
     id,
-    name: (body.name as string) || 'Untitled Task',
+    name: (body.name as string) || DEFAULT_TASK_NAME,
     description: (body.description as string) || undefined,
     projectId: (body.projectId as string) || null,
     phase: (body.phase as number) || undefined,

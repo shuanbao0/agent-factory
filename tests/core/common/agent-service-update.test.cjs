@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } = require('fs')
 const { join } = require('path')
 const { AgentService } = require('../../../core/common/agent-service.cjs')
+const { AgentMetaRepository } = require('../../../core/repo/agent-meta.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..', '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
@@ -23,7 +24,7 @@ describe('AgentService.updateAgent', () => {
       addAgent: (id, dir, model) => { addedAgents.push({ id, dir, model }) },
       removeAgent: () => {},
     }
-    const mockAgentMetaRepo = {}
+    const mockAgentMetaRepo = new AgentMetaRepository({ cacheTtlMs: 0 })
     const mockDeptConfigRepo = { load: () => null, save: () => {} }
     const mockTemplateRepo = {
       readTemplate: () => null,

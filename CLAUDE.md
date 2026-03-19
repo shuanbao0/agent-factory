@@ -124,7 +124,7 @@ agent-factory/
 │   ├── autopilot-costs.jsonl  # 成本审计日志（append-only）
 │   └── autopilot-events.jsonl # 事件审计日志（append-only）
 ├── templates/
-│   ├── builtin/           # 内置 Agent 模板（14 个角色）
+│   ├── builtin/           # 内置 Agent 模板（65 个角色）
 │   └── custom/            # 用户自定义模板（不提交）
 ├── skills/                # 共享技能（project-init、peer-status、task-api 等）
 ├── scripts/               # 运维与迁移脚本
@@ -361,12 +361,16 @@ ui/src/
 
 每个模板包含 4 个文件：`template.json`（元数据 + 默认配置）、`AGENTS.md`（行为定义）、`SOUL.md`（人格定义）、`IDENTITY.md`（简介）。
 
-角色覆盖：
+角色覆盖（65 个模板）：
 - **高管层**：CEO、COO、CFO、Chief Scientist
-- **管理层**：PM、Sales Director、Legal Director
-- **运营层**：Accountant、Contract Specialist、Compliance Officer
-- **创意层**：Designer、Content Creator、Brand Director、Anime Director
-- **技术层**：Backend、Frontend、Data Engineer、Code Instructor、AI Researcher
+- **管理层**：PM、Sales Director、Legal Director、BD、CSM、Presales、Service Manager
+- **运营层**：Accountant、Contract Specialist、Compliance Officer、Content Ops、Growth Ops、Support Agent
+- **创意层**：Designer、Content Creator、Brand Director、Anime Director、Art Director、Visual Editor、Post Producer、Sound Director、Storyboard Artist、Animation Supervisor、Script Adapter
+- **技术层**：Backend、Frontend、Data Engineer、Code Instructor、AI Researcher、Execution Engineer、Tester
+- **小说创作**：Novel Chief、Novel Writer、Novel Researcher、Worldbuilder、Character Designer、Plot Architect、Pacing Designer、Continuity Manager、Style Editor、Reader Analyst
+- **量化金融**：Quant Chief、Quant Developer、Quant Researcher、Cost Analyst、Risk Manager、Market Analyst Crypto、Strategy Optimizer
+- **教程创作**：Tutorial Chief、Tutorial Researcher、Tutorial Reviewer、Tutorial Writer
+- **研究分析**：Researcher、Analyst、Writer、Marketing、Product、PR Specialist、Innovation Analyst
 
 ### skills/ — 共享技能库
 

@@ -79,7 +79,7 @@ class AgentService {
       return { ok: false, error: idCheck.error, status: 400 }
     }
 
-    if (this._agentMetaRepo.agentFileExists(id, 'agent.json') || existsSync(join(AGENTS_DIR, id))) {
+    if (this._agentMetaRepo.exists(id)) {
       return { ok: false, error: `Agent "${id}" already exists`, status: 409 }
     }
 
