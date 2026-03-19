@@ -14,7 +14,7 @@ if (skip.skip) {
   return
 }
 
-// A sample output long enough (>500 chars) for quality gate evaluation
+// Must be >= 500 chars to pass _requestSelfCheck hard validation (content.length check)
 const SAMPLE_OUTPUT = [
   '在晨曦初绽的古城广场上，身披银灰色斗篷的旅者缓缓步入人群之中。',
   '他的目光如同深邃的湖水，沉静而充满故事。腰间悬挂着一柄古老的长剑，',
@@ -27,6 +27,9 @@ const SAMPLE_OUTPUT = [
   '而前方等待他的将是比暴风雪更加凶险的考验。但他已不再恐惧，因为他明白，',
   '唯有直面黑暗，才能为那些逝去的灵魂找到安息之所。他抬起头，望向远方连绵的山脉，',
   '深吸一口清晨带着露水气息的空气，重新踏上了征途。',
+  '街道两旁的店铺陆续开门，烤面包的香气混合着铁匠铺的烟火味，弥漫在整条长街上。',
+  '一个卖花的老妇人推着木车经过，车上满是刚从野外采摘的紫色薰衣草和金色的雏菊。',
+  '三两个小孩追逐着一只灰色的野猫，笑声在石板路上回荡。城墙上的钟声敲响了第七下。',
 ].join('')
 
 describe('Quality Gate — real LLM scoring', () => {
@@ -70,7 +73,8 @@ describe('Quality Gate — real LLM scoring', () => {
     const agentId = agents[0]
     const task = {
       id: `zzz-test-qg-self-${Date.now()}`,
-      name: '撰写角色介绍',
+      name: '撰写500字场景描写片段',
+      description: '撰写一段500字左右的场景描写片段，包含环境和人物。这是短篇片段任务。',
       status: 'review',
       type: 'writing',
       priority: 'P1',
@@ -80,6 +84,7 @@ describe('Quality Gate — real LLM scoring', () => {
       creator: 'e2e-test',
       progress: 80,
       quality: {},
+      output: 'workspaces/e2e-test/output.md',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -128,7 +133,8 @@ describe('Quality Gate — real LLM scoring', () => {
 
     const task = {
       id: `zzz-test-qg-full-${Date.now()}`,
-      name: '撰写角色介绍',
+      name: '撰写500字场景描写片段',
+      description: '撰写一段500字左右的场景描写片段，包含环境和人物。这是短篇片段任务。',
       status: 'review',
       type: 'writing',
       priority: 'P1',
@@ -138,6 +144,7 @@ describe('Quality Gate — real LLM scoring', () => {
       creator: 'e2e-test',
       progress: 80,
       quality: {},
+      output: 'workspaces/e2e-test/output.md',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -199,7 +206,8 @@ describe('Quality Gate — real LLM scoring', () => {
     const agentId = agents[0]
     const task = {
       id: `zzz-test-qg-transition-${Date.now()}`,
-      name: '测试质量门后状态流转',
+      name: '撰写500字场景描写片段',
+      description: '撰写一段500字左右的场景描写片段，包含环境和人物。这是短篇片段任务。',
       status: 'review',
       type: 'writing',
       priority: 'P1',
@@ -209,6 +217,7 @@ describe('Quality Gate — real LLM scoring', () => {
       creator: 'e2e-test',
       progress: 80,
       quality: {},
+      output: 'workspaces/e2e-test/output.md',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
