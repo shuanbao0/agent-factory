@@ -187,7 +187,7 @@ class QualityOrchestrator {
     const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n1. 是否完成了任务要求的所有内容？\n2. 是否有明显的错误或遗漏？\n3. 格式和表述是否规范？\n4. 是否可以交付给下一环节？\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
 
     try {
-      const result = await this._sendFn(agentId, `agent:${agentId}:quality-check`, prompt, 60000)
+      const result = await this._sendFn(agentId, `agent:${agentId}:quality-check:${task.id}`, prompt, 60000)
       if (result.ok) {
         const score = parseInt(result.text.match(/SCORE:\s*(\d+)/)?.[1] || '50')
         const threshold = getStrategy(task.type).minPassingScore
@@ -219,7 +219,7 @@ class QualityOrchestrator {
     const prompt = `请 review 以下任务的产出：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}\n${peerOutputContent ? `产出内容:\n${peerOutputContent}` : '(产出未附带)'}\n\n评审标准：\n1. 完成度 — 是否满足任务要求？\n2. 质量 — 是否有错误或可改进之处？\n3. 一致性 — 是否与项目整体风格一致？\n\n回复格式：\nSCORE: <0-100>\nPASSED: <true/false>\nCOMMENTS: <your review comments>`
 
     try {
-      const result = await this._sendFn(reviewerId, `agent:${reviewerId}:peer-review`, prompt, 60000)
+      const result = await this._sendFn(reviewerId, `agent:${reviewerId}:peer-review:${task.id}`, prompt, 60000)
       if (result.ok) {
         const score = parseInt(result.text.match(/SCORE:\s*(\d+)/)?.[1] || '50')
         const threshold = getStrategy(task.type).minPassingScore
@@ -251,7 +251,7 @@ class QualityOrchestrator {
     const prompt = `作为部门主管，请审批以下任务：\n\n任务: ${task.name}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}\n自检评分: ${selfScore}\n同行评审评分: ${peerScore}\n评审意见: ${peerComments}\n\n是否批准完成？回复 APPROVED 或 REJECTED + 原因`
 
     try {
-      const result = await this._sendFn(headId, `agent:${headId}:approval`, prompt, 60000)
+      const result = await this._sendFn(headId, `agent:${headId}:approval:${task.id}`, prompt, 60000)
       if (result.ok) {
         const passed = result.text.includes('APPROVED')
         return { approver: headId, passed, at: new Date().toISOString() }
