@@ -365,7 +365,13 @@ async function startAll(options = {}) {
   const { Scheduler } = require('../observe/scheduler.cjs')
   const { QualityOrchestrator } = require('../task/quality-orchestrator.cjs')
   const { sendToAgent } = require('./gateway-client.cjs')
-  const qualityGate = new QualityOrchestrator({ sendFn: sendToAgent })
+  const qualityGate = new QualityOrchestrator({
+    sendFn: sendToAgent,
+    readAgentActivity: () => sessionRepo.readAgentActivity(),
+    loadDeptConfig: (deptId) => deptConfigRepo.load(deptId),
+    readTaskOutput: (task) => taskRepo.readTaskOutput(task),
+    logger,
+  })
   const processQualityGate = (deptId, task) => qualityGate.process(deptId, task)
 
   const scheduler = new Scheduler({

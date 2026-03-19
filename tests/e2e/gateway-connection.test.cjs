@@ -17,12 +17,13 @@ if (skip.skip) {
 describe('Gateway Connection — real MiniMax model', () => {
   let agentId
   let sendToAgent, closePool
+  let gatewayAvailable = false
 
   before(async () => {
     const running = await isGatewayRunning()
     if (!running) {
       console.log('Gateway not running — skipping')
-      process.exit(0)
+      return
     }
 
     const agents = getRegisteredAgents()
@@ -32,6 +33,7 @@ describe('Gateway Connection — real MiniMax model', () => {
     const gwClient = require(join(ROOT, 'core', 'autopilot', 'gateway-client.cjs'))
     sendToAgent = gwClient.sendToAgent
     closePool = gwClient.closePool
+    gatewayAvailable = true
   })
 
   after(() => {
@@ -39,6 +41,7 @@ describe('Gateway Connection — real MiniMax model', () => {
   })
 
   it('sends a message to a registered Agent and receives a valid response', async () => {
+    if (!gatewayAvailable) return
     const sessionKey = `agent:${agentId}:e2e-test-${Date.now()}`
     const result = await sendToAgent(agentId, sessionKey, '请用一句话介绍你自己', 30000)
 
@@ -49,6 +52,7 @@ describe('Gateway Connection — real MiniMax model', () => {
   })
 
   it('response includes usage data when provider supports it', async () => {
+    if (!gatewayAvailable) return
     const sessionKey = `agent:${agentId}:e2e-usage-${Date.now()}`
     const result = await sendToAgent(agentId, sessionKey, '说"OK"', 30000)
 
@@ -65,6 +69,7 @@ describe('Gateway Connection — real MiniMax model', () => {
   })
 
   it('unregistered Agent ID is handled by Gateway (auto-provision)', async () => {
+    if (!gatewayAvailable) return
     // OpenClaw auto-creates agents that aren't pre-registered,
     // so we verify the registered agent list from config vs an unknown ID
     const agents = getRegisteredAgents()
@@ -86,6 +91,7 @@ describe('Gateway Connection — real MiniMax model', () => {
   })
 
   it('gateway-chat.js subprocess communication', () => {
+    if (!gatewayAvailable) return
     const chatScript = join(ROOT, 'ui', 'scripts', 'gateway-chat.js')
     const sessionKey = `agent:${agentId}:e2e-sub-${Date.now()}`
     const input = JSON.stringify({ sessionKey, message: '说OK' })

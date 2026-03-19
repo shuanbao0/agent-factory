@@ -16,14 +16,15 @@ if (skip.skip) {
 
 describe('Task State Flow — real agent interaction', () => {
   let agentId
-  let sendToAgent, closePool, transition, parseTaskAssignments, normalizeTask
+  let sendToAgent, closePool, transition, parseTaskAssignments
   let costsSize, eventsSize
+  let gatewayAvailable = false
 
   before(async () => {
     const running = await isGatewayRunning()
     if (!running) {
       console.log('Gateway not running — skipping')
-      process.exit(0)
+      return
     }
 
     const agents = getRegisteredAgents()
@@ -35,7 +36,7 @@ describe('Task State Flow — real agent interaction', () => {
     closePool = core.autopilot.closePool
     transition = core.task.transition
     parseTaskAssignments = core.task.parseTaskAssignments
-    normalizeTask = core.repo.taskRepo.normalizeTask.bind(core.repo.taskRepo)
+    gatewayAvailable = true
   })
 
   afterEach(() => {
@@ -48,6 +49,7 @@ describe('Task State Flow — real agent interaction', () => {
   })
 
   it('full task flow: pending → assigned → in_progress → review → completed', async () => {
+    if (!gatewayAvailable) return
     costsSize = snapshotJsonl(COSTS_FILE)
     eventsSize = snapshotJsonl(EVENTS_FILE)
 
@@ -104,6 +106,7 @@ describe('Task State Flow — real agent interaction', () => {
   })
 
   it('rework path: review → rework → in_progress → review → completed', () => {
+    if (!gatewayAvailable) return
     const task = {
       id: `zzz-test-rework-${Date.now()}`,
       name: '测试返工流程',
@@ -146,6 +149,7 @@ describe('Task State Flow — real agent interaction', () => {
   })
 
   it('parseTaskAssignments parses real Agent response', async () => {
+    if (!gatewayAvailable) return
     costsSize = snapshotJsonl(COSTS_FILE)
     eventsSize = snapshotJsonl(EVENTS_FILE)
 

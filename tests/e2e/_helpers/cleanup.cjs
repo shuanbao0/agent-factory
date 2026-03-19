@@ -41,11 +41,12 @@ function cleanupTestTasks(taskIds) {
   if (!taskIds || taskIds.length === 0) return
   try {
     const raw = readFileSync(TASKS_FILE, 'utf8')
-    const tasks = JSON.parse(raw)
-    if (!Array.isArray(tasks)) return
+    const data = JSON.parse(raw)
+    const tasks = Array.isArray(data) ? data : (data.tasks || [])
     const filtered = tasks.filter(t => !taskIds.includes(t.id))
     if (filtered.length !== tasks.length) {
-      writeFileSync(TASKS_FILE, JSON.stringify(filtered, null, 2) + '\n')
+      const output = Array.isArray(data) ? filtered : { ...data, tasks: filtered }
+      writeFileSync(TASKS_FILE, JSON.stringify(output, null, 2) + '\n')
     }
   } catch { /* tasks.json may not exist */ }
 }

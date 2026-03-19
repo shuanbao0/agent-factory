@@ -43,6 +43,14 @@ function failSendFn() {
   })
 }
 
+/** Mock sendFn: high score but PASSED: false (LLM contradiction) */
+function highScoreExplicitFailSendFn() {
+  return async (agentId, sessionKey, msg, timeout) => ({
+    ok: true,
+    text: 'SCORE: 75\nPASSED: false\nISSUES: minor nits\nCOMMENTS: mostly good\nAPPROVED',
+  })
+}
+
 /** Quiet logger */
 const silentLogger = { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} }
 
@@ -182,6 +190,31 @@ describe('QualityOrchestrator', () => {
       assert.ok(task.quality.selfCheck)
       assert.ok(task.quality.peerReview)
       assert.ok(task.quality.headApproval)
+    })
+  })
+
+  describe('process — score >= threshold overrides PASSED: false', () => {
+    it('returns passed=true when SCORE >= minPassingScore despite PASSED: false', async () => {
+      const orchestrator = new QualityOrchestrator({
+        sendFn: highScoreExplicitFailSendFn(),
+        readAgentActivity: () => ({}),
+        loadDeptConfig: () => ({
+          id: 'zzz-test-dept',
+          head: 'zzz-test-head',
+          agents: ['zzz-test-agent-a', 'zzz-test-peer', 'zzz-test-head'],
+        }),
+        readTaskOutput: () => null,
+        logger: silentLogger,
+      })
+
+      // writing type → minPassingScore = 70, SCORE: 75 should pass
+      const task = makeTask({ id: 'zzz-test-orch-score-override', type: 'writing' })
+      const result = await orchestrator.process('zzz-test-dept', task)
+
+      assert.equal(result.passed, true, 'score >= threshold should override PASSED: false')
+      assert.ok(task.quality.selfCheck, 'selfCheck should exist')
+      assert.equal(task.quality.selfCheck.passed, true, 'selfCheck.passed should be true')
+      assert.equal(task.quality.selfCheck.score, 75, 'selfCheck.score should be 75')
     })
   })
 

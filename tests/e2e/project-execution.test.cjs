@@ -19,13 +19,14 @@ describe('Project Execution — task assignment to completion', () => {
   let agentId
   let sendToAgent, closePool, transition, createProject, projectMetaRepo
   let costsSize, eventsSize
+  let gatewayAvailable = false
   const testProjectIds = []
 
   before(async () => {
     const running = await isGatewayRunning()
     if (!running) {
       console.log('Gateway not running — skipping')
-      process.exit(0)
+      return
     }
 
     const agents = getRegisteredAgents()
@@ -38,6 +39,7 @@ describe('Project Execution — task assignment to completion', () => {
     transition = core.task.transition
     createProject = core.common.projectService.createProject
     projectMetaRepo = core.repo.projectMetaRepo
+    gatewayAvailable = true
   })
 
   afterEach(() => {
@@ -51,6 +53,7 @@ describe('Project Execution — task assignment to completion', () => {
   })
 
   it('project creation → task assignment → agent execution → completion', async () => {
+    if (!gatewayAvailable) return
     costsSize = snapshotJsonl(COSTS_FILE)
     eventsSize = snapshotJsonl(EVENTS_FILE)
 

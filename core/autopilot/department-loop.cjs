@@ -31,7 +31,13 @@ let _qualityGate = null
 function getQualityGate() {
   if (!_qualityGate) {
     const { QualityOrchestrator } = require('../task/quality-orchestrator.cjs')
-    _qualityGate = new QualityOrchestrator({ sendFn: sendToAgent })
+    _qualityGate = new QualityOrchestrator({
+      sendFn: sendToAgent,
+      readAgentActivity: () => sessionRepo.readAgentActivity(),
+      loadDeptConfig: (deptId) => deptConfigRepo.load(deptId),
+      readTaskOutput: (task) => taskRepo.readTaskOutput(task),
+      logger,
+    })
   }
   return _qualityGate
 }

@@ -33,12 +33,13 @@ describe('Quality Gate — real LLM scoring', () => {
   let agents
   let sendToAgent, closePool, QualityOrchestrator, transition
   let costsSize, eventsSize
+  let gatewayAvailable = false
 
   before(async () => {
     const running = await isGatewayRunning()
     if (!running) {
       console.log('Gateway not running — skipping')
-      process.exit(0)
+      return
     }
 
     agents = getRegisteredAgents()
@@ -49,6 +50,7 @@ describe('Quality Gate — real LLM scoring', () => {
     closePool = core.autopilot.closePool
     QualityOrchestrator = core.task.QualityOrchestrator
     transition = core.task.transition
+    gatewayAvailable = true
   })
 
   afterEach(() => {
@@ -61,6 +63,7 @@ describe('Quality Gate — real LLM scoring', () => {
   })
 
   it('self-check: Agent scores its own output with SCORE/PASSED format', async () => {
+    if (!gatewayAvailable) return
     costsSize = snapshotJsonl(COSTS_FILE)
     eventsSize = snapshotJsonl(EVENTS_FILE)
 
@@ -110,6 +113,7 @@ describe('Quality Gate — real LLM scoring', () => {
   })
 
   it('full three-stage quality gate: self-check → peer review → head approval', async () => {
+    if (!gatewayAvailable) return
     if (agents.length < 3) {
       console.log('Need ≥3 registered agents for three-stage test — skipping')
       return
@@ -188,6 +192,7 @@ describe('Quality Gate — real LLM scoring', () => {
   })
 
   it('quality gate result drives correct state transition', async () => {
+    if (!gatewayAvailable) return
     costsSize = snapshotJsonl(COSTS_FILE)
     eventsSize = snapshotJsonl(EVENTS_FILE)
 

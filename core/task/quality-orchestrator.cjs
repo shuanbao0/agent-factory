@@ -190,10 +190,10 @@ class QualityOrchestrator {
       const result = await this._sendFn(agentId, `agent:${agentId}:quality-check`, prompt, 60000)
       if (result.ok) {
         const score = parseInt(result.text.match(/SCORE:\s*(\d+)/)?.[1] || '50')
+        const threshold = getStrategy(task.type).minPassingScore
         const explicitPassed = result.text.match(/PASSED:\s*(true|false)/i)
-        const passed = explicitPassed
-          ? explicitPassed[1].toLowerCase() === 'true'
-          : score >= 60
+        const passed = score >= threshold
+          || (explicitPassed ? explicitPassed[1].toLowerCase() === 'true' : false)
         return {
           passed,
           score,
@@ -222,10 +222,10 @@ class QualityOrchestrator {
       const result = await this._sendFn(reviewerId, `agent:${reviewerId}:peer-review`, prompt, 60000)
       if (result.ok) {
         const score = parseInt(result.text.match(/SCORE:\s*(\d+)/)?.[1] || '50')
+        const threshold = getStrategy(task.type).minPassingScore
         const explicitPassed = result.text.match(/PASSED:\s*(true|false)/i)
-        const passed = explicitPassed
-          ? explicitPassed[1].toLowerCase() === 'true'
-          : score >= 60
+        const passed = score >= threshold
+          || (explicitPassed ? explicitPassed[1].toLowerCase() === 'true' : false)
         const comments = result.text.match(/COMMENTS:\s*([\s\S]*?)$/)?.[1]?.trim() || ''
         return {
           reviewer: reviewerId,
