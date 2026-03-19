@@ -9,6 +9,7 @@
 import { execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
 import { resolve } from 'path'
+import core from '@/lib/core-bridge'
 
 const execFile = promisify(execFileCb)
 
@@ -190,12 +191,9 @@ export async function update(slug?: string): Promise<{ ok: boolean; output: stri
 // ── Uninstall (rm -rf skills/slug) ───────────────────────────────
 export function uninstall(slug: string): { ok: boolean } {
   try {
-    const { rmSync, existsSync } = require('fs')
     const skillDir = resolve(SKILLS_DIR, slug)
     if (!skillDir.startsWith(SKILLS_DIR)) return { ok: false } // path traversal guard
-    if (existsSync(skillDir)) {
-      rmSync(skillDir, { recursive: true, force: true })
-    }
+    core.common.fileBrowser.deleteDir(skillDir)
     return { ok: true }
   } catch {
     return { ok: false }

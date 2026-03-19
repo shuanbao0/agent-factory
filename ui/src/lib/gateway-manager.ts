@@ -4,7 +4,6 @@
  */
 import { spawn, ChildProcess } from 'child_process'
 import { resolve, join } from 'path'
-import { existsSync, readFileSync, copyFileSync } from 'fs'
 import net from 'net'
 import core from '@/lib/core-bridge'
 
@@ -14,7 +13,7 @@ function findOpenClawBin(): string | null {
   let dir = PROJECT_ROOT
   while (dir) {
     const bin = resolve(dir, 'node_modules/.bin/openclaw')
-    if (existsSync(bin)) return bin
+    if (core.common.fileBrowser.pathExists(bin)) return bin
     const parent = resolve(dir, '..')
     if (parent === dir) break
     dir = parent
@@ -28,8 +27,8 @@ const CONFIG_DEFAULT_PATH = resolve(PROJECT_ROOT, 'config/openclaw.default.json'
 
 /** Copy from .default.json template if runtime config doesn't exist */
 function ensureConfig() {
-  if (!existsSync(CONFIG_PATH) && existsSync(CONFIG_DEFAULT_PATH)) {
-    copyFileSync(CONFIG_DEFAULT_PATH, CONFIG_PATH)
+  if (!core.common.fileBrowser.pathExists(CONFIG_PATH) && core.common.fileBrowser.pathExists(CONFIG_DEFAULT_PATH)) {
+    core.common.fileBrowser.copyFile(CONFIG_DEFAULT_PATH, CONFIG_PATH)
   }
 }
 
@@ -40,46 +39,29 @@ let currentStatus: GatewayStatus = 'stopped'
 let lastError: string | null = null
 
 function loadEnv(): Record<string, string> {
-  const envPath = resolve(PROJECT_ROOT, '.env')
-  const vars: Record<string, string> = {}
-  if (!existsSync(envPath)) return vars
-  const lines = readFileSync(envPath, 'utf-8').split('\n')
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eqIdx = trimmed.indexOf('=')
-    if (eqIdx === -1) continue
-    vars[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim()
-  }
-  return vars
+  return core.common.envManager.readEnv()
 }
 
 function hasAuthProfiles(): boolean {
-  const authPath = resolve(STATE_DIR, 'agents/main/agent/auth-profiles.json')
-  if (!existsSync(authPath)) return false
   try {
-    const data = JSON.parse(readFileSync(authPath, 'utf-8'))
-    return Object.keys(data.profiles || {}).length > 0
+    const data = core.repo.authProfilesRepo.readProfiles()
+    return data !== null && Object.keys(data.profiles || {}).length > 0
   } catch { return false }
 }
 
 function hasAnyApiKey(): boolean {
   const env = { ...process.env, ...loadEnv() }
 
-  // Check all providers configured in models.json
-  const modelsPath = resolve(PROJECT_ROOT, 'config/models.json')
-  if (existsSync(modelsPath)) {
-    try {
-      const modelsConfig = JSON.parse(readFileSync(modelsPath, 'utf-8'))
-      for (const provider of Object.values(modelsConfig.providers || {})) {
-        const p = provider as { apiKey?: string }
-        if (!p.apiKey) continue
-        // Resolve env var references like ${VAR_NAME}
-        const resolved = p.apiKey.replace(/\$\{(\w+)\}/g, (_, name) => env[name] || '')
-        if (resolved) return true
-      }
-    } catch { /* ignore */ }
-  }
+  try {
+    const modelsConfig = core.repo.modelsRepo.readModels()
+    for (const provider of Object.values(modelsConfig.providers || {})) {
+      const p = provider as { apiKey?: string }
+      if (!p.apiKey) continue
+      // Resolve env var references like ${VAR_NAME}
+      const resolved = p.apiKey.replace(/\$\{(\w+)\}/g, (_: string, name: string) => env[name] || '')
+      if (resolved) return true
+    }
+  } catch { /* ignore */ }
 
   return hasAuthProfiles()
 }

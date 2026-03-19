@@ -8,9 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { basename, resolve, join } from 'path'
-import { existsSync, realpathSync } from 'fs'
 import { stripMarkerBlock, injectBaseRulesForAgent } from '@/lib/base-rules'
-import { validateAgentId } from '@/lib/shared-bridge'
 import core from '@/lib/core-bridge'
 
 // Marker constants matching base-rules.ts
@@ -48,14 +46,13 @@ function getWorkspaceDir(id: string) {
 function safePath(workspaceDir: string, filePath: string): string | null {
   const resolved = resolve(workspaceDir, filePath)
   if (!resolved.startsWith(workspaceDir + '/') && resolved !== workspaceDir) return null
-  try {
-    const real = realpathSync(resolved)
-    const realBase = realpathSync(workspaceDir)
-    if (!real.startsWith(realBase + '/') && real !== realBase) return null
+  const real = core.common.fileBrowser.realPath(resolved)
+  if (real) {
+    const realBase = core.common.fileBrowser.realPath(workspaceDir)
+    if (realBase && !real.startsWith(realBase + '/') && real !== realBase) return null
     return real
-  } catch {
-    return resolved  // file doesn't exist yet (PUT scenario), prefix check already passed
   }
+  return resolved  // file doesn't exist yet (PUT scenario), prefix check already passed
 }
 
 export async function GET(
@@ -63,12 +60,12 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const { id } = params
-  if (!validateAgentId(id).valid) {
+  if (!core.common.validateAgentId(id).valid) {
     return NextResponse.json({ error: 'Invalid agent ID' }, { status: 400 })
   }
   const workspaceDir = getWorkspaceDir(id)
 
-  if (!core.repo.agentMetaRepo.exists(id) && !existsSync(workspaceDir)) {
+  if (!core.repo.agentMetaRepo.exists(id) && !core.common.fileBrowser.pathExists(workspaceDir)) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
   }
 
@@ -119,12 +116,12 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const { id } = params
-  if (!validateAgentId(id).valid) {
+  if (!core.common.validateAgentId(id).valid) {
     return NextResponse.json({ error: 'Invalid agent ID' }, { status: 400 })
   }
   const workspaceDir = getWorkspaceDir(id)
 
-  if (!core.repo.agentMetaRepo.exists(id) && !existsSync(workspaceDir)) {
+  if (!core.repo.agentMetaRepo.exists(id) && !core.common.fileBrowser.pathExists(workspaceDir)) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
   }
 

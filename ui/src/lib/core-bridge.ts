@@ -178,7 +178,14 @@ export default _core as {
       listArchivedWorkspaces(): Array<{ dirName: string; agentId: string; archivedAt: string; fileCount: number; totalSize: number }>
       readWorkspaceFile(agentId: string, filePath: string): { content: string; size?: number } | { error: string }
       writeWorkspaceFile(agentId: string, filePath: string, content: string): void
+      pathExists(fullPath: string): boolean
+      realPath(fullPath: string): string | null
+      copyFile(src: string, dst: string): void
+      deleteDir(dir: string): void
     }
+    validateAgentId(id: string): { valid: boolean; error?: string }
+    validateTaskStatus(status: string): boolean
+    sanitizePath(p: string): string | null
     parseSkillMeta(content: string): { name: string; description: string; bins: string[] }
     generateToolsMd(agentId: string, skills: string[], agentDir: string): string
     envManager: {

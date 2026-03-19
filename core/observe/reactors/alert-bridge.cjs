@@ -28,38 +28,44 @@ const alerts = []
 function register(bus) {
   // 成本超限告警
   bus.on('alert.cost_exceeded', (event) => {
-    alerts.push({
-      id: `cost-${Date.now()}`,
-      type: 'cost_exceeded',
-      severity: 'error',
-      ts: event.ts,
-      data: { date: event.date, totalCost: event.totalCost, threshold: event.threshold, source: event.source },
-    })
-    if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
+    try {
+      alerts.push({
+        id: `cost-${Date.now()}`,
+        type: 'cost_exceeded',
+        severity: 'error',
+        ts: event.ts,
+        data: { date: event.date, totalCost: event.totalCost, threshold: event.threshold, source: event.source },
+      })
+      if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
+    } catch { /* reactor 错误不传播 */ }
   })
 
   // 循环耗时异常告警
   bus.on('alert.cycle_slowdown', (event) => {
-    alerts.push({
-      id: `cycle-${Date.now()}`,
-      type: 'cycle_slowdown',
-      severity: 'warning',
-      ts: event.ts,
-      data: { deptId: event.deptId, currentDurationMs: event.currentDurationMs, averageDurationMs: event.averageDurationMs },
-    })
-    if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
+    try {
+      alerts.push({
+        id: `cycle-${Date.now()}`,
+        type: 'cycle_slowdown',
+        severity: 'warning',
+        ts: event.ts,
+        data: { deptId: event.deptId, currentDurationMs: event.currentDurationMs, averageDurationMs: event.averageDurationMs },
+      })
+      if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
+    } catch { /* reactor 错误不传播 */ }
   })
 
   // 部门预算阻断告警
   bus.on('budget.dept_blocked', (event) => {
-    alerts.push({
-      id: `budget-${Date.now()}`,
-      type: 'budget_blocked',
-      severity: 'error',
-      ts: event.ts,
-      data: { deptId: event.deptId, reason: event.reason, ratio: event.ratio },
-    })
-    if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
+    try {
+      alerts.push({
+        id: `budget-${Date.now()}`,
+        type: 'budget_blocked',
+        severity: 'error',
+        ts: event.ts,
+        data: { deptId: event.deptId, reason: event.reason, ratio: event.ratio },
+      })
+      if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
+    } catch { /* reactor 错误不传播 */ }
   })
 }
 

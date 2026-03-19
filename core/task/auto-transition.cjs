@@ -7,8 +7,7 @@
  * 从 department-loop.cjs 的 autoTransitionTasks 提取纯业务规则
  */
 
-const IDLE_COMPLETE_MINS = 18
-const STALE_TASK_MINS = 30
+const { IDLE_COMPLETE_MINS, STALE_TASK_MINS } = require('../autopilot/constants.cjs')
 
 /**
  * Parse task assignments from chief's response.

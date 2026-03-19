@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { existsSync } from 'fs'
-import { join, resolve } from 'path'
 import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
 
 // ── GET: List all templates ─────────────────────────────────────
 export async function GET() {
@@ -38,14 +34,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ID must be lowercase alphanumeric with hyphens' }, { status: 400 })
     }
 
-    const templateDir = join(PROJECT_ROOT, 'templates', 'custom', id)
-    if (existsSync(templateDir)) {
+    // Check if template already exists (custom or builtin)
+    if (core.repo.readTemplate(id)) {
       return NextResponse.json({ error: `Template "${id}" already exists` }, { status: 409 })
-    }
-
-    // Also check builtin
-    if (existsSync(join(PROJECT_ROOT, 'templates', 'builtin', id))) {
-      return NextResponse.json({ error: `Template "${id}" conflicts with a builtin template` }, { status: 409 })
     }
 
     const template = {

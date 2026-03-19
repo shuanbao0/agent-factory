@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { spawn, execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
@@ -26,8 +25,8 @@ function resolveCodeDir(projectId: string): string | null {
     if (!meta || !meta.codeLocation) return null
     const fromRoot = resolve(PROJECT_ROOT, meta.codeLocation as string)
     const fromProject = resolve(projectDir, meta.codeLocation as string)
-    if (existsSync(fromRoot)) return fromRoot
-    if (existsSync(fromProject)) return fromProject
+    if (core.common.fileBrowser.pathExists(fromRoot)) return fromRoot
+    if (core.common.fileBrowser.pathExists(fromProject)) return fromProject
   } catch { /* ignore */ }
   return null
 }
@@ -209,7 +208,7 @@ export async function POST(
     }
 
     // Check node_modules
-    if (!existsSync(join(codeDir, 'node_modules'))) {
+    if (!core.common.fileBrowser.pathExists(join(codeDir, 'node_modules'))) {
       return NextResponse.json({ error: 'Dependencies not installed. Run npm install first.' }, { status: 400 })
     }
 

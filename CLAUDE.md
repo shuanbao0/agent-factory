@@ -264,6 +264,15 @@ CEO 协调周期 (30min)
 | `validators.cjs` | 通用配置校验 |
 | `config-validator.cjs` | 配置结构验证 |
 | `agent-service.cjs` | Agent 元数据服务 |
+| `department-service.cjs` | 部门生命周期管理（创建/更新/删除） |
+| `project-service.cjs` | 项目生命周期 + Token 用量聚合 |
+| `file-browser.cjs` | 安全目录遍历 + workspace 管理 |
+| `skill-utils.cjs` | 技能元数据解析 + TOOLS.md 生成 |
+| `skill-symlinks.cjs` | 技能 symlink 同步（幂等） |
+| `base-rules-injector.cjs` | Base-rules 解析与幂等注入 |
+| `models-service.cjs` | models.json ↔ openclaw.json 同步 |
+| `env-manager.cjs` | .env 文件读写 |
+| `event-relay.cjs` | SSE 事件转发 |
 
 ### UI 目录结构（`ui/`）
 

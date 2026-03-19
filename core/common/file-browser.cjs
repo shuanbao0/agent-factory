@@ -4,7 +4,7 @@
  *
  * 职责：项目文件浏览 + Agent workspace 统计
  */
-const { readdirSync, readFileSync, existsSync, statSync, mkdirSync, renameSync, rmSync, writeFileSync } = require('fs')
+const { readdirSync, readFileSync, existsSync, statSync, mkdirSync, renameSync, rmSync, writeFileSync, realpathSync, copyFileSync } = require('fs')
 const { join, resolve } = require('path')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
@@ -235,9 +235,15 @@ function writeWorkspaceFile(agentId, filePath, content) {
   writeFileSync(fullPath, content)
 }
 
+function pathExists(fullPath) { return existsSync(fullPath) }
+function realPath(fullPath) { try { return realpathSync(fullPath) } catch { return null } }
+function copyFile(src, dst) { copyFileSync(src, dst) }
+function deleteDir(dir) { if (existsSync(dir)) rmSync(dir, { recursive: true, force: true }) }
+
 module.exports = {
   listDirectory, getFileContent, listAgentWorkspaces, countDirStats,
   ensureWorkspace, archiveWorkspace, deleteArchive,
   listWorkspaces, listArchivedWorkspaces,
   readWorkspaceFile, writeWorkspaceFile,
+  pathExists, realPath, copyFile, deleteDir,
 }

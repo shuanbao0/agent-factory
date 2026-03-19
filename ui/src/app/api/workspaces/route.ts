@@ -9,8 +9,6 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve, join } from 'path'
-import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
-import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
@@ -26,32 +24,6 @@ function safePath(baseDir: string, filePath: string): string | null {
     return null
   }
   return resolved
-}
-
-/** Recursively list files in a directory */
-function listFiles(dir: string, prefix = ''): { name: string; path: string; size: number }[] {
-  const results: { name: string; path: string; size: number }[] = []
-  if (!existsSync(dir)) return results
-
-  try {
-    const entries = readdirSync(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name)
-      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
-      if (entry.isDirectory()) {
-        results.push(...listFiles(fullPath, relativePath))
-      } else if (entry.isFile() || entry.isSymbolicLink()) {
-        try {
-          const stat = statSync(fullPath)
-          results.push({ name: entry.name, path: relativePath, size: stat.size })
-        } catch {
-          results.push({ name: entry.name, path: relativePath, size: 0 })
-        }
-      }
-    }
-  } catch (err) { logError('workspaces-api/list-files', err) }
-
-  return results
 }
 
 export async function GET(req: NextRequest) {
@@ -80,16 +52,12 @@ export async function GET(req: NextRequest) {
     if (!resolved) {
       return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
     }
-    if (!existsSync(resolved)) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 })
+    const result = core.common.fileBrowser.getFileContent(archDir, file)
+    if ('error' in result) {
+      const status = result.error === 'File not found' ? 404 : 400
+      return NextResponse.json({ error: result.error }, { status })
     }
-    try {
-      const content = readFileSync(resolved, 'utf-8')
-      return NextResponse.json({ content })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      return NextResponse.json({ error: message }, { status: 500 })
-    }
+    return NextResponse.json({ content: (result as { content: string }).content })
   }
 
   // ── List all workspaces + archives ────────────────────────────
@@ -97,26 +65,28 @@ export async function GET(req: NextRequest) {
     const activeList = core.common.fileBrowser.listWorkspaces()
     const workspaces = activeList.map(ws => {
       const wsPath = join(WORKSPACES_DIR, ws.agentId)
-      const files = listFiles(wsPath)
+      const dirResult = core.common.fileBrowser.listDirectory(wsPath, '')
+      const entries = (dirResult.entries as Array<Record<string, unknown>>) || []
       return {
         agentId: ws.agentId,
-        files,
-        fileCount: files.length,
-        totalSize: files.reduce((sum, f) => sum + f.size, 0),
+        files: entries,
+        fileCount: ws.fileCount,
+        totalSize: ws.totalSize,
       }
     })
 
     const archivedList = core.common.fileBrowser.listArchivedWorkspaces()
     const archived = archivedList.map(arch => {
       const archPath = join(ARCHIVED_DIR, arch.dirName)
-      const files = listFiles(archPath)
+      const dirResult = core.common.fileBrowser.listDirectory(archPath, '')
+      const entries = (dirResult.entries as Array<Record<string, unknown>>) || []
       return {
         dirName: arch.dirName,
         agentId: arch.agentId,
         archivedAt: arch.archivedAt,
-        files,
-        fileCount: files.length,
-        totalSize: files.reduce((sum, f) => sum + f.size, 0),
+        files: entries,
+        fileCount: arch.fileCount,
+        totalSize: arch.totalSize,
       }
     })
 
@@ -140,7 +110,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const archPath = join(ARCHIVED_DIR, dirName)
-    if (!existsSync(archPath)) {
+    if (!core.common.fileBrowser.pathExists(archPath)) {
       return NextResponse.json({ error: 'Archive not found' }, { status: 404 })
     }
 

@@ -3,7 +3,6 @@
  *
  * Business logic only — CLI entry point remains in scripts/autopilot/department-loop.cjs
  */
-const { writeFileSync, existsSync, mkdirSync, readdirSync, readFileSync } = require('fs')
 const { join } = require('path')
 const {
   DEPARTMENTS_DIR, DEFAULT_DEPT_INTERVAL_SEC, MAX_HISTORY_ENTRIES,
