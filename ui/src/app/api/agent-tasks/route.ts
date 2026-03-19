@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Task } from '@/lib/types'
+import { STATUSES, TRANSITIONS, normalizeStatus, isTerminal, getValidTransitions } from '@entity/task'
 import {
   findAllTasks,
   findTaskById,
@@ -16,7 +17,7 @@ import {
   persistNewTask,
   getWorkflowForTask,
 } from '@/lib/quality-gate'
-import { canTransition, getValidTransitions } from '@/lib/shared-bridge'
+import { relayEvent } from '@/lib/event-relay'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,12 +123,12 @@ export async function PUT(req: NextRequest) {
     }
 
     // Validate status value to prevent non-standard states
-    const VALID_STATUSES = ['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed', 'rework']
-    if (status && !VALID_STATUSES.includes(status)) {
-      if (status === 'running') {
-        status = 'in_progress'
-      } else {
-        return NextResponse.json({ error: `Invalid status: ${status}. Valid values: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
+    if (status) {
+      const normalized = normalizeStatus(status)
+      if (normalized !== status) {
+        status = normalized
+      } else if (!STATUSES.includes(status)) {
+        return NextResponse.json({ error: `Invalid status: ${status}. Valid values: ${STATUSES.join(', ')}` }, { status: 400 })
       }
     }
 
@@ -143,7 +144,8 @@ export async function PUT(req: NextRequest) {
 
     // State transition guard: only allow valid transitions (via shared state machine)
     if (status) {
-      if (!canTransition(found.task.status, status)) {
+      const allowed = TRANSITIONS[found.task.status as keyof typeof TRANSITIONS] || []
+      if (!allowed.includes(status)) {
         return NextResponse.json({
           error: `Invalid transition: ${found.task.status} → ${status}`,
           currentStatus: found.task.status,
@@ -189,17 +191,25 @@ export async function PUT(req: NextRequest) {
           updates.status = 'failed'
           updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
           const updated = updateTaskInPlace(taskId, updates)
+          relayEvent('task.status_changed', {
+            taskId, taskName: found.task.name || '', agentId: agent,
+            department: found.task.projectId || '', from: found.task.status, to: 'failed',
+          })
           return NextResponse.json({ task: updated, qualityGate: gate, ok: true })
         }
         if (gate.shouldRework) {
           updates.status = 'rework'
           updates.validationErrors = gate.errors
           const updated = updateTaskInPlace(taskId, updates)
+          relayEvent('task.status_changed', {
+            taskId, taskName: found.task.name || '', agentId: agent,
+            department: found.task.projectId || '', from: found.task.status, to: 'rework',
+          })
           // Dedup: skip if there's already an active rework task from this task
           const allTasks = findAllTasks()
           const existingRework = allTasks.find(t =>
             t.reworkFromId === taskId &&
-            ['pending', 'assigned', 'in_progress', 'rework', 'review'].includes(t.status)
+            !isTerminal(t.status)
           )
           if (!existingRework) {
             const reworkTask = createReworkTask(updated!, gate.errors)
@@ -212,6 +222,15 @@ export async function PUT(req: NextRequest) {
       }
 
       updates.completedAt = new Date().toISOString()
+      // Relay completion event to Autopilot
+      relayEvent('task.status_changed', {
+        taskId,
+        taskName: found.task.name || '',
+        agentId: agent,
+        department: found.task.projectId || '',
+        from: found.task.status,
+        to: 'completed',
+      })
       const updated = updateTaskInPlace(taskId, updates)
 
       // Close parent chain: walk up reworkFromId links and close all rework ancestors
@@ -248,6 +267,18 @@ export async function PUT(req: NextRequest) {
     const updated = updateTaskInPlace(taskId, updates)
     if (!updated) {
       return NextResponse.json({ error: 'Failed to update task' }, { status: 500 })
+    }
+
+    // Relay status change to Autopilot via signal file
+    if (status && status !== found.task.status) {
+      relayEvent('task.status_changed', {
+        taskId,
+        taskName: found.task.name || '',
+        agentId: agent,
+        department: found.task.projectId || '',
+        from: found.task.status,
+        to: status,
+      })
     }
 
     return NextResponse.json({ task: updated, ok: true })

@@ -7,17 +7,13 @@ import { PhaseProgress } from '@/components/phase-progress'
 import { FolderKanban, Clock, Zap, Plus, Trash2, Loader2, FolderOpen, FileText, FolderTree, Code2, ListChecks, AlertTriangle, Play, Square, ExternalLink, Monitor, ChevronRight, ChevronDown, Bot } from 'lucide-react'
 import { formatNumber, formatDate, encodeProjectId } from '@/lib/utils'
 import { Task } from '@/lib/types'
+import type { PhaseDefinition } from '@entity/dept'
+import { logError } from '@/lib/error-logger'
 
 const ROLE_EMOJI: Record<string, string> = {
   ceo: '👔', pm: '📋', product: '📦', designer: '🎨',
   frontend: '💻', backend: '⚙️', tester: '🧪', researcher: '🔬',
   marketing: '📣', analyst: '📊', writer: '✍️',
-}
-
-interface PhaseDefinition {
-  key: string
-  labelZh: string
-  labelEn: string
 }
 
 interface FsProject {
@@ -651,7 +647,7 @@ function PreviewTab({ projectId }: { projectId: string }) {
         body: JSON.stringify({ action: 'stop' }),
       })
       setStatus({ running: false })
-    } catch {}
+    } catch (err) { logError('projects/stopPreview', err) }
     setStopping(false)
   }
 
@@ -755,7 +751,7 @@ export default function ProjectsPage() {
       const res = await fetch('/api/projects')
       const data = await res.json()
       setProjects(data.projects ?? [])
-    } catch {}
+    } catch (err) { logError('projects/fetchProjects', err) }
     setLoading(false)
   }
 
@@ -790,7 +786,7 @@ export default function ProjectsPage() {
         await fetchProjects()
         setSelected(data.project.id)
       }
-    } catch {}
+    } catch (err) { logError('projects/createProject', err) }
     setCreating(false)
   }
 
@@ -801,7 +797,7 @@ export default function ProjectsPage() {
       await fetch(`/api/projects/${encodeProjectId(id)}`, { method: 'DELETE' })
       await fetchProjects()
       setSelected(null)
-    } catch {}
+    } catch (err) { logError('projects/deleteProject', err) }
     setDeleting(false)
   }
 

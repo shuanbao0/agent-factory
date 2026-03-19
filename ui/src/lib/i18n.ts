@@ -6,6 +6,8 @@ import en from '@/locales/en.json'
 
 export type Locale = 'zh' | 'en'
 
+type TranslationValue = string | { [key: string]: TranslationValue }
+
 const messages: Record<Locale, typeof zh> = { zh, en }
 
 interface I18nState {
@@ -36,11 +38,16 @@ export function useTranslation() {
 
   function t(key: string): string {
     const keys = key.split('.')
-    let val: any = messages[activeLocale]
+    let val: TranslationValue | undefined = messages[activeLocale]
     for (const k of keys) {
-      val = val?.[k]
+      if (val && typeof val === 'object') {
+        val = (val as Record<string, TranslationValue>)[k]
+      } else {
+        val = undefined
+        break
+      }
     }
-    return val ?? key
+    return typeof val === 'string' ? val : key
   }
 
   return { t, locale: activeLocale, setLocale }

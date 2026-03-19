@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from '@/lib/i18n'
 import { useAppStore } from '@/lib/store'
-import { Task, TaskTypeDefinition } from '@/lib/types'
+import { Task, TaskTypeDefinition, STATUSES } from '@/lib/types'
 import { X, Loader2 } from 'lucide-react'
 
 const DEFAULT_TASK_TYPES: TaskTypeDefinition[] = [
@@ -196,7 +196,7 @@ export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
                 value={status}
                 onChange={e => setStatus(e.target.value as Task['status'])}
               >
-                {(['pending', 'assigned', 'in_progress', 'review', 'completed', 'failed'] as const).map(s => (
+                {STATUSES.filter(s => s !== 'rework').map(s => (
                   <option key={s} value={s}>
                     {t(`tasks.col${s === 'pending' || s === 'assigned' ? 'Pending' : s === 'in_progress' ? 'InProgress' : s === 'review' ? 'Review' : s === 'completed' ? 'Completed' : 'Failed'}`)}
                   </option>

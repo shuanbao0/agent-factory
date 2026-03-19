@@ -6,6 +6,7 @@ import { ClientOnly } from '@/components/client-only'
 import { DataProvider } from '@/components/data-provider'
 import { GatewayGuard } from '@/components/gateway-guard'
 import { LayoutShell } from '@/components/layout-shell'
+import { ErrorBoundary } from '@/components/error-boundary'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -19,11 +20,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
         <ClientOnly>
-          <GatewayGuard>
-            <LayoutShell>
-              {children}
-            </LayoutShell>
-          </GatewayGuard>
+          <ErrorBoundary>
+            <GatewayGuard>
+              <LayoutShell>
+                {children}
+              </LayoutShell>
+            </GatewayGuard>
+          </ErrorBoundary>
         </ClientOnly>
       </body>
     </html>

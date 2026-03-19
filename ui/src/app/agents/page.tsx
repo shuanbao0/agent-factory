@@ -14,6 +14,7 @@ import {
   ChevronDown, ChevronRight, FileText, FolderTree, Trash2, Loader2, X, Monitor,
   Settings2, Pencil
 } from 'lucide-react'
+import { logError } from '@/lib/error-logger'
 
 const PixelOfficeView = dynamic(
   () => import('@/components/pixel-office').then(m => m.PixelOfficeView),
@@ -213,7 +214,7 @@ export default function AgentsPage() {
         setWorkspaces(data.workspaces || [])
         setArchived(data.archived || [])
       }
-    } catch {} finally { setLoadingWs(false) }
+    } catch (err) { logError('agents/fetchWorkspaces', err) } finally { setLoadingWs(false) }
   }, [])
 
   useEffect(() => {
@@ -250,7 +251,7 @@ export default function AgentsPage() {
         body: JSON.stringify({ id }),
       })
       fetchAgents()
-    } catch {}
+    } catch (err) { logError('agents/deleteAgent', err) }
   }, [t, fetchAgents])
 
   const handleSaved = (createdAgentId?: string, skipAutoInit?: boolean) => {
@@ -275,7 +276,7 @@ export default function AgentsPage() {
         fetchDepartments()
         fetchAgents()
       }
-    } catch {} finally { setDeletingDept(null) }
+    } catch (err) { logError('agents/deleteDepartment', err) } finally { setDeletingDept(null) }
   }
 
   // ── Workspace helpers ─────────────────────────────────────────
@@ -296,7 +297,7 @@ export default function AgentsPage() {
         const data = await res.json()
         setPreviewFile({ source: `${agentId}/${filePath}`, path: filePath, content: data.content || '' })
       }
-    } catch {} finally { setLoadingPreview(false) }
+    } catch (err) { logError('agents/previewFile', err) } finally { setLoadingPreview(false) }
   }
 
   const previewArchivedFile = async (dirName: string, filePath: string) => {
@@ -307,7 +308,7 @@ export default function AgentsPage() {
         const data = await res.json()
         setPreviewFile({ source: `archived/${dirName}/${filePath}`, path: filePath, content: data.content || '' })
       }
-    } catch {} finally { setLoadingPreview(false) }
+    } catch (err) { logError('agents/previewArchivedFile', err) } finally { setLoadingPreview(false) }
   }
 
   const deleteArchive = async (dirName: string) => {
@@ -321,7 +322,7 @@ export default function AgentsPage() {
       if (res.ok) {
         setArchived(prev => prev.filter(a => a.dirName !== dirName))
       }
-    } catch {}
+    } catch (err) { logError('agents/deleteArchive', err) }
   }
 
   const formatSize = (bytes: number): string => {

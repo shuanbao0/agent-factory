@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ function readEnvFile(): Record<string, string> {
       if (eqIdx === -1) continue
       vars[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim()
     }
-  } catch {}
+  } catch (err) { logError('models-test/read-env-file', err) }
   return vars
 }
 
@@ -147,10 +148,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } else {
       return NextResponse.json({ error: result.error || 'Test failed' }, { status: 500 })
     }
-  } catch (e: any) {
-    if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+  } catch (e: unknown) {
+    if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
       return NextResponse.json({ error: 'Test request timeout (15s)' }, { status: 408 })
     }
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }
 }

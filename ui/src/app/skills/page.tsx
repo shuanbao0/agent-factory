@@ -9,6 +9,7 @@ import {
   Loader2, Package, Globe, CheckCircle2, AlertCircle, Info, Star,
   ChevronLeft, ChevronRight, Key, X, Save, ShieldCheck
 } from 'lucide-react'
+import { logError } from '@/lib/error-logger'
 
 // ── Types ────────────────────────────────────────────────────────
 interface LocalSkill {
@@ -309,7 +310,7 @@ export default function SkillsPage() {
         setSearchResults(data.results || [])
         setSearchPage(1)
       }
-    } catch {} finally { setSearchLoading(false) }
+    } catch (err) { logError('skills/searchSkills', err) } finally { setSearchLoading(false) }
   }
 
   // ── Install ────────────────────────────────────────────────────
@@ -334,8 +335,8 @@ export default function SkillsPage() {
         fetchInstalled()
         fetchLocalSkills()
       }
-    } catch (e: any) {
-      setInstallResult({ ok: false, message: e.message })
+    } catch (e: unknown) {
+      setInstallResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
     } finally { setInstalling(null) }
   }
 
@@ -351,7 +352,7 @@ export default function SkillsPage() {
       loadedTabs.current.clear()
       loadedTabs.current.add('installed')
       fetchInstalled(); fetchLocalSkills()
-    } catch {}
+    } catch (err) { logError('skills/uninstall', err) }
   }
 
   // ── Update all ─────────────────────────────────────────────────
@@ -370,8 +371,8 @@ export default function SkillsPage() {
         message: data.ok ? t('skills.updateAllSuccess') : (data.output || t('skills.updateFailed')),
       })
       if (data.ok) fetchInstalled()
-    } catch (e: any) {
-      setInstallResult({ ok: false, message: e.message })
+    } catch (e: unknown) {
+      setInstallResult({ ok: false, message: e instanceof Error ? e.message : String(e) })
     } finally { setInstalling(null) }
   }
 

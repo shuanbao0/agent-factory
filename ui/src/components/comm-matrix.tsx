@@ -5,15 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Check, X, Loader2, Wand2 } from 'lucide-react'
 
-// ── Types ────────────────────────────────────────────────────────
-interface Agent {
-  id: string
-  role: string
-  name: string
-}
+import type { Agent } from '@entity/agent'
 
+// ── Types ────────────────────────────────────────────────────────
 interface CommMatrixProps {
-  agents: Agent[]
+  agents: Pick<Agent, 'id' | 'role' | 'name'>[]
   /** Current permissions: agentId → set of allowed peer ids */
   permissions: Record<string, Set<string>>
   /** Called when a permission is toggled */

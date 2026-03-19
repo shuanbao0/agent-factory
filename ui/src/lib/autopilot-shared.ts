@@ -1,49 +1,11 @@
 import { useState, useEffect } from 'react'
 
 // ---------------------------------------------------------------------------
-// Interfaces & Types
+// Re-export canonical types from @/types (single source of truth)
 // ---------------------------------------------------------------------------
 
-export interface DeptInfo {
-  id: string
-  name: string
-  emoji?: string
-  head: string
-  enabled: boolean
-  interval: number
-  directives?: string[]
-  mission?: string
-  report?: string
-  headExists?: boolean
-  state: {
-    status: string
-    cycleCount: number
-    lastCycleAt?: string
-    lastCycleResult?: string
-    tokensUsedToday?: number
-  }
-}
-
-export interface AutopilotState {
-  status: 'running' | 'stopped' | 'cycling' | 'error'
-  pid: number | null
-  cycleCount: number
-  lastCycleAt: string | null
-  lastCycleResult: string | null
-  intervalSeconds: number
-  missionSummary: string
-  mode?: 'all' | null
-  departments?: DeptInfo[]
-  recentHistory: Array<{
-    cycle: number
-    startedAt: string
-    completedAt: string
-    elapsedSec: number
-    result: string
-    tokens: number
-    cycleType?: string
-  }>
-}
+export type { DeptInfo, AutopilotState } from '@entity/autopilot'
+import type { AutopilotState } from '@entity/autopilot'
 
 export type TabId = 'overview' | 'departments' | 'budget' | 'mission'
 

@@ -12,18 +12,15 @@
  * 4. delta event 带增量文本，final event 表示完成
  */
 import WebSocket from 'ws'
+import { logError } from '@/lib/error-logger'
 import { randomUUID } from 'crypto'
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import type { GatewayConfig } from '@entity/config'
 
 // ── 配置 ─────────────────────────────────────────────────────────
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const CONFIG_PATH = resolve(PROJECT_ROOT, 'config/openclaw.json')
-
-interface GatewayConfig {
-  port: number
-  token: string
-}
 
 function loadGatewayConfig(): GatewayConfig {
   const port = parseInt(process.env.AGENT_FACTORY_PORT || '19100')
@@ -37,7 +34,7 @@ function loadGatewayConfig(): GatewayConfig {
         port: config.gateway?.port || port,
         token: config.gateway?.auth?.token || token,
       }
-    } catch {}
+    } catch (err) { logError('gateway-chat/loadConfig', err) }
   }
 
   return { port, token }
@@ -153,7 +150,7 @@ export async function sendChatMessage(
     const cleanup = () => {
       if (timer) clearTimeout(timer)
       timer = null
-      try { ws?.close() } catch {}
+      try { ws?.close() } catch (err) { logError('gateway-chat/closeWs', err) }
       ws = null
     }
 
@@ -193,16 +190,17 @@ export async function sendChatMessage(
       })
 
       ws.on('message', (data) => {
-        let frame: any
+        let frame: Record<string, unknown>
         try {
           frame = JSON.parse(data.toString())
-        } catch {
+        } catch (err) {
+          logError('gateway-chat/parseFrame', err)
           return
         }
 
         // ── 处理 connect 响应 ──────────────────────────────
         if (frame.type === 'res') {
-          const res = frame as ResponseFrame
+          const res = frame as unknown as ResponseFrame
 
           // connect 成功 → 发送 chat.send
           if (res.ok && !connected) {
@@ -327,11 +325,11 @@ export async function sendChatMessage(
         }
       })
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       finish({
         ok: false,
         reply: '',
-        error: `Connection failed: ${err.message}`,
+        error: `Connection failed: ${err instanceof Error ? err.message : String(err)}`,
         runId: idempotencyKey,
       })
     }

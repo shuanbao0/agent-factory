@@ -1,3 +1,4 @@
+import { logError } from '@/lib/error-logger'
 import { existsSync, readdirSync, mkdirSync, symlinkSync, unlinkSync, lstatSync } from 'fs'
 import { join, resolve } from 'path'
 import { execFile as execFileCb } from 'child_process'
@@ -24,7 +25,7 @@ export async function findBuiltinSkillsDir(): Promise<string | null> {
       cachedBuiltinDir = dir
       return dir
     }
-  } catch {}
+  } catch (err) { logError('skill-symlinks/findBuiltinDir', err) }
   // Fallback to common global paths
   const candidates = [
     '/opt/homebrew/lib/node_modules/openclaw/skills',
@@ -63,7 +64,7 @@ export async function syncSkillSymlinks(agentId: string, enabledSlugs: string[])
     const fullPath = join(agentSkillsDir, entry.name)
     try {
       if (lstatSync(fullPath).isSymbolicLink()) unlinkSync(fullPath)
-    } catch {}
+    } catch (err) { logError('skill-symlinks/removeSymlink', err) }
   }
 
   // Create symlinks for enabled skills
@@ -71,7 +72,7 @@ export async function syncSkillSymlinks(agentId: string, enabledSlugs: string[])
     const sourcePath = await resolveSkillDir(slug)
     const linkPath = join(agentSkillsDir, slug)
     if (sourcePath && !existsSync(linkPath)) {
-      try { symlinkSync(sourcePath, linkPath, 'dir') } catch {}
+      try { symlinkSync(sourcePath, linkPath, 'dir') } catch (err) { logError('skill-symlinks/createSymlink', err) }
     }
   }
 }

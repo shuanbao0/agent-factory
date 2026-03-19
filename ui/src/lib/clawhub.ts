@@ -171,8 +171,8 @@ export async function install(slug: string, version?: string): Promise<{ ok: boo
     args.push('--force')
     const output = await run(args, 60000)
     return { ok: true, output }
-  } catch (e: any) {
-    return { ok: false, output: e.message || 'Install failed' }
+  } catch (e: unknown) {
+    return { ok: false, output: e instanceof Error ? e.message : 'Install failed' }
   }
 }
 
@@ -182,8 +182,8 @@ export async function update(slug?: string): Promise<{ ok: boolean; output: stri
     const args = ['update', slug || '--all', '--force']
     const output = await run(args, 60000)
     return { ok: true, output }
-  } catch (e: any) {
-    return { ok: false, output: e.message || 'Update failed' }
+  } catch (e: unknown) {
+    return { ok: false, output: e instanceof Error ? e.message : 'Update failed' }
   }
 }
 

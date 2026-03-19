@@ -4,13 +4,12 @@
  * as the original API JSON responses.
  */
 import { gwCallAsync } from '@/lib/gateway-client'
-import { existsSync, readFileSync, readdirSync } from 'fs'
-import { join, resolve } from 'path'
+import core from '@/lib/core-bridge'
+import type { Task } from '@entity/task'
+import type { AgentMeta } from '@entity/agent'
+import type { CostEntry, CompanyBudget } from '@entity/observe'
+import type { AgentConfigEntry } from '@entity/agent'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const AUTOPILOT_STATE = join(PROJECT_ROOT, 'config', 'autopilot-state.json')
-const OPENCLAW_CONFIG = join(PROJECT_ROOT, 'config', 'openclaw.json')
 const BUSY_THRESHOLD_MS = 300_000
 
 // ── Health ───────────────────────────────────────────────────────
@@ -73,38 +72,31 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
 
   // Check autopilot state
   try {
-    if (existsSync(AUTOPILOT_STATE)) {
-      const ap = JSON.parse(readFileSync(AUTOPILOT_STATE, 'utf-8'))
-      if (ap.status === 'cycling') busyAgentIds.add('ceo')
-    }
+    const ap = core.common.loadState()
+    if (ap.status === 'cycling') busyAgentIds.add('ceo')
   } catch { /* ignore */ }
 
-  // Read agent instance metadata from agents/ directory
-  const agentInstances = new Map<string, Record<string, unknown>>()
-  if (existsSync(AGENTS_DIR)) {
-    for (const entry of readdirSync(AGENTS_DIR, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const agentJsonPath = join(AGENTS_DIR, entry.name, 'agent.json')
-      if (existsSync(agentJsonPath)) {
-        try {
-          const data = JSON.parse(readFileSync(agentJsonPath, 'utf-8'))
-          agentInstances.set(entry.name, data)
-        } catch { /* ignore */ }
-      }
+  // Read agent instance metadata via repo
+  const agentInstances = new Map<string, AgentMeta>()
+  try {
+    const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
+    for (const id of agentIds) {
+      const meta = core.repo.agentMetaRepo.readMeta(id)
+      if (meta) agentInstances.set(id, meta as AgentMeta)
     }
-  }
+  } catch { /* ignore */ }
 
   const agents: AgentItem[] = result.agents.map(a => {
     const instance = agentInstances.get(a.id)
     return {
       id: a.id,
-      templateId: (instance?.templateId as string) || null,
-      role: (instance?.role as string) || a.id,
-      name: (instance?.name as string) || a.id,
-      description: (instance?.description as string) || `OpenClaw agent: ${a.id}`,
+      templateId: instance?.templateId || null,
+      role: instance?.role || a.id,
+      name: instance?.name || a.id,
+      description: instance?.description || `OpenClaw agent: ${a.id}`,
       status: (busyAgentIds.has(a.id) ? 'busy' : 'online') as 'busy' | 'online',
       isDefault: a.id === result.defaultId,
-      department: (instance?.department as string) || undefined,
+      department: instance?.department || undefined,
     }
   })
 
@@ -280,60 +272,12 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
 // ── Tasks ───────────────────────────────────────────────────────
 
 export interface TasksResult {
-  tasks: Record<string, unknown>[]
+  tasks: Task[]
   source: 'filesystem'
 }
 
 export async function fetchTasksData(): Promise<TasksResult> {
-  const tasks: Record<string, unknown>[] = []
-
-  // 1. Read project tasks from projects/*/.project-meta.json and projects/*/*/.project-meta.json
-  const projectsDir = join(PROJECT_ROOT, 'projects')
-  try {
-    if (existsSync(projectsDir)) {
-      // Collect candidate directories: both projects/{name} and projects/{dept}/{name}
-      const candidates: { dirPath: string; projectId: string }[] = []
-      const topDirs = readdirSync(projectsDir, { withFileTypes: true }).filter(d => d.isDirectory())
-      for (const dir of topDirs) {
-        const topPath = join(projectsDir, dir.name)
-        candidates.push({ dirPath: topPath, projectId: dir.name })
-        // Check for nested projects (projects/{dept}/{project})
-        try {
-          const subDirs = readdirSync(topPath, { withFileTypes: true }).filter(d => d.isDirectory())
-          for (const sub of subDirs) {
-            candidates.push({ dirPath: join(topPath, sub.name), projectId: `${dir.name}/${sub.name}` })
-          }
-        } catch { /* skip */ }
-      }
-      for (const { dirPath, projectId } of candidates) {
-        const metaPath = join(dirPath, '.project-meta.json')
-        if (!existsSync(metaPath)) continue
-        try {
-          const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-          for (const t of (meta.tasks || [])) {
-            // Normalize legacy fields
-            const assignees = Array.isArray(t.assignees) ? t.assignees
-              : t.assignedAgent ? [t.assignedAgent] : []
-            let status = t.status || 'pending'
-            if (status === 'running') status = 'in_progress'
-            tasks.push({ ...t, projectId, assignees, status, priority: t.priority || 'P1', creator: t.creator || 'user' })
-          }
-        } catch { /* skip */ }
-      }
-    }
-  } catch { /* skip */ }
-
-  // 2. Read standalone tasks from config/tasks.json
-  const tasksFile = join(PROJECT_ROOT, 'config', 'tasks.json')
-  try {
-    if (existsSync(tasksFile)) {
-      const data = JSON.parse(readFileSync(tasksFile, 'utf-8'))
-      for (const t of (data.tasks || [])) {
-        tasks.push(t)
-      }
-    }
-  } catch { /* skip */ }
-
+  const tasks = core.repo.taskRepo.findAllTasks()
   return { tasks, source: 'filesystem' }
 }
 
@@ -398,8 +342,7 @@ export interface MessagesResult {
 function loadAllowAgentsMap(): Record<string, string[]> {
   const map: Record<string, string[]> = {}
   try {
-    if (!existsSync(OPENCLAW_CONFIG)) return map
-    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8'))
+    const config = core.repo.configRepo.getConfig()
     const list = config.agents?.list || []
     for (const agent of list) {
       const allowed = agent.subagents?.allowAgents
@@ -500,4 +443,105 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
   } catch { /* gateway not available */ }
 
   return { messages, activePairs, agentErrors, lastActivity, source: 'gateway' }
+}
+
+// ── Costs ───────────────────────────────────────────────────────
+
+export interface CostsResult {
+  entries: CostEntry[]
+  totalCost: number
+  source: 'filesystem'
+}
+
+export async function fetchCostsData(): Promise<CostsResult> {
+  try {
+    const result = core.observe.queryCosts()
+    // Return only the last 200 entries for consistency
+    const entries = result.entries.slice(-200)
+    const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0)
+    return { entries, totalCost, source: 'filesystem' }
+  } catch { /* skip */ }
+  return { entries: [], totalCost: 0, source: 'filesystem' }
+}
+
+// ── Alerts ──────────────────────────────────────────────────────
+
+export interface AlertItem {
+  id: string
+  type: string
+  message: string
+  timestamp: string
+  severity: 'info' | 'warn' | 'error'
+}
+
+export interface AlertsResult {
+  alerts: AlertItem[]
+  source: 'filesystem'
+}
+
+export async function fetchAlertsData(): Promise<AlertsResult> {
+  let alerts: AlertItem[] = []
+  try {
+    const raw = core.observe.reactors.getAlerts()
+    alerts = raw.map((a) => ({
+      id: a.id,
+      type: a.type,
+      message: a.data?.reason as string || `${a.type} alert`,
+      timestamp: a.ts,
+      severity: a.severity as 'info' | 'warn' | 'error',
+    }))
+  } catch { /* skip */ }
+  return { alerts, source: 'filesystem' }
+}
+
+// ── Autopilot Status ────────────────────────────────────────────
+
+export interface AutopilotResult {
+  status: string
+  pid?: number
+  lastCycle?: string
+  source: 'filesystem'
+}
+
+export async function fetchAutopilotStatusData(): Promise<AutopilotResult> {
+  try {
+    const data = core.common.loadState()
+    return {
+      status: data.status || 'stopped',
+      pid: data.pid || undefined,
+      lastCycle: data.lastCycleAt || undefined,
+      source: 'filesystem',
+    }
+  } catch { /* skip */ }
+  return { status: 'stopped', source: 'filesystem' }
+}
+
+// ── Autopilot Departments ───────────────────────────────────────
+
+export interface AutopilotDeptsResult {
+  departments: Record<string, unknown>[]
+  source: 'filesystem'
+}
+
+export async function fetchAutopilotDeptsData(): Promise<AutopilotDeptsResult> {
+  let departments: Record<string, unknown>[] = []
+  try {
+    departments = core.repo.deptRegistryRepo.readAll()
+  } catch { /* skip */ }
+  return { departments, source: 'filesystem' }
+}
+
+// ── Budget Status ───────────────────────────────────────────────
+
+export interface BudgetResult {
+  budget: CompanyBudget
+  source: 'filesystem'
+}
+
+export async function fetchBudgetStatusData(): Promise<BudgetResult> {
+  let budget: CompanyBudget = {}
+  try {
+    budget = core.observe.loadCompanyBudget()
+  } catch { /* skip */ }
+  return { budget, source: 'filesystem' }
 }

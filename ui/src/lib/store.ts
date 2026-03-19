@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { logError } from '@/lib/error-logger'
 import {
   Agent, AgentTemplate, Project, Skill, LogEntry, Task, Department
 } from './types'
@@ -240,6 +241,10 @@ interface AppState {
   costData: CostData | null
   setCostData: (d: CostData) => void
 
+  // Alerts
+  alerts: Array<{ id: string; type: string; severity: string; data: Record<string, unknown> }>
+  dismissAlert: (id: string) => void
+
   // Tab visibility
   tabVisible: boolean
   setTabVisible: (v: boolean) => void
@@ -274,7 +279,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!res.ok) return
       const data = await res.json()
       set({ templates: data.templates || [] })
-    } catch {}
+    } catch (err) { logError('store/fetchTemplates', err) }
   },
 
   departments: [],
@@ -284,7 +289,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!res.ok) return
       const data = await res.json()
       set({ departments: data.departments || [] })
-    } catch {}
+    } catch (err) { logError('store/fetchDepartments', err) }
   },
 
   projects: [],
@@ -378,6 +383,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   costData: null,
   setCostData: (d) => set({ costData: d }),
+
+  alerts: [],
+  dismissAlert: (id) => set(s => ({ alerts: s.alerts.filter(a => a.id !== id) })),
 
   tabVisible: true,
   setTabVisible: (v) => set({ tabVisible: v }),

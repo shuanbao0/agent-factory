@@ -7,6 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
+/** Raw JSONL entry — stricter than entity CostEntry */
 interface CostEntry {
   ts: string
   date: string

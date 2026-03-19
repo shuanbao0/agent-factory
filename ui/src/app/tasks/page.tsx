@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from '@/lib/i18n'
 import { useAppStore } from '@/lib/store'
-import { Task } from '@/lib/types'
+import { Task, STATUSES, TERMINAL } from '@/lib/types'
 import { TaskCard, isTaskStale } from '@/components/task-card'
 import { TaskForm } from '@/components/task-form'
 import { TaskPipeline } from '@/components/task-pipeline'
@@ -92,7 +92,7 @@ export default function TasksPage() {
   }, [tasks, filterProject, filterAgent, filterStatus, filterType])
 
   const staleTasks = useMemo(() => filtered.filter(isTaskStale), [filtered])
-  const terminalStatuses = useMemo(() => new Set(['completed', 'failed']), [])
+  const terminalStatuses = TERMINAL
   const activeTasks = useMemo(() => filtered.filter(t => !terminalStatuses.has(t.status)), [filtered, terminalStatuses])
   const terminalTasks = useMemo(() => filtered.filter(t => terminalStatuses.has(t.status)), [filtered, terminalStatuses])
 
@@ -351,7 +351,7 @@ export default function TasksPage() {
           onChange={e => setFilterStatus(e.target.value)}
         >
           <option value="">{t('tasks.allStatuses')}</option>
-          {(['pending', 'assigned', 'in_progress', 'review', 'rework', 'completed', 'failed'] as const).map(s => (
+          {STATUSES.map(s => (
             <option key={s} value={s}>
               {t(`tasks.col${s === 'pending' || s === 'assigned' ? 'Pending' : s === 'in_progress' ? 'InProgress' : s === 'review' ? 'Review' : s === 'rework' ? 'Rework' : s === 'completed' ? 'Completed' : 'Failed'}`)}
             </option>
@@ -547,7 +547,7 @@ function TaskDetailPanel({
   const projects = useAppStore(s => s.projects)
   const project = projects.find(p => p.id === task.projectId)
 
-  const statusFlow: Task['status'][] = ['pending', 'assigned', 'in_progress', 'review', 'rework', 'completed']
+  const statusFlow = STATUSES.filter(s => s !== 'failed')
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">

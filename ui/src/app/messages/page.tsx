@@ -10,6 +10,7 @@ import { ChannelTimeline } from '@/components/channel-timeline'
 import { MessageSquare, RefreshCw, FolderOpen, MessagesSquare, ArrowRight } from 'lucide-react'
 import { timeAgo } from '@/lib/utils'
 import type { TimelineMessage, Channel } from '@/lib/types'
+import { logError } from '@/lib/error-logger'
 
 // ── Types ────────────────────────────────────────────────────────
 interface AgentMessage {
@@ -72,7 +73,7 @@ export default function MessagesPage() {
         if (isAutoRefresh && newMsgs.length === 0) return
         setMessages(newMsgs)
       }
-    } catch {} finally { if (!isAutoRefresh) setLoading(false) }
+    } catch (err) { logError('messages/fetchMessages', err) } finally { if (!isAutoRefresh) setLoading(false) }
   }, [])
 
   // ── Fetch projects ─────────────────────────────────────────────
@@ -83,7 +84,7 @@ export default function MessagesPage() {
         const data = await res.json()
         setProjects(data.projects || [])
       }
-    } catch {}
+    } catch (err) { logError('messages/fetchProjects', err) }
   }, [])
 
   // ── Fetch permissions ──────────────────────────────────────────
@@ -101,7 +102,7 @@ export default function MessagesPage() {
         }
         setPermissions(perms)
       }
-    } catch {}
+    } catch (err) { logError('messages/fetchPermissions', err) }
   }, [agents])
 
   useEffect(() => { fetchMessages(); fetchProjects() }, [fetchMessages, fetchProjects])
@@ -126,7 +127,7 @@ export default function MessagesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permissions: serialized }),
       })
-    } catch {} finally { setSavingPerms(false) }
+    } catch (err) { logError('messages/savePermissions', err) } finally { setSavingPerms(false) }
   }, [])
 
   // ── Handle permission toggle ───────────────────────────────────
@@ -260,7 +261,7 @@ export default function MessagesPage() {
         if (silent && newMsgs.length === 0) return // don't clear on silent refresh
         setChannelMessages(newMsgs)
       }
-    } catch {} finally { if (!silent) setLoadingChannel(false) }
+    } catch (err) { logError('messages/fetchChannelMessages', err) } finally { if (!silent) setLoadingChannel(false) }
   }, [])
 
   // When channel selection changes, fetch full messages

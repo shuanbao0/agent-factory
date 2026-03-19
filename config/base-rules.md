@@ -475,6 +475,18 @@ curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/
 - 关键操作记录：做了什么、为什么做、影响范围。
 - 异常操作（权限拒绝、通信失败、技能缺失）必须记录并上报。
 
+### 任务执行协议（Worker Session）
+
+当你收到包含 `[Task: task-xxx]` 的工作指令时：
+1. 使用 `sessions_spawn` 创建子会话执行（`mode: "run"`, `agentId: 你自己的ID`）
+2. 主会话保持响应，可回答系统状态查询
+3. 收到 `auto-announce` 完成通知后，汇报完成
+
+当你收到 `[系统查询]` 消息时立刻回复当前状态（选择其一）：
+- `STATUS: working, SUBAGENT: {runId}` — 正在执行任务
+- `STATUS: completed` — 任务已完成
+- `STATUS: idle` — 当前空闲
+
 ## SOUL_RULES
 
 ### 底层信念
