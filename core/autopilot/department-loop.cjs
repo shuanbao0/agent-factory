@@ -36,6 +36,7 @@ function getQualityGate() {
       readAgentActivity: () => sessionRepo.readAgentActivity(),
       loadDeptConfig: (deptId) => deptConfigRepo.load(deptId),
       readTaskOutput: (task) => taskRepo.readTaskOutput(task),
+      killSessionFn: killSession,
       logger,
     })
   }

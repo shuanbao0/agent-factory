@@ -18,6 +18,7 @@ function getTaskRepo() {
   return _taskRepo
 }
 
+
 class QualityOrchestrator {
   /**
    * @param {object} opts
@@ -27,11 +28,21 @@ class QualityOrchestrator {
    * @param {function} [opts.readTaskOutput] - (task) => string|null
    * @param {object} [opts.logger] - Logger with info/warn/debug/error methods
    */
-  constructor({ sendFn, readAgentActivity, loadDeptConfig, readTaskOutput, logger }) {
+  /**
+   * @param {object} opts
+   * @param {function} opts.sendFn - (agentId, sessionKey, message, timeoutMs) => Promise<{ok, text, error}>
+   * @param {function} [opts.readAgentActivity] - () => {[agentId]: {totalTokens, lastActive, idleMins}}
+   * @param {function} [opts.loadDeptConfig] - (deptId) => config object
+   * @param {function} [opts.readTaskOutput] - (task) => string|null
+   * @param {function} [opts.killSessionFn] - (sessionKey) => Promise — injected for cleanup; falls back to gateway-client
+   * @param {object} [opts.logger] - Logger with info/warn/debug/error methods
+   */
+  constructor({ sendFn, readAgentActivity, loadDeptConfig, readTaskOutput, killSessionFn, logger }) {
     this._sendFn = sendFn
     this._readAgentActivity = readAgentActivity || (() => ({}))
     this._loadDeptConfig = loadDeptConfig || (() => null)
     this._readTaskOutput = readTaskOutput || ((task) => getTaskRepo().readTaskOutput(task))
+    this._killSessionFn = killSessionFn || null
     this._log = logger || { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} }
   }
 
@@ -49,53 +60,80 @@ class QualityOrchestrator {
       return { passed: true }
     }
 
-    // Clear stale quality data
-    task.quality = {}
+    // Track session keys for cleanup after gate completes
+    const sessionKeys = []
+    let result
 
-    // 1. Self-check
     try {
-      const selfCheck = await this._requestSelfCheck(task.assignedAgent || task.assignees?.[0], task)
-      task.quality.selfCheck = selfCheck
-      if (!selfCheck.passed) {
-        this._log.info('quality-orchestrator', `Self-check failed for task ${task.id}`)
-        return { passed: false, reason: `Self-check failed: score ${selfCheck.score}/100` }
-      }
-    } catch (err) {
-      this._log.warn('quality-orchestrator', `Self-check error for task ${task.id}`, err)
-      return { passed: false, reason: `Self-check exception: ${err.message}` }
-    }
+      // Clear stale quality data
+      task.quality = {}
 
-    // 2. Peer review
-    const reviewer = this.selectReviewer(deptId, task, config)
-    if (reviewer) {
+      // 1. Self-check
       try {
-        const peerReview = await this._requestPeerReview(reviewer, task)
-        task.quality.peerReview = peerReview
-        if (!peerReview.passed) {
-          this._log.info('quality-orchestrator', `Peer review failed for task ${task.id} by ${reviewer}`)
-          return { passed: false, reason: peerReview.comments || 'Peer review rejected' }
+        const selfCheck = await this._requestSelfCheck(task.assignedAgent || task.assignees?.[0], task)
+        sessionKeys.push(`agent:${task.assignedAgent || task.assignees?.[0]}:quality-check:${task.id}`)
+        task.quality.selfCheck = selfCheck
+        if (!selfCheck.passed) {
+          this._log.info('quality-orchestrator', `Self-check failed for task ${task.id}`)
+          result = { passed: false, reason: `Self-check failed: score ${selfCheck.score}/100` }
+          return result
         }
       } catch (err) {
-        this._log.warn('quality-orchestrator', `Peer review error for task ${task.id}`, err)
-        return { passed: false, reason: `Peer review exception: ${err.message}` }
+        this._log.warn('quality-orchestrator', `Self-check error for task ${task.id}`, err)
+        result = { passed: false, reason: `Self-check exception: ${err.message}` }
+        return result
       }
-    }
 
-    // 3. Head approval
-    try {
-      const headApproval = await this._requestHeadApproval(config.head, task)
-      task.quality.headApproval = headApproval
-      if (!headApproval.passed) {
-        this._log.info('quality-orchestrator', `Head rejected task ${task.id}`)
-        return { passed: false, reason: 'Head rejected' }
+      // 2. Peer review
+      const reviewer = this.selectReviewer(deptId, task, config)
+      if (reviewer) {
+        try {
+          const peerReview = await this._requestPeerReview(reviewer, task)
+          sessionKeys.push(`agent:${reviewer}:peer-review:${task.id}`)
+          task.quality.peerReview = peerReview
+          if (!peerReview.passed) {
+            this._log.info('quality-orchestrator', `Peer review failed for task ${task.id} by ${reviewer}`)
+            result = { passed: false, reason: peerReview.comments || 'Peer review rejected' }
+            return result
+          }
+        } catch (err) {
+          this._log.warn('quality-orchestrator', `Peer review error for task ${task.id}`, err)
+          result = { passed: false, reason: `Peer review exception: ${err.message}` }
+          return result
+        }
       }
-    } catch (err) {
-      this._log.warn('quality-orchestrator', `Head approval error for task ${task.id}`, err)
-      return { passed: false, reason: `Head approval exception: ${err.message}` }
-    }
 
-    this._log.info('quality-orchestrator', `Task ${task.id} passed all quality gates`)
-    return { passed: true }
+      // 3. Head approval
+      try {
+        const headApproval = await this._requestHeadApproval(config.head, task)
+        sessionKeys.push(`agent:${config.head}:approval:${task.id}`)
+        task.quality.headApproval = headApproval
+        if (!headApproval.passed) {
+          this._log.info('quality-orchestrator', `Head rejected task ${task.id}`)
+          result = { passed: false, reason: 'Head rejected' }
+          return result
+        }
+      } catch (err) {
+        this._log.warn('quality-orchestrator', `Head approval error for task ${task.id}`, err)
+        result = { passed: false, reason: `Head approval exception: ${err.message}` }
+        return result
+      }
+
+      this._log.info('quality-orchestrator', `Task ${task.id} passed all quality gates`)
+      result = { passed: true }
+      return result
+    } finally {
+      // Fire-and-forget: clean up temporary quality gate sessions
+      this._cleanupSessions(sessionKeys)
+    }
+  }
+
+  /** @private */
+  _cleanupSessions(sessionKeys) {
+    if (sessionKeys.length === 0 || !this._killSessionFn) return
+    for (const key of sessionKeys) {
+      this._killSessionFn(key).catch(() => {})
+    }
   }
 
   /**

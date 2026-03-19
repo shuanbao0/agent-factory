@@ -364,12 +364,13 @@ async function startAll(options = {}) {
   // ── Phase 2: Event-driven Scheduler ──
   const { Scheduler } = require('../observe/scheduler.cjs')
   const { QualityOrchestrator } = require('../task/quality-orchestrator.cjs')
-  const { sendToAgent } = require('./gateway-client.cjs')
+  const { sendToAgent, killSession } = require('./gateway-client.cjs')
   const qualityGate = new QualityOrchestrator({
     sendFn: sendToAgent,
     readAgentActivity: () => sessionRepo.readAgentActivity(),
     loadDeptConfig: (deptId) => deptConfigRepo.load(deptId),
     readTaskOutput: (task) => taskRepo.readTaskOutput(task),
+    killSessionFn: killSession,
     logger,
   })
   const processQualityGate = (deptId, task) => qualityGate.process(deptId, task)
