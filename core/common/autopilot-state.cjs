@@ -2,33 +2,24 @@
 /**
  * AutopilotState — 全局 Autopilot 状态持久化
  *
- * 设计模式：Repository（原子写入）
+ * 设计模式：Repository（原子写入，委托 BaseRepository）
  */
-const { readFileSync, writeFileSync, renameSync, existsSync } = require('fs')
 const { join, resolve } = require('path')
+const { BaseRepository } = require('../repo/base.cjs')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
 const STATE_FILE = join(PROJECT_ROOT, 'config', 'autopilot-state.json')
-const { DEFAULT_AUTOPILOT_STATE, DEFAULT_INTERVAL_SEC } = require('../../entity/autopilot/autopilot.cjs')
+const { DEFAULT_AUTOPILOT_STATE } = require('../../entity/autopilot/autopilot.cjs')
 const DEFAULT_STATE = { ...DEFAULT_AUTOPILOT_STATE }
 
+const _repo = new BaseRepository({ cacheTtlMs: 0 })
+
 function loadState() {
-  try {
-    if (existsSync(STATE_FILE)) {
-      return JSON.parse(readFileSync(STATE_FILE, 'utf-8'))
-    }
-  } catch { /* skip */ }
-  return { ...DEFAULT_STATE }
+  return _repo.read(STATE_FILE) || { ...DEFAULT_STATE }
 }
 
 function saveState(state) {
-  const tmpFile = STATE_FILE + '.tmp'
-  try {
-    writeFileSync(tmpFile, JSON.stringify(state, null, 2))
-    renameSync(tmpFile, STATE_FILE)
-  } catch {
-    try { writeFileSync(STATE_FILE, JSON.stringify(state, null, 2)) } catch { /* skip */ }
-  }
+  _repo.write(STATE_FILE, state)
 }
 
 async function withStateLock(fn) {

@@ -11,4 +11,7 @@ module.exports = {
   ...require('./skill-utils.cjs'),
   envManager: require('./env-manager.cjs'),
   modelsService: require('./models-service.cjs'),
+  baseRulesInjector: require('./base-rules-injector.cjs'),
+  skillSymlinks: require('./skill-symlinks.cjs'),
+  eventRelay: require('./event-relay.cjs'),
 }

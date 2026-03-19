@@ -11,11 +11,8 @@
  * - work-output/YYYY-MM-DD.md — 工作产出（member 专用）
  * - domains/knowledge.md — 领域知识（member 专用）
  */
-const { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } = require('fs')
-const { join, resolve } = require('path')
+const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000
 
 /**
@@ -25,56 +22,47 @@ const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000
  * @returns {object} { summary, recentDecisions, departmentStatus, lessonsLearned }
  */
 function buildMemoryContext(agentId, cycleType) {
-  const agentDir = join(AGENTS_DIR, agentId)
-  const memoryDir = join(agentDir, 'memory')
   const result = {}
 
   // Always include summary
-  const summaryPath = join(memoryDir, 'SUMMARY.md')
-  if (existsSync(summaryPath)) {
-    try {
-      result.summary = readFileSync(summaryPath, 'utf-8').slice(0, 2000)
-    } catch { /* skip */ }
+  const summaryContent = agentMetaRepo.readAgentFile(agentId, 'memory/SUMMARY.md')
+  if (summaryContent) {
+    result.summary = summaryContent.slice(0, 2000)
   }
 
   // Fallback to MEMORY.md
   if (!result.summary) {
-    const memoryPath = join(agentDir, 'MEMORY.md')
-    if (existsSync(memoryPath)) {
-      try {
-        result.summary = extractSummaryFromMemory(readFileSync(memoryPath, 'utf-8'))
-      } catch { /* skip */ }
+    const memoryContent = agentMetaRepo.readAgentFile(agentId, 'MEMORY.md')
+    if (memoryContent) {
+      result.summary = extractSummaryFromMemory(memoryContent)
     }
   }
 
   // Recent decisions (last 7 days)
   if (cycleType === 'coordination' || cycleType === 'strategy') {
-    const decisionsDir = join(memoryDir, 'decisions')
-    if (existsSync(decisionsDir)) {
-      try {
-        const files = require('fs').readdirSync(decisionsDir)
-          .filter(f => f.endsWith('.md'))
-          .sort()
-          .slice(-7)
-        let decisions = ''
-        for (const f of files) {
-          try {
-            const content = readFileSync(join(decisionsDir, f), 'utf-8')
-            decisions += `\n### ${f.replace('.md', '')}\n${content.slice(0, 500)}\n`
-          } catch { /* skip */ }
+    const entries = agentMetaRepo.listAgentDir(agentId, 'memory/decisions')
+    const mdFiles = entries
+      .filter(e => e.isFile && e.name.endsWith('.md'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(-7)
+
+    if (mdFiles.length > 0) {
+      let decisions = ''
+      for (const f of mdFiles) {
+        const content = agentMetaRepo.readAgentFile(agentId, `memory/decisions/${f.name}`)
+        if (content) {
+          decisions += `\n### ${f.name.replace('.md', '')}\n${content.slice(0, 500)}\n`
         }
-        if (decisions) result.recentDecisions = decisions.slice(0, 3000)
-      } catch { /* skip */ }
+      }
+      if (decisions) result.recentDecisions = decisions.slice(0, 3000)
     }
   }
 
   // Lessons learned (strategy only)
   if (cycleType === 'strategy') {
-    const lessonsPath = join(memoryDir, 'lessons', 'what-worked.md')
-    if (existsSync(lessonsPath)) {
-      try {
-        result.lessonsLearned = readFileSync(lessonsPath, 'utf-8').slice(0, 2000)
-      } catch { /* skip */ }
+    const lessonsContent = agentMetaRepo.readAgentFile(agentId, 'memory/lessons/what-worked.md')
+    if (lessonsContent) {
+      result.lessonsLearned = lessonsContent.slice(0, 2000)
     }
   }
 
@@ -131,26 +119,22 @@ function buildSummaryFromResponse(response, date) {
  */
 function compressMemory(agentId, fullResponse) {
   if (!fullResponse) return
-  const agentDir = join(AGENTS_DIR, agentId)
-  const memoryDir = join(agentDir, 'memory')
-  const dirs = [memoryDir, join(memoryDir, 'decisions'), join(memoryDir, 'lessons')]
+  const dirs = ['memory', 'memory/decisions', 'memory/lessons']
   for (const dir of dirs) {
-    if (!existsSync(dir)) try { mkdirSync(dir, { recursive: true }) } catch { /* skip */ }
+    agentMetaRepo.ensureAgentDir(agentId, dir)
   }
 
   const today = new Date().toISOString().slice(0, 10)
   const timestamp = new Date().toISOString().slice(11, 19)
 
-  const decisionsFile = join(memoryDir, 'decisions', `${today}.md`)
   try {
     const entry = extractDecisionEntry(fullResponse, timestamp)
-    if (entry) appendFileSync(decisionsFile, entry + '\n\n')
+    if (entry) agentMetaRepo.appendAgentFile(agentId, `memory/decisions/${today}.md`, entry + '\n\n')
   } catch { /* skip */ }
 
-  const summaryFile = join(memoryDir, 'SUMMARY.md')
   try {
     const summary = buildSummaryFromResponse(fullResponse, today)
-    if (summary) writeFileSync(summaryFile, summary)
+    if (summary) agentMetaRepo.writeAgentFile(agentId, 'memory/SUMMARY.md', summary)
   } catch { /* skip */ }
 }
 
@@ -174,8 +158,6 @@ function extractWorkOutput(response, timestamp) {
 /** Update domain knowledge for a member */
 function updateDomainKnowledge(agentId, response) {
   if (!response || response.length < 50) return
-  const memoryDir = join(AGENTS_DIR, agentId, 'memory', 'domains')
-  const knowledgePath = join(memoryDir, 'knowledge.md')
   const knowledgeKeywords = ['发现', '学到', '注意', '规律', '模式', '技巧', '经验',
     'learned', 'discovered', 'pattern', 'insight', 'technique', 'finding', 'note']
   const lines = response.split('\n').filter(l => l.trim())
@@ -186,8 +168,7 @@ function updateDomainKnowledge(agentId, response) {
   if (knowledgeLines.length === 0) return
 
   const newKnowledge = knowledgeLines.slice(0, 5).join('\n')
-  let existing = ''
-  if (existsSync(knowledgePath)) existing = readFileSync(knowledgePath, 'utf-8')
+  const existing = agentMetaRepo.readAgentFile(agentId, 'memory/domains/knowledge.md') || ''
 
   if (existing && newKnowledge.split('\n').every(line =>
     line.length < 10 || existing.includes(line.trim())
@@ -203,16 +184,15 @@ function updateDomainKnowledge(agentId, response) {
     const trimmed = updated.slice(updated.length - MAX_DOMAIN_KNOWLEDGE_CHARS + header.length)
     const nextSection = trimmed.indexOf('\n### ')
     const clean = nextSection >= 0 ? trimmed.slice(nextSection + 1) : trimmed
-    writeFileSync(knowledgePath, header + clean)
+    agentMetaRepo.writeAgentFile(agentId, 'memory/domains/knowledge.md', header + clean)
   } else {
-    writeFileSync(knowledgePath, updated)
+    agentMetaRepo.writeAgentFile(agentId, 'memory/domains/knowledge.md', updated)
   }
 }
 
 /** Update lessons learned for CEO */
 function updateLessons(agentId, response) {
   if (!response || response.length < 50) return
-  const lessonsPath = join(AGENTS_DIR, agentId, 'memory', 'lessons', 'what-worked.md')
   const lessonKeywords = ['成功', '有效', '改进', '教训', '失败', '经验',
     'worked', 'success', 'improve', 'lesson', 'failed', 'better']
   const lines = response.split('\n').filter(l => l.trim())
@@ -224,8 +204,7 @@ function updateLessons(agentId, response) {
 
   const today = new Date().toISOString().slice(0, 10)
   const entry = `\n### ${today}\n${lessonLines.slice(0, 5).join('\n')}\n`
-  let existing = ''
-  if (existsSync(lessonsPath)) existing = readFileSync(lessonsPath, 'utf-8')
+  const existing = agentMetaRepo.readAgentFile(agentId, 'memory/lessons/what-worked.md') || ''
 
   const updated = existing ? existing + entry : `# Lessons Learned\n${entry}`
   if (updated.length > 5000) {
@@ -233,9 +212,9 @@ function updateLessons(agentId, response) {
     const trimmed = updated.slice(updated.length - 5000 + header.length)
     const nextSection = trimmed.indexOf('\n### ')
     const clean = nextSection >= 0 ? trimmed.slice(nextSection + 1) : trimmed
-    writeFileSync(lessonsPath, header + clean)
+    agentMetaRepo.writeAgentFile(agentId, 'memory/lessons/what-worked.md', header + clean)
   } else {
-    writeFileSync(lessonsPath, updated)
+    agentMetaRepo.writeAgentFile(agentId, 'memory/lessons/what-worked.md', updated)
   }
 }
 
@@ -247,9 +226,7 @@ function updateLessons(agentId, response) {
  */
 function compressMemoryByRole(agentId, fullResponse, role) {
   if (!fullResponse) return
-  const agentDir = join(AGENTS_DIR, agentId)
-  const memoryDir = join(agentDir, 'memory')
-  if (!existsSync(memoryDir)) try { mkdirSync(memoryDir, { recursive: true }) } catch { /* skip */ }
+  agentMetaRepo.ensureAgentDir(agentId, 'memory')
 
   const today = new Date().toISOString().slice(0, 10)
   const timestamp = new Date().toISOString().slice(11, 19)
@@ -257,32 +234,28 @@ function compressMemoryByRole(agentId, fullResponse, role) {
   // All roles: update SUMMARY.md
   try {
     const summary = buildSummaryFromResponse(fullResponse, today)
-    if (summary) writeFileSync(join(memoryDir, 'SUMMARY.md'), summary)
+    if (summary) agentMetaRepo.writeAgentFile(agentId, 'memory/SUMMARY.md', summary)
   } catch { /* skip */ }
 
   if (role === 'ceo' || role === 'leader') {
-    const decisionsDir = join(memoryDir, 'decisions')
-    if (!existsSync(decisionsDir)) try { mkdirSync(decisionsDir, { recursive: true }) } catch { /* skip */ }
+    agentMetaRepo.ensureAgentDir(agentId, 'memory/decisions')
     try {
       const entry = extractDecisionEntry(fullResponse, timestamp)
-      if (entry) appendFileSync(join(decisionsDir, `${today}.md`), entry + '\n\n')
+      if (entry) agentMetaRepo.appendAgentFile(agentId, `memory/decisions/${today}.md`, entry + '\n\n')
     } catch { /* skip */ }
 
     if (role === 'ceo') {
-      const lessonsDir = join(memoryDir, 'lessons')
-      if (!existsSync(lessonsDir)) try { mkdirSync(lessonsDir, { recursive: true }) } catch { /* skip */ }
+      agentMetaRepo.ensureAgentDir(agentId, 'memory/lessons')
       try { updateLessons(agentId, fullResponse) } catch { /* skip */ }
     }
   } else {
-    const workOutputDir = join(memoryDir, 'work-output')
-    if (!existsSync(workOutputDir)) try { mkdirSync(workOutputDir, { recursive: true }) } catch { /* skip */ }
+    agentMetaRepo.ensureAgentDir(agentId, 'memory/work-output')
     try {
       const entry = extractWorkOutput(fullResponse, timestamp)
-      if (entry) appendFileSync(join(workOutputDir, `${today}.md`), entry + '\n\n')
+      if (entry) agentMetaRepo.appendAgentFile(agentId, `memory/work-output/${today}.md`, entry + '\n\n')
     } catch { /* skip */ }
 
-    const domainsDir = join(memoryDir, 'domains')
-    if (!existsSync(domainsDir)) try { mkdirSync(domainsDir, { recursive: true }) } catch { /* skip */ }
+    agentMetaRepo.ensureAgentDir(agentId, 'memory/domains')
     try { updateDomainKnowledge(agentId, fullResponse) } catch { /* skip */ }
   }
 }
@@ -300,13 +273,9 @@ function extractTaskMemory(agentId, task, workerOutput, options = {}) {
   if (!workerOutput || workerOutput.length < 20) return
   const maxChars = options.maxChars || 3000
 
-  const tasksDir = join(AGENTS_DIR, agentId, 'memory', 'tasks')
-  if (!existsSync(tasksDir)) {
-    try { mkdirSync(tasksDir, { recursive: true }) } catch { /* skip */ }
-  }
+  agentMetaRepo.ensureAgentDir(agentId, 'memory/tasks')
 
   const lines = workerOutput.split('\n').filter(l => l.trim())
-  // Extract key outcomes
   const outcomeKeywords = ['完成', '创建', '生成', '输出', '结论', '结果',
     'completed', 'created', 'generated', 'output', 'conclusion', 'result']
   const outcomeLines = lines.filter(l => {
@@ -330,9 +299,8 @@ function extractTaskMemory(agentId, task, workerOutput, options = {}) {
     summary.slice(0, maxChars - 300),
   ].filter(Boolean).join('\n')
 
-  const filePath = join(tasksDir, `${task.id}.md`)
   try {
-    writeFileSync(filePath, content.slice(0, maxChars))
+    agentMetaRepo.writeAgentFile(agentId, `memory/tasks/${task.id}.md`, content.slice(0, maxChars))
   } catch { /* skip */ }
 }
 
@@ -342,36 +310,23 @@ function extractTaskMemory(agentId, task, workerOutput, options = {}) {
  * @param {string} agentId
  * @param {object} [options]
  * @param {number} [options.limit=5] - Maximum number of memories to return
- * @param {string} [options.taskType] - Filter by task type (if present in filename or content)
  * @returns {Array<{taskId: string, content: string}>}
  */
 function loadTaskMemories(agentId, options = {}) {
   const limit = options.limit || 5
-  const tasksDir = join(AGENTS_DIR, agentId, 'memory', 'tasks')
-  if (!existsSync(tasksDir)) return []
+  const entries = agentMetaRepo.listAgentDir(agentId, 'memory/tasks')
+  if (entries.length === 0) return []
 
-  try {
-    const { readdirSync, statSync } = require('fs')
-    const files = readdirSync(tasksDir)
-      .filter(f => f.endsWith('.md'))
-      .map(f => {
-        try {
-          const st = statSync(join(tasksDir, f))
-          return { name: f, mtime: st.mtimeMs }
-        } catch { return null }
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.mtime - a.mtime)
-      .slice(0, limit)
+  const files = entries
+    .filter(e => e.isFile && e.name.endsWith('.md'))
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
 
-    return files.map(f => {
-      try {
-        const content = readFileSync(join(tasksDir, f.name), 'utf-8')
-        const taskId = f.name.replace('.md', '')
-        return { taskId, content: content.slice(0, 2000) }
-      } catch { return null }
-    }).filter(Boolean)
-  } catch { return [] }
+  return files.map(f => {
+    const content = agentMetaRepo.readAgentFile(agentId, `memory/tasks/${f.name}`)
+    if (!content) return null
+    return { taskId: f.name.replace('.md', ''), content: content.slice(0, 2000) }
+  }).filter(Boolean)
 }
 
 module.exports = {

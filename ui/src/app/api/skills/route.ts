@@ -1,39 +1,8 @@
 import { NextResponse } from 'next/server'
-import { readdirSync, readFileSync, existsSync } from 'fs'
-import { join } from 'path'
-import { execFile as execFileCb } from 'child_process'
-import { promisify } from 'util'
-
-const execFileAsync = promisify(execFileCb)
 import { cached } from '@/lib/api-cache'
-import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
-
-const PROJECT_ROOT = process.env.AGENT_FACTORY_DIR || join(process.cwd(), '..')
-const PROJECT_SKILLS_DIR = join(PROJECT_ROOT, 'skills')
-
-/** Try to find OpenClaw's built-in skills directory */
-async function findBuiltinSkillsDir(): Promise<string | null> {
-  // Try to find openclaw via npm root
-  try {
-    const { stdout } = await execFileAsync('npm', ['root', '-g'], { timeout: 5000 })
-    const dir = join(stdout.toString().trim(), 'openclaw', 'skills')
-    if (existsSync(dir)) return dir
-  } catch (err) { logError('skills-api/find-builtin-dir', err) }
-
-  // Fallback: common locations
-  const candidates = [
-    '/opt/homebrew/lib/node_modules/openclaw/skills',
-    '/usr/local/lib/node_modules/openclaw/skills',
-    join(process.env.HOME || '', '.npm-global/lib/node_modules/openclaw/skills'),
-    join(process.env.HOME || '', 'projects/agent-factory/node_modules/openclaw/skills'),
-  ]
-  for (const c of candidates) {
-    if (existsSync(c)) return c
-  }
-  return null
-}
 
 interface SkillInfo {
   id: string
@@ -44,75 +13,42 @@ interface SkillInfo {
   source: 'builtin' | 'project' | 'clawhub'
 }
 
-function readSkillsFromDir(dir: string, source: SkillInfo['source']): SkillInfo[] {
-  if (!existsSync(dir)) return []
-  return readdirSync(dir, { withFileTypes: true })
-    .filter(d => d.isDirectory() && !d.name.startsWith('.'))
-    .map(d => {
-      let description = ''
-
-      // Try SKILL.md first (most skills have this)
-      const skillMdPath = join(dir, d.name, 'SKILL.md')
-      const readmePath = join(dir, d.name, 'README.md')
-
-      if (existsSync(skillMdPath)) {
-        const content = readFileSync(skillMdPath, 'utf-8')
-        // Extract first non-heading, non-empty line as description
-        const lines = content.split('\n')
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('```')) {
-            description = trimmed.slice(0, 200)
-            break
-          }
-        }
-      } else if (existsSync(readmePath)) {
-        const content = readFileSync(readmePath, 'utf-8')
-        const firstPara = content.split('\n\n')[1]
-        if (firstPara) description = firstPara.trim().slice(0, 200)
-      }
-
-      return {
-        id: d.name,
-        name: d.name,
-        description,
-        version: '1.0.0',
-        enabled: true,
-        source,
-      }
-    })
-}
-
 export async function GET() {
   try {
     const result = await cached('skills:local', 30000, async () => {
-      const builtinDir = await findBuiltinSkillsDir()
-      const builtinSkills = builtinDir ? readSkillsFromDir(builtinDir, 'builtin') : []
-      const projectSkills = readSkillsFromDir(PROJECT_SKILLS_DIR, 'project')
+      const allSkills = await core.common.skillSymlinks.listAllSkills()
 
-      // Deduplicate: project skills override builtin
-      const seen = new Set<string>()
-      const all: SkillInfo[] = []
+      const projectSkills: SkillInfo[] = []
+      const builtinSkills: SkillInfo[] = []
 
-      for (const s of projectSkills) {
-        seen.add(s.id)
-        all.push(s)
-      }
-      for (const s of builtinSkills) {
-        if (!seen.has(s.id)) {
-          seen.add(s.id)
-          all.push(s)
+      for (const s of allSkills) {
+        const info: SkillInfo = {
+          id: s.slug,
+          name: s.slug,
+          description: s.description,
+          version: '1.0.0',
+          enabled: true,
+          source: s.source as 'builtin' | 'project',
+        }
+        if (s.source === 'project') {
+          projectSkills.push(info)
+        } else {
+          builtinSkills.push(info)
         }
       }
 
-      // Sort alphabetically
-      all.sort((a, b) => a.name.localeCompare(b.name))
-
       return {
-        skills: all,
+        skills: allSkills.map(s => ({
+          id: s.slug,
+          name: s.slug,
+          description: s.description,
+          version: '1.0.0',
+          enabled: true,
+          source: s.source as 'builtin' | 'project',
+        })),
         builtinCount: builtinSkills.length,
         projectCount: projectSkills.length,
-        builtinDir,
+        builtinDir: null,
         source: 'filesystem' as const,
       }
     })

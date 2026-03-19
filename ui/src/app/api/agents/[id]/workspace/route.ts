@@ -7,10 +7,11 @@
  *   - Body: { file, content } → write content to workspace file
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { resolve, join, basename } from 'path'
-import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs'
+import { basename, resolve, join } from 'path'
+import { existsSync, realpathSync } from 'fs'
 import { stripMarkerBlock, injectBaseRulesForAgent } from '@/lib/base-rules'
 import { validateAgentId } from '@/lib/shared-bridge'
+import core from '@/lib/core-bridge'
 
 // Marker constants matching base-rules.ts
 const AGENTS_BEGIN = '<!-- BASE-RULES:BEGIN -->'
@@ -67,7 +68,7 @@ export async function GET(
   }
   const workspaceDir = getWorkspaceDir(id)
 
-  if (!existsSync(workspaceDir)) {
+  if (!core.repo.agentMetaRepo.exists(id) && !existsSync(workspaceDir)) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
   }
 
@@ -76,18 +77,18 @@ export async function GET(
   if (!file) {
     // List directory
     try {
-      const entries = readdirSync(workspaceDir, { withFileTypes: true })
-      const files = entries.map(e => {
-        const fullPath = join(workspaceDir, e.name)
-        const isFile = e.isFile() || e.isSymbolicLink()
-        const stat = isFile ? statSync(fullPath) : null
-        return {
-          name: e.name,
-          type: e.isDirectory() ? 'directory' : 'file',
-          size: stat?.size,
-          path: e.name,
-        }
-      })
+      const result = core.common.fileBrowser.listDirectory(workspaceDir, '')
+      if (result.error) {
+        return NextResponse.json({ error: result.error }, { status: 400 })
+      }
+      // Map to expected format
+      const entries = (result.entries as Array<Record<string, unknown>>) || []
+      const files = entries.map((e: Record<string, unknown>) => ({
+        name: e.name,
+        type: e.type,
+        size: e.size,
+        path: e.name,
+      }))
       return NextResponse.json({ files })
     } catch (err: unknown) {
       return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -100,14 +101,14 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
   }
 
-  if (!existsSync(resolved)) {
-    return NextResponse.json({ error: 'File not found' }, { status: 404 })
-  }
-
+  // Read via agentMetaRepo for agent files
   try {
-    const raw = readFileSync(resolved, 'utf-8')
-    const content = stripBaseRulesFromContent(file, raw)
-    return NextResponse.json({ content })
+    const content = core.repo.agentMetaRepo.readAgentFile(id, file)
+    if (content === null) {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 })
+    }
+    const stripped = stripBaseRulesFromContent(file, content)
+    return NextResponse.json({ content: stripped })
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
@@ -123,7 +124,7 @@ export async function PUT(
   }
   const workspaceDir = getWorkspaceDir(id)
 
-  if (!existsSync(workspaceDir)) {
+  if (!core.repo.agentMetaRepo.exists(id) && !existsSync(workspaceDir)) {
     return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
   }
 
@@ -140,12 +141,7 @@ export async function PUT(
   }
 
   try {
-    // Ensure parent dir exists
-    const parentDir = resolve(resolved, '..')
-    if (!existsSync(parentDir)) {
-      mkdirSync(parentDir, { recursive: true })
-    }
-    writeFileSync(resolved, content, 'utf-8')
+    core.repo.agentMetaRepo.writeAgentFile(id, file, content)
 
     // Re-inject base-rules after user edits AGENTS.md or SOUL.md
     const name = basename(file)

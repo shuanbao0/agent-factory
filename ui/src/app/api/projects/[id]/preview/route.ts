@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFileSync, existsSync } from 'fs'
+import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { spawn, execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
@@ -34,10 +34,10 @@ function resolveCodeDir(projectId: string): string | null {
 
 /** Detect project type from package.json / files */
 function detectProjectType(codeDir: string): { type: string; devCmd: string[] } {
-  const pkgPath = join(codeDir, 'package.json')
-  if (existsSync(pkgPath)) {
+  const result = core.common.fileBrowser.getFileContent(codeDir, 'package.json')
+  if (!('error' in result) && result.content) {
     try {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      const pkg = JSON.parse(result.content as string)
       const deps = { ...pkg.dependencies, ...pkg.devDependencies }
       if (deps['next']) return { type: 'nextjs', devCmd: ['npx', 'next', 'dev'] }
       if (deps['vite']) return { type: 'vite', devCmd: ['npx', 'vite', '--host'] }

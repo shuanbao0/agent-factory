@@ -14,8 +14,8 @@
  *   onSkillsSync(agentId, skills) — symlink 技能
  *   onGatewayRestart()           — 重启 Gateway
  */
-const { mkdirSync, existsSync, rmSync, renameSync, writeFileSync, readFileSync } = require('fs')
 const { join } = require('path')
+const { existsSync, rmSync } = require('fs')
 const { ConfigRepository } = require('../repo/config.cjs')
 const { AgentMetaRepository } = require('../repo/agent-meta.cjs')
 const { DeptConfigRepository } = require('../repo/dept-config.cjs')
@@ -29,9 +29,14 @@ function getTemplateRepo() {
   return _templateRepo
 }
 
+let _fileBrowser
+function getFileBrowser() {
+  if (!_fileBrowser) _fileBrowser = require('./file-browser.cjs')
+  return _fileBrowser
+}
+
 const PROJECT_ROOT = join(__dirname, '..', '..')
 const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
 
 class AgentService {
   /**
@@ -74,8 +79,7 @@ class AgentService {
       return { ok: false, error: idCheck.error, status: 400 }
     }
 
-    const agentDir = join(AGENTS_DIR, id)
-    if (existsSync(agentDir)) {
+    if (this._agentMetaRepo.agentFileExists(id, 'agent.json') || existsSync(join(AGENTS_DIR, id))) {
       return { ok: false, error: `Agent "${id}" already exists`, status: 409 }
     }
 
@@ -105,7 +109,7 @@ class AgentService {
     const finalDepartment = department || tmplGroup || undefined
 
     // 1. Create directory structure
-    mkdirSync(join(agentDir, 'skills'), { recursive: true })
+    this._agentMetaRepo.ensureAgentDir(id, 'skills')
 
     // 2. Write agent.json
     const agentJson = {
@@ -126,8 +130,13 @@ class AgentService {
     // 3. Materialize AGENTS.md
     if (systemPrompt) {
       this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', systemPrompt)
-    } else if (tmplDir && existsSync(join(tmplDir, 'AGENTS.md'))) {
-      this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', readFileSync(join(tmplDir, 'AGENTS.md'), 'utf-8'))
+    } else if (tmplDir) {
+      const tmplAgentsMd = tmplRepo.readTemplateFile(tmplDir, 'AGENTS.md')
+      if (tmplAgentsMd) {
+        this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', tmplAgentsMd)
+      } else {
+        this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', this._generateAgentsMd({ id, role: finalRole, name, description: finalDescription, peers: finalPeers }))
+      }
     } else {
       this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', this._generateAgentsMd({ id, role: finalRole, name, description: finalDescription, peers: finalPeers }))
     }
@@ -147,26 +156,37 @@ class AgentService {
     if (hooks.onSkillsSync) await hooks.onSkillsSync(id, finalSkills)
 
     // 5. Materialize TOOLS.md
-    if (tmplDir && existsSync(join(tmplDir, 'TOOLS.md'))) {
-      this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', readFileSync(join(tmplDir, 'TOOLS.md'), 'utf-8'))
+    if (tmplDir) {
+      const tmplToolsMd = tmplRepo.readTemplateFile(tmplDir, 'TOOLS.md')
+      if (tmplToolsMd) {
+        this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', tmplToolsMd)
+      } else {
+        this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', this._generateToolsMd(id, finalSkills, join(AGENTS_DIR, id)))
+      }
     } else {
-      this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', this._generateToolsMd(id, finalSkills, agentDir))
+      this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', this._generateToolsMd(id, finalSkills, join(AGENTS_DIR, id)))
     }
 
     // 6. Write identity files
-    const identityFromTmpl = tmplDir && existsSync(join(tmplDir, 'IDENTITY.md'))
-    const soulFromTmpl = tmplDir && existsSync(join(tmplDir, 'SOUL.md'))
-    const hasIdentityFiles = !!(identityFromTmpl && soulFromTmpl)
+    let hasIdentityFiles = false
+    if (tmplDir) {
+      const identityContent = tmplRepo.readTemplateFile(tmplDir, 'IDENTITY.md')
+      const soulContent = tmplRepo.readTemplateFile(tmplDir, 'SOUL.md')
+      hasIdentityFiles = !!(identityContent && soulContent)
 
-    if (identityFromTmpl) {
-      this._agentMetaRepo.writeAgentFile(id, 'IDENTITY.md', readFileSync(join(tmplDir, 'IDENTITY.md'), 'utf-8'))
+      if (identityContent) {
+        this._agentMetaRepo.writeAgentFile(id, 'IDENTITY.md', identityContent)
+      } else {
+        this._writeIfMissing(id, 'IDENTITY.md', `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name}\n- **Creature:** AI agent\n- **Vibe:** Professional and focused\n- **Emoji:** 🤖\n`)
+      }
+
+      if (soulContent) {
+        this._agentMetaRepo.writeAgentFile(id, 'SOUL.md', soulContent)
+      } else {
+        this._writeIfMissing(id, 'SOUL.md', this._defaultSoulMd())
+      }
     } else {
       this._writeIfMissing(id, 'IDENTITY.md', `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name}\n- **Creature:** AI agent\n- **Vibe:** Professional and focused\n- **Emoji:** 🤖\n`)
-    }
-
-    if (soulFromTmpl) {
-      this._agentMetaRepo.writeAgentFile(id, 'SOUL.md', readFileSync(join(tmplDir, 'SOUL.md'), 'utf-8'))
-    } else {
       this._writeIfMissing(id, 'SOUL.md', this._defaultSoulMd())
     }
 
@@ -174,13 +194,14 @@ class AgentService {
     this._writeIfMissing(id, 'HEARTBEAT.md', `# HEARTBEAT.md\n\n# Keep this file empty to skip heartbeat API calls.\n`)
 
     // 7. Create memory infrastructure
-    this._createMemoryInfra(id, agentDir, name, finalPeers)
+    this._createMemoryInfra(id, name, finalPeers)
 
     // 8. Inject base rules
+    const agentDir = join(AGENTS_DIR, id)
     if (hooks.onBaseRulesInject) await hooks.onBaseRulesInject(agentDir)
 
     // 9. Create workspaces/{id}/
-    mkdirSync(join(WORKSPACES_DIR, id), { recursive: true })
+    getFileBrowser().ensureWorkspace(id)
 
     // 10. Register in openclaw.json
     const resolvedModel = this._resolveModelRef(finalModel)
@@ -216,7 +237,7 @@ class AgentService {
     }
 
     const agentDir = join(AGENTS_DIR, id)
-    if (!existsSync(agentDir)) {
+    if (!this._agentMetaRepo.exists(id)) {
       return { ok: false, error: `Agent "${id}" not found`, status: 404 }
     }
 
@@ -287,22 +308,12 @@ class AgentService {
   async deleteAgent(id) {
     this._configRepo.removeAgent(id)
 
-    const agentDir = join(AGENTS_DIR, id)
-    if (existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true })
+    this._agentMetaRepo.deleteAgentDir(id)
 
     const stateDir = join(PROJECT_ROOT, '.openclaw-state', 'agents', id)
     if (existsSync(stateDir)) rmSync(stateDir, { recursive: true, force: true })
 
-    let archivedTo = null
-    const wsDir = join(WORKSPACES_DIR, id)
-    if (existsSync(wsDir)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-      const archiveDir = join(WORKSPACES_DIR, '.archived')
-      mkdirSync(archiveDir, { recursive: true })
-      const archivePath = join(archiveDir, `${id}_${timestamp}`)
-      renameSync(wsDir, archivePath)
-      archivedTo = `workspaces/.archived/${id}_${timestamp}`
-    }
+    const archivedTo = getFileBrowser().archiveWorkspace(id)
 
     return { ok: true, archivedTo }
   }
@@ -371,14 +382,13 @@ class AgentService {
   }
 
   _ensureProjectForDepartment(department, agentId) {
-    const projectDir = join(PROJECT_ROOT, 'projects', department)
+    const meta = this._projectMetaRepo.readMeta(department)
 
-    if (!existsSync(projectDir)) {
-      for (const sub of ['docs', 'design', 'src', 'tests']) {
-        mkdirSync(join(projectDir, sub), { recursive: true })
-      }
+    if (!meta) {
+      this._projectMetaRepo.ensureProjectDirs(department, ['docs', 'design', 'src', 'tests'])
+
       const now = new Date().toISOString()
-      const meta = {
+      const newMeta = {
         name: department,
         description: `Auto-created project for ${department} department`,
         status: 'planning',
@@ -389,20 +399,18 @@ class AgentService {
         tasks: [],
         assignedAgents: [agentId],
       }
-      this._projectMetaRepo.writeMeta(department, meta)
+      this._projectMetaRepo.writeMeta(department, newMeta)
 
+      const projectDir = join(PROJECT_ROOT, 'projects', department)
       const brief = `# Project Brief: ${department}\n\n**Project ID:** ${department}\n**Created:** ${now}\n**Description:** Auto-created project for ${department} department\n\n## Shared Workspace\n\nThis project's shared workspace is at:\n\`${projectDir}\`\n\n## Directory Conventions\n\n- \`docs/\` — All written documents: PRD, research, meeting notes\n- \`design/\` — Designs, wireframes, design tokens\n- \`src/\` — Source code and outputs\n- \`tests/\` — Test files, test reports, QA notes\n`
-      writeFileSync(join(projectDir, 'BRIEF.md'), brief)
+      this._projectMetaRepo.writeProjectFile(department, 'BRIEF.md', brief)
     } else {
       try {
-        const meta = this._projectMetaRepo.readMeta(department)
-        if (meta) {
-          const assigned = meta.assignedAgents || []
-          if (!assigned.includes(agentId)) {
-            assigned.push(agentId)
-            meta.assignedAgents = assigned
-            this._projectMetaRepo.writeMeta(department, meta)
-          }
+        const assigned = meta.assignedAgents || []
+        if (!assigned.includes(agentId)) {
+          assigned.push(agentId)
+          meta.assignedAgents = assigned
+          this._projectMetaRepo.writeMeta(department, meta)
         }
       } catch { /* skip */ }
     }
@@ -439,16 +447,16 @@ class AgentService {
     }
   }
 
-  _createMemoryInfra(agentId, agentDir, name, finalPeers) {
-    const memoryDir = join(agentDir, 'memory')
-    mkdirSync(memoryDir, { recursive: true })
+  _createMemoryInfra(agentId, name, finalPeers) {
+    const agentMetaRepo = this._agentMetaRepo
+    agentMetaRepo.ensureAgentDir(agentId, 'memory')
     for (const sub of ['domains', 'projects', 'decisions', 'relationships']) {
-      mkdirSync(join(memoryDir, sub), { recursive: true })
+      agentMetaRepo.ensureAgentDir(agentId, `memory/${sub}`)
     }
 
     const today = new Date().toISOString().slice(0, 10)
 
-    this._agentMetaRepo.writeAgentFile(agentId, 'MEMORY.md', [
+    agentMetaRepo.writeAgentFile(agentId, 'MEMORY.md', [
       `# ${name} - Core Memory`,
       '',
       '> 此文件每次会话自动加载。只保留当前最重要的知识。',
@@ -472,7 +480,7 @@ class AgentService {
       '',
     ].join('\n'))
 
-    this._agentMetaRepo.writeAgentFile(agentId, 'memory/KNOWLEDGE_TREE.md', [
+    agentMetaRepo.writeAgentFile(agentId, 'memory/KNOWLEDGE_TREE.md', [
       '# Knowledge Tree',
       '',
       '> 你的知识地图。每次创建、重命名或删除知识文件时更新此索引。',
@@ -525,9 +533,9 @@ class AgentService {
     } else {
       peersLines.push('<!-- 暂无已配置的 peer agent -->', '')
     }
-    this._agentMetaRepo.writeAgentFile(agentId, join('memory', 'relationships', 'peers.md'), peersLines.join('\n'))
+    agentMetaRepo.writeAgentFile(agentId, 'memory/relationships/peers.md', peersLines.join('\n'))
 
-    this._agentMetaRepo.writeAgentFile(agentId, join('memory', 'relationships', 'stakeholders.md'), [
+    agentMetaRepo.writeAgentFile(agentId, 'memory/relationships/stakeholders.md', [
       '# Stakeholders',
       '',
       '> 人类利益相关者。记录他们的角色、偏好和沟通风格。',

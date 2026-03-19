@@ -4,7 +4,7 @@
  *
  * 数据源：templates/builtin/{id}/ 和 templates/custom/{id}/
  */
-const { readFileSync, existsSync } = require('fs')
+const { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } = require('fs')
 const { join, resolve } = require('path')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
@@ -76,4 +76,34 @@ function readTemplateFile(tmplDir, filename) {
   return null
 }
 
-module.exports = { readTemplate, getTemplateDir, readTemplateFile }
+/**
+ * List all templates from builtin/ and custom/ directories.
+ * @returns {Array<object>}
+ */
+function listTemplates() {
+  const templates = []
+  for (const category of CATEGORIES) {
+    const dir = join(TEMPLATES_DIR, category)
+    if (!existsSync(dir)) continue
+    let dirs
+    try { dirs = readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()) } catch { continue }
+    for (const d of dirs) {
+      const t = readTemplate(d.name)
+      if (t) templates.push(t)
+    }
+  }
+  return templates
+}
+
+/**
+ * Create a custom template.
+ * @param {string} id - Template ID
+ * @param {object} data - Template data (will be written as template.json)
+ */
+function createCustomTemplate(id, data) {
+  const templateDir = join(TEMPLATES_DIR, 'custom', id)
+  if (!existsSync(templateDir)) mkdirSync(templateDir, { recursive: true })
+  writeFileSync(join(templateDir, 'template.json'), JSON.stringify(data, null, 2) + '\n')
+}
+
+module.exports = { readTemplate, getTemplateDir, readTemplateFile, listTemplates, createCustomTemplate }

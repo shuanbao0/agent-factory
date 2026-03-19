@@ -848,34 +848,19 @@ async function runHealthCheck(deptId, config, headResponse) {
  * Skips :main sessions (primary agent sessions).
  */
 async function cleanStaleSessions(maxDays = 14) {
-  const cutoff = Date.now() - maxDays * 86400_000
   let cleaned = 0
 
   try {
-    if (!existsSync(SESSIONS_DIR)) return
-    const agentDirs = readdirSync(SESSIONS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
+    const staleSessions = sessionRepo.listStaleSessions(maxDays)
 
-    for (const dir of agentDirs) {
-      const sessFile = join(SESSIONS_DIR, dir.name, 'sessions', 'sessions.json')
-      if (!existsSync(sessFile)) continue
-
+    for (const { agentId, sessionKey, updatedAt } of staleSessions) {
       try {
-        const sessions = JSON.parse(readFileSync(sessFile, 'utf-8'))
-        for (const [key, sess] of Object.entries(sessions)) {
-          if (!sess || typeof sess !== 'object') continue
-          if (key.endsWith(':main')) continue
-          const updatedAt = sess.updatedAt || 0
-          if (updatedAt > 0 && updatedAt < cutoff) {
-            try {
-              await killSession(key)
-              cleaned++
-              logger.debug('dept-loop', `Cleaned stale session ${key} (inactive ${Math.round((Date.now() - updatedAt) / 86400_000)}d)`)
-            } catch (e) {
-              logger.debug('dept-loop', `Failed to kill stale session ${key}`, e)
-            }
-          }
-        }
-      } catch { /* skip */ }
+        await killSession(sessionKey)
+        cleaned++
+        logger.debug('dept-loop', `Cleaned stale session ${sessionKey} (inactive ${Math.round((Date.now() - updatedAt) / 86400_000)}d)`)
+      } catch (e) {
+        logger.debug('dept-loop', `Failed to kill stale session ${sessionKey}`, e)
+      }
     }
   } catch (e) {
     logger.debug('dept-loop', 'Stale session cleanup error', e)

@@ -7,11 +7,12 @@
  * 职责：
  * - 管理 agents/{agentId}/agent.json
  * - 存储 Agent 的核心元信息：名称、模型、部门、模板来源等
+ * - 提供 agent 目录下文件的读写、追加、目录管理
  *
- * 带 30 秒缓存的单例，供 Autopilot 循环高频读取
+ * 无缓存单例（TTL=0），确保 API 实时性
  */
 const { join } = require('path')
-const { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } = require('fs')
+const { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync, rmSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -97,6 +98,81 @@ class AgentMetaRepository extends BaseRepository {
   }
 
   /**
+   * 确保 agents/{agentId}/{subpath} 目录存在
+   * @param {string} agentId
+   * @param {string} [subpath] - 可选子路径
+   */
+  ensureAgentDir(agentId, subpath) {
+    const dir = subpath ? join(AGENTS_DIR, agentId, subpath) : join(AGENTS_DIR, agentId)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  }
+
+  /**
+   * 追加内容到 agents/{agentId}/{filename}
+   * @param {string} agentId
+   * @param {string} filename
+   * @param {string} content
+   */
+  appendAgentFile(agentId, filename, content) {
+    const filePath = join(AGENTS_DIR, agentId, filename)
+    const dir = join(filePath, '..')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    appendFileSync(filePath, content)
+  }
+
+  /**
+   * 检查 agents/{agentId}/{filename} 是否存在
+   * @param {string} agentId
+   * @param {string} filename
+   * @returns {boolean}
+   */
+  agentFileExists(agentId, filename) {
+    return existsSync(join(AGENTS_DIR, agentId, filename))
+  }
+
+  /**
+   * 获取文件 stat 信息
+   * @param {string} agentId
+   * @param {string} filename
+   * @returns {{size: number, mtimeMs: number}|null}
+   */
+  agentFileStat(agentId, filename) {
+    const filePath = join(AGENTS_DIR, agentId, filename)
+    try {
+      if (!existsSync(filePath)) return null
+      const st = statSync(filePath)
+      return { size: st.size, mtimeMs: st.mtimeMs }
+    } catch { return null }
+  }
+
+  /**
+   * 列出 agents/{agentId}/{subpath} 目录内容
+   * @param {string} agentId
+   * @param {string} [subpath]
+   * @returns {Array<{name: string, isFile: boolean, mtime: number}>}
+   */
+  listAgentDir(agentId, subpath) {
+    const dir = subpath ? join(AGENTS_DIR, agentId, subpath) : join(AGENTS_DIR, agentId)
+    if (!existsSync(dir)) return []
+    try {
+      return readdirSync(dir, { withFileTypes: true }).map(entry => {
+        let mtime = 0
+        try { mtime = statSync(join(dir, entry.name)).mtimeMs } catch { /* skip */ }
+        return { name: entry.name, isFile: entry.isFile(), mtime }
+      })
+    } catch { return [] }
+  }
+
+  /**
+   * 删除整个 agent 目录
+   * @param {string} agentId
+   */
+  deleteAgentDir(agentId) {
+    const agentDir = join(AGENTS_DIR, agentId)
+    if (existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true })
+  }
+
+  /**
    * 返回指定部门的所有 agent ID
    * @param {string} deptId
    * @returns {string[]}
@@ -128,6 +204,6 @@ class AgentMetaRepository extends BaseRepository {
   }
 }
 
-/** 带缓存的单例（30 秒 TTL），供 Autopilot 循环使用 */
-const agentMetaRepo = new AgentMetaRepository({ cacheTtlMs: 30000 })
+/** 无缓存单例（TTL=0），确保 API 实时性 */
+const agentMetaRepo = new AgentMetaRepository({ cacheTtlMs: 0 })
 module.exports = { AgentMetaRepository, agentMetaRepo }

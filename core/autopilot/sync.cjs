@@ -1,12 +1,13 @@
 /**
  * Sync — project state synchronization (with phase regression fix)
  */
-const { readFileSync, writeFileSync, existsSync, readdirSync } = require('fs')
+const { existsSync, readdirSync, readFileSync } = require('fs')
 const { join } = require('path')
 const { PROJECTS_DIR, CEO_WORKSPACE, PROJECT_ROOT } = require('./constants.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
+const fileBrowser = require('../common/file-browser.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -19,13 +20,11 @@ function syncProjects(ceoResponseText) {
   const memory = missionRepo.readCeoWorkspaceFile('MEMORY.md')
 
   try {
-    if (!existsSync(PROJECTS_DIR)) return
-    const dirs = readdirSync(PROJECTS_DIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
+    const projectIds = projectMetaRepo.listProjectIds()
 
-    for (const dir of dirs) {
+    for (const dirName of projectIds) {
       try {
-        const meta = projectMetaRepo.readMeta(dir.name)
+        const meta = projectMetaRepo.readMeta(dirName)
         if (!meta) continue
 
         let phase = meta.currentPhase || 1
@@ -38,7 +37,7 @@ function syncProjects(ceoResponseText) {
           if (allDone) {
             status = 'completed'
             phase = meta.totalPhases || phase
-            logger.info('sync', `Project ${dir.name} — all tasks completed!`)
+            logger.info('sync', `Project ${dirName} — all tasks completed!`)
           } else if (anyRunning) {
             status = 'in-progress'
           }
@@ -75,28 +74,29 @@ function syncProjects(ceoResponseText) {
         meta.blockers = blockers
         meta.updatedAt = new Date().toISOString()
 
-        projectMetaRepo.writeMeta(dir.name, meta)
-        logger.info('sync', `Synced project: ${dir.name} (phase ${phase}, ${status}, ${blockers.length} blockers)`)
+        projectMetaRepo.writeMeta(dirName, meta)
+        logger.info('sync', `Synced project: ${dirName} (phase ${phase}, ${status}, ${blockers.length} blockers)`)
       } catch (err) {
-        logger.error('sync', `Failed to sync project ${dir.name}`, err)
+        logger.error('sync', `Failed to sync project ${dirName}`, err)
       }
     }
 
     // Copy new docs from agent workspaces to project docs/
     const ceoDocsDir = join(CEO_WORKSPACE, 'docs')
     const pmDocsDir = join(PROJECT_ROOT, 'agents/pm/docs')
-    for (const dir of dirs) {
-      const projDocsDir = join(PROJECTS_DIR, dir.name, 'docs')
+    for (const dirName of projectIds) {
+      const projDocsDir = join(PROJECTS_DIR, dirName, 'docs')
       if (!existsSync(projDocsDir)) continue
       for (const src of [ceoDocsDir, pmDocsDir]) {
         if (!existsSync(src)) continue
         try {
           const files = readdirSync(src)
           for (const f of files) {
-            const srcFile = join(src, f)
-            const destFile = join(projDocsDir, f)
-            if (!existsSync(destFile) || readFileSync(srcFile, 'utf-8') !== readFileSync(destFile, 'utf-8')) {
-              writeFileSync(destFile, readFileSync(srcFile, 'utf-8'))
+            const srcResult = fileBrowser.getFileContent(src, f)
+            if (srcResult.error) continue
+            const destResult = fileBrowser.getFileContent(projDocsDir, f)
+            if (destResult.error || srcResult.content !== destResult.content) {
+              projectMetaRepo.writeProjectFile(dirName, `docs/${f}`, srcResult.content)
             }
           }
         } catch (err) {

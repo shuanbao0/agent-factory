@@ -4,14 +4,11 @@
  *
  * 职责：创建、更新、删除部门（注册表 + autopilot config）
  */
-const { mkdirSync, existsSync, writeFileSync } = require('fs')
 const { join } = require('path')
 const { deptRegistryRepo } = require('../repo/dept-registry.cjs')
 const { DeptConfigRepository } = require('../repo/dept-config.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
+const { missionRepo } = require('../repo/mission.cjs')
 
 // Lazy require to avoid circular dependencies
 let _deptStateRepo
@@ -54,10 +51,9 @@ function createDepartment(body) {
   deptRegistryRepo.writeAll(departments)
 
   // Auto-create autopilot department config if not exists
-  const autopilotDeptDir = join(DEPARTMENTS_DIR, id)
-  if (!existsSync(autopilotDeptDir)) {
-    mkdirSync(autopilotDeptDir, { recursive: true })
-    const deptConfigRepo = new DeptConfigRepository()
+  const deptConfigRepo = new DeptConfigRepository()
+  const existing = deptConfigRepo.load(id)
+  if (!existing) {
     deptConfigRepo.save(id, {
       id,
       name,
@@ -68,7 +64,7 @@ function createDepartment(body) {
       budget: { dailyTokenLimit: 500000, alertThreshold: 0.8 },
       kpis: {},
     })
-    writeFileSync(join(autopilotDeptDir, 'mission.md'), `# ${name}\n\n（待定义部门使命）\n`)
+    missionRepo.writeDeptMission(id, `# ${name}\n\n（待定义部门使命）\n`)
   }
 
   return { ok: true, id }

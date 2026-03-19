@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readTemplates } from '@/lib/template-meta'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import core from '@/lib/core-bridge'
 
@@ -11,7 +10,7 @@ const PROJECT_ROOT = resolve(process.cwd(), '..')
 // ── GET: List all templates ─────────────────────────────────────
 export async function GET() {
   try {
-    const all = readTemplates()
+    const all = core.repo.listTemplates()
     const visible = all.filter(t => !t.hidden)
     return NextResponse.json({ templates: visible })
   } catch (e) {
@@ -49,8 +48,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Template "${id}" conflicts with a builtin template` }, { status: 409 })
     }
 
-    mkdirSync(templateDir, { recursive: true })
-
     const template = {
       id,
       name,
@@ -64,7 +61,7 @@ export async function POST(req: NextRequest) {
       },
     }
 
-    writeFileSync(join(templateDir, 'template.json'), JSON.stringify(template, null, 2) + '\n')
+    core.repo.createCustomTemplate(id, template)
 
     return NextResponse.json({ ok: true, template })
   } catch (e) {

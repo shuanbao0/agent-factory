@@ -9,8 +9,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve, join } from 'path'
-import { existsSync, readdirSync, statSync, readFileSync, rmSync } from 'fs'
+import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
 import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,21 +61,12 @@ export async function GET(req: NextRequest) {
 
   // ── Read file from active workspace ───────────────────────────
   if (agentId && file) {
-    const wsDir = join(WORKSPACES_DIR, agentId)
-    const resolved = safePath(wsDir, file)
-    if (!resolved) {
-      return NextResponse.json({ error: 'Invalid path' }, { status: 400 })
+    const result = core.common.fileBrowser.readWorkspaceFile(agentId, file)
+    if ('error' in result) {
+      const status = result.error === 'File not found' ? 404 : 400
+      return NextResponse.json({ error: result.error }, { status })
     }
-    if (!existsSync(resolved)) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 })
-    }
-    try {
-      const content = readFileSync(resolved, 'utf-8')
-      return NextResponse.json({ content })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      return NextResponse.json({ error: message }, { status: 500 })
-    }
+    return NextResponse.json({ content: (result as { content: string }).content })
   }
 
   // ── Read file from archived workspace ─────────────────────────
@@ -102,76 +94,31 @@ export async function GET(req: NextRequest) {
 
   // ── List all workspaces + archives ────────────────────────────
   try {
-    const workspaces: {
-      agentId: string
-      files: { name: string; path: string; size: number }[]
-      fileCount: number
-      totalSize: number
-    }[] = []
-
-    if (existsSync(WORKSPACES_DIR)) {
-      const entries = readdirSync(WORKSPACES_DIR, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        if (entry.name === '.archived' || entry.name === '.gitkeep') continue
-        if (entry.name.startsWith('.')) continue
-
-        const wsPath = join(WORKSPACES_DIR, entry.name)
-        const files = listFiles(wsPath)
-        workspaces.push({
-          agentId: entry.name,
-          files,
-          fileCount: files.length,
-          totalSize: files.reduce((sum, f) => sum + f.size, 0),
-        })
+    const activeList = core.common.fileBrowser.listWorkspaces()
+    const workspaces = activeList.map(ws => {
+      const wsPath = join(WORKSPACES_DIR, ws.agentId)
+      const files = listFiles(wsPath)
+      return {
+        agentId: ws.agentId,
+        files,
+        fileCount: files.length,
+        totalSize: files.reduce((sum, f) => sum + f.size, 0),
       }
-    }
+    })
 
-    const archived: {
-      dirName: string
-      agentId: string
-      archivedAt: string
-      files: { name: string; path: string; size: number }[]
-      fileCount: number
-      totalSize: number
-    }[] = []
-
-    if (existsSync(ARCHIVED_DIR)) {
-      const archEntries = readdirSync(ARCHIVED_DIR, { withFileTypes: true })
-      for (const entry of archEntries) {
-        if (!entry.isDirectory()) continue
-
-        // Parse dirName: {agentId}_{timestamp}
-        // timestamp format: 2026-02-25T10-30-00
-        const lastUnderscoreIdx = entry.name.lastIndexOf('_')
-        let agentIdParsed = entry.name
-        let archivedAt = ''
-
-        if (lastUnderscoreIdx > 0) {
-          // Check if the part after last underscore looks like a timestamp (starts with 20)
-          const possibleTimestamp = entry.name.slice(lastUnderscoreIdx + 1)
-          if (/^\d{4}-\d{2}-\d{2}T/.test(possibleTimestamp)) {
-            agentIdParsed = entry.name.slice(0, lastUnderscoreIdx)
-            archivedAt = possibleTimestamp.replace(/-/g, (m, offset: number) => {
-              // First two dashes are date separators, keep them; replace dashes after T with colons
-              if (offset > 10) return ':'
-              return m
-            })
-          }
-        }
-
-        const archPath = join(ARCHIVED_DIR, entry.name)
-        const files = listFiles(archPath)
-        archived.push({
-          dirName: entry.name,
-          agentId: agentIdParsed,
-          archivedAt,
-          files,
-          fileCount: files.length,
-          totalSize: files.reduce((sum, f) => sum + f.size, 0),
-        })
+    const archivedList = core.common.fileBrowser.listArchivedWorkspaces()
+    const archived = archivedList.map(arch => {
+      const archPath = join(ARCHIVED_DIR, arch.dirName)
+      const files = listFiles(archPath)
+      return {
+        dirName: arch.dirName,
+        agentId: arch.agentId,
+        archivedAt: arch.archivedAt,
+        files,
+        fileCount: files.length,
+        totalSize: files.reduce((sum, f) => sum + f.size, 0),
       }
-    }
+    })
 
     return NextResponse.json({ workspaces, archived })
   } catch (err: unknown) {
@@ -197,7 +144,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Archive not found' }, { status: 404 })
     }
 
-    rmSync(archPath, { recursive: true, force: true })
+    core.common.fileBrowser.deleteArchive(dirName)
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

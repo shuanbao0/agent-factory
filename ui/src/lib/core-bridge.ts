@@ -62,6 +62,12 @@ export default _core as {
       exists(agentId: string): boolean
       readAgentFile(agentId: string, filename: string): string | null
       writeAgentFile(agentId: string, filename: string, content: string): void
+      ensureAgentDir(agentId: string, subpath?: string): void
+      appendAgentFile(agentId: string, filename: string, content: string): void
+      agentFileExists(agentId: string, filename: string): boolean
+      agentFileStat(agentId: string, filename: string): { size: number; mtimeMs: number } | null
+      listAgentDir(agentId: string, subpath?: string): Array<{ name: string; isFile: boolean; mtime: number }>
+      deleteAgentDir(agentId: string): void
       listAgentsByDepartment(deptId: string): string[]
       clearDepartment(deptId: string): number
     }
@@ -88,9 +94,13 @@ export default _core as {
       updateMeta(projectId: string, mutator: (meta: ProjectMeta) => ProjectMeta): ProjectMeta
       readAll(): Array<{ projectId: string; meta: ProjectMeta }>
       deleteProject(projectId: string): void
+      ensureProjectDirs(projectId: string, subdirs: string[]): void
+      writeProjectFile(projectId: string, filename: string, content: string): void
+      listProjectIds(): string[]
     }
     sessionRepo: {
       fetchSessionTokens(): { all: number; byAgent: Record<string, number> }
+      listStaleSessions(maxDays?: number): Array<{ agentId: string; sessionKey: string; updatedAt: number }>
     }
     modelsRepo: {
       readModels(): { providers: Record<string, { apiKey: string; baseUrl?: string; api?: string; models: Record<string, string> }>; default: string }
@@ -105,6 +115,8 @@ export default _core as {
     readTemplate(id: string): { id: string; name: string; description: string; emoji: string; category: string; group?: string; hidden?: boolean; hasIdentityFiles: boolean; defaults: { model: string; skills: string[]; peers: string[] } } | null
     getTemplateDir(id: string): string | null
     readTemplateFile(tmplDir: string, filename: string): string | null
+    listTemplates(): Array<{ id: string; name: string; description: string; emoji: string; category: string; group?: string; hidden?: boolean; hasIdentityFiles: boolean; defaults: { model: string; skills: string[]; peers: string[] } }>
+    createCustomTemplate(id: string, data: Record<string, unknown>): void
   }
   task: {
     checkQualityGate(task: Task, pipelineStep: PipelineStep | null): {
@@ -159,6 +171,13 @@ export default _core as {
       getFileContent(baseDir: string, filePath: string, maxSize?: number): Record<string, unknown>
       listAgentWorkspaces(workspacesDir: string, agentIds: string[]): Array<{ agentId: string; fileCount: number; totalSize: number }>
       countDirStats(dir: string, maxDepth?: number): { count: number; size: number }
+      ensureWorkspace(agentId: string): void
+      archiveWorkspace(agentId: string): string | null
+      deleteArchive(dirName: string): void
+      listWorkspaces(): Array<{ agentId: string; fileCount: number; totalSize: number }>
+      listArchivedWorkspaces(): Array<{ dirName: string; agentId: string; archivedAt: string; fileCount: number; totalSize: number }>
+      readWorkspaceFile(agentId: string, filePath: string): { content: string; size?: number } | { error: string }
+      writeWorkspaceFile(agentId: string, filePath: string, content: string): void
     }
     parseSkillMeta(content: string): { name: string; description: string; bins: string[] }
     generateToolsMd(agentId: string, skills: string[], agentDir: string): string
@@ -169,6 +188,22 @@ export default _core as {
     }
     modelsService: {
       resolveEnvVar(value: string, envVars?: Record<string, string>): string
+    }
+    baseRulesInjector: {
+      parseBaseRules(raw: string): { agentsRules: string; soulRules: string; reminder: string }
+      stripMarkerBlock(content: string, startMarker: string, endMarker: string): string
+      injectIntoAgentsMd(content: string, agentsRules: string, reminder: string): string
+      injectIntoSoulMd(content: string, soulRules: string): string
+      injectBaseRulesForAgent(agentDir: string): void
+    }
+    skillSymlinks: {
+      findBuiltinSkillsDir(): Promise<string | null>
+      resolveSkillDir(slug: string): Promise<string | null>
+      syncSkillSymlinks(agentId: string, enabledSlugs: string[]): Promise<void>
+      listAllSkills(): Promise<Array<{ slug: string; source: string; hasSkillMd: boolean; description: string }>>
+    }
+    eventRelay: {
+      relayEvent(eventType: string, payload: Record<string, unknown>): void
     }
   }
 }

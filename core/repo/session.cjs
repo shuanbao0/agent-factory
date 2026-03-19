@@ -96,6 +96,36 @@ class SessionRepository extends BaseRepository {
       return null
     }
   }
+
+  /**
+   * List stale sessions (inactive > maxDays, non-:main)
+   * @param {number} [maxDays=14]
+   * @returns {Array<{agentId: string, sessionKey: string, updatedAt: number}>}
+   */
+  listStaleSessions(maxDays = 14) {
+    const cutoff = Date.now() - maxDays * 86400_000
+    const stale = []
+    try {
+      if (!existsSync(SESSIONS_DIR)) return stale
+      const agentDirs = readdirSync(SESSIONS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
+      for (const dir of agentDirs) {
+        const sessFile = join(SESSIONS_DIR, dir.name, 'sessions', 'sessions.json')
+        if (!existsSync(sessFile)) continue
+        try {
+          const sessions = JSON.parse(readFileSync(sessFile, 'utf-8'))
+          for (const [key, sess] of Object.entries(sessions)) {
+            if (!sess || typeof sess !== 'object') continue
+            if (key.endsWith(':main')) continue
+            const updatedAt = sess.updatedAt || 0
+            if (updatedAt > 0 && updatedAt < cutoff) {
+              stale.push({ agentId: dir.name, sessionKey: key, updatedAt })
+            }
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+    return stale
+  }
 }
 
 const sessionRepo = new SessionRepository()

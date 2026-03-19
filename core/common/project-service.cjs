@@ -4,7 +4,6 @@
  *
  * 职责：创建项目、列出项目（含 token 用量）
  */
-const { mkdirSync, existsSync, writeFileSync } = require('fs')
 const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
@@ -41,13 +40,10 @@ function listProjects() {
   }
 
   // Add unknown top-level directories without .project-meta.json
-  if (existsSync(PROJECTS_DIR)) {
-    const { readdirSync } = require('fs')
-    const dirs = readdirSync(PROJECTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
-    for (const d of dirs) {
-      if (!seenTopLevel.has(d.name)) {
-        projects.push({ id: d.name, name: d.name, description: '', status: 'unknown' })
-      }
+  const topDirs = projectMetaRepo.listProjectIds()
+  for (const name of topDirs) {
+    if (!seenTopLevel.has(name)) {
+      projects.push({ id: name, name, description: '', status: 'unknown' })
     }
   }
 
@@ -71,15 +67,13 @@ function createProject(body, workflow) {
     .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '')
   if (!id) return { ok: false, error: 'invalid project name', status: 400 }
 
-  const projectDir = join(PROJECTS_DIR, id)
-  if (existsSync(projectDir)) {
+  const existingMeta = projectMetaRepo.readMeta(id)
+  if (existingMeta || projectMetaRepo.listProjectIds().includes(id)) {
     return { ok: false, error: `Project "${id}" already exists`, status: 409 }
   }
 
   // Create directory structure from workflow
-  for (const sub of workflow.directories) {
-    mkdirSync(join(projectDir, sub), { recursive: true })
-  }
+  projectMetaRepo.ensureProjectDirs(id, workflow.directories)
 
   const now = new Date().toISOString()
   const meta = {
@@ -98,6 +92,7 @@ function createProject(body, workflow) {
   projectMetaRepo.writeMeta(id, meta)
 
   // Build BRIEF.md
+  const projectDir = join(PROJECTS_DIR, id)
   const dirList = workflow.directories.map(d => `- \`${d}/\``).join('\n')
   const phaseList = workflow.phases.map((p, i) => `${i + 1}. **${p.labelEn}** (${p.labelZh})`).join('\n')
 
@@ -126,7 +121,7 @@ ${dirList}
 Agents should coordinate through tasks and use the shared directories above for deliverables.
 Leave notes for other agents in the project directory.
 `
-  writeFileSync(join(projectDir, 'BRIEF.md'), brief)
+  projectMetaRepo.writeProjectFile(id, 'BRIEF.md', brief)
 
   return { ok: true, project: { id, ...meta } }
 }

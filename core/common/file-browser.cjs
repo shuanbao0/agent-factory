@@ -4,8 +4,12 @@
  *
  * 职责：项目文件浏览 + Agent workspace 统计
  */
-const { readdirSync, readFileSync, existsSync, statSync } = require('fs')
+const { readdirSync, readFileSync, existsSync, statSync, mkdirSync, renameSync, rmSync, writeFileSync } = require('fs')
 const { join, resolve } = require('path')
+
+const PROJECT_ROOT = resolve(__dirname, '..', '..')
+const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
+const ARCHIVED_DIR = join(WORKSPACES_DIR, '.archived')
 
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', '__pycache__', '.turbo', '.vercel'])
 const MAX_ENTRIES = 500
@@ -131,4 +135,109 @@ function countDirStats(dir, maxDepth = 6, depth = 0) {
   return { count, size }
 }
 
-module.exports = { listDirectory, getFileContent, listAgentWorkspaces, countDirStats }
+/**
+ * Ensure workspace directory exists for an agent
+ * @param {string} agentId
+ */
+function ensureWorkspace(agentId) {
+  const dir = join(WORKSPACES_DIR, agentId)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+}
+
+/**
+ * Archive a workspace (move to .archived/{id}_{timestamp})
+ * @param {string} agentId
+ * @returns {string|null} archive relative path or null if no workspace
+ */
+function archiveWorkspace(agentId) {
+  const wsDir = join(WORKSPACES_DIR, agentId)
+  if (!existsSync(wsDir)) return null
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  if (!existsSync(ARCHIVED_DIR)) mkdirSync(ARCHIVED_DIR, { recursive: true })
+  const archivePath = join(ARCHIVED_DIR, `${agentId}_${timestamp}`)
+  renameSync(wsDir, archivePath)
+  return `workspaces/.archived/${agentId}_${timestamp}`
+}
+
+/**
+ * Delete an archived workspace directory
+ * @param {string} dirName - archive directory name (no path separators)
+ */
+function deleteArchive(dirName) {
+  if (dirName.includes('/') || dirName.includes('\\') || dirName.includes('..')) return
+  const archPath = join(ARCHIVED_DIR, dirName)
+  if (existsSync(archPath)) rmSync(archPath, { recursive: true, force: true })
+}
+
+/**
+ * List active workspaces with file stats
+ * @returns {Array<{agentId: string, files: Array, fileCount: number, totalSize: number}>}
+ */
+function listWorkspaces() {
+  const workspaces = []
+  if (!existsSync(WORKSPACES_DIR)) return workspaces
+  const entries = readdirSync(WORKSPACES_DIR, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+    const wsPath = join(WORKSPACES_DIR, entry.name)
+    const { count, size } = countDirStats(wsPath)
+    workspaces.push({ agentId: entry.name, fileCount: count, totalSize: size })
+  }
+  return workspaces
+}
+
+/**
+ * List archived workspaces
+ * @returns {Array<{dirName: string, agentId: string, archivedAt: string, fileCount: number, totalSize: number}>}
+ */
+function listArchivedWorkspaces() {
+  const archived = []
+  if (!existsSync(ARCHIVED_DIR)) return archived
+  const entries = readdirSync(ARCHIVED_DIR, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const lastUnderscore = entry.name.lastIndexOf('_')
+    let agentId = entry.name
+    let archivedAt = ''
+    if (lastUnderscore > 0) {
+      const possibleTs = entry.name.slice(lastUnderscore + 1)
+      if (/^\d{4}-\d{2}-\d{2}T/.test(possibleTs)) {
+        agentId = entry.name.slice(0, lastUnderscore)
+        archivedAt = possibleTs
+      }
+    }
+    const { count, size } = countDirStats(join(ARCHIVED_DIR, entry.name))
+    archived.push({ dirName: entry.name, agentId, archivedAt, fileCount: count, totalSize: size })
+  }
+  return archived
+}
+
+/**
+ * Read a file from an agent's workspace
+ * @param {string} agentId
+ * @param {string} filePath
+ * @returns {{ content: string, size?: number } | { error: string }}
+ */
+function readWorkspaceFile(agentId, filePath) {
+  return getFileContent(join(WORKSPACES_DIR, agentId), filePath)
+}
+
+/**
+ * Write a file to an agent's workspace
+ * @param {string} agentId
+ * @param {string} filePath
+ * @param {string} content
+ */
+function writeWorkspaceFile(agentId, filePath, content) {
+  const fullPath = resolve(join(WORKSPACES_DIR, agentId), filePath)
+  const dir = join(fullPath, '..')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(fullPath, content)
+}
+
+module.exports = {
+  listDirectory, getFileContent, listAgentWorkspaces, countDirStats,
+  ensureWorkspace, archiveWorkspace, deleteArchive,
+  listWorkspaces, listArchivedWorkspaces,
+  readWorkspaceFile, writeWorkspaceFile,
+}

@@ -12,7 +12,7 @@
  * 无缓存实例（API 路由场景，需要实时数据）
  */
 const { join, resolve } = require('path')
-const { existsSync, readdirSync, rmSync } = require('fs')
+const { existsSync, readdirSync, rmSync, mkdirSync, writeFileSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -97,6 +97,42 @@ class ProjectMetaRepository extends BaseRepository {
       } catch { /* 目录读取失败，跳过 */ }
     }
     return results
+  }
+
+  /**
+   * 确保项目子目录存在
+   * @param {string} projectId
+   * @param {string[]} subdirs - 子目录列表
+   */
+  ensureProjectDirs(projectId, subdirs) {
+    for (const sub of subdirs) {
+      const dir = join(PROJECTS_DIR, projectId, sub)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    }
+  }
+
+  /**
+   * 写入非 JSON 文件到项目目录
+   * @param {string} projectId
+   * @param {string} filename
+   * @param {string} content
+   */
+  writeProjectFile(projectId, filename, content) {
+    const filePath = join(PROJECTS_DIR, projectId, filename)
+    const dir = join(filePath, '..')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    writeFileSync(filePath, content)
+  }
+
+  /**
+   * 列出所有顶级项目 ID
+   * @returns {string[]}
+   */
+  listProjectIds() {
+    if (!existsSync(PROJECTS_DIR)) return []
+    return readdirSync(PROJECTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
   }
 }
 

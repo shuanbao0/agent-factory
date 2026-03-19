@@ -14,28 +14,22 @@
 import WebSocket from 'ws'
 import { logError } from '@/lib/error-logger'
 import { randomUUID } from 'crypto'
-import { resolve } from 'path'
-import { readFileSync, existsSync } from 'fs'
+import core from '@/lib/core-bridge'
 import type { GatewayConfig } from '@entity/config'
 
 // ── 配置 ─────────────────────────────────────────────────────────
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const CONFIG_PATH = resolve(PROJECT_ROOT, 'config/openclaw.json')
 
 function loadGatewayConfig(): GatewayConfig {
   const port = parseInt(process.env.AGENT_FACTORY_PORT || '19100')
   const token = process.env.AGENT_FACTORY_TOKEN || 'agent-factory-internal-token-2026'
 
-  // 也尝试从配置文件读取
-  if (existsSync(CONFIG_PATH)) {
-    try {
-      const config = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'))
-      return {
-        port: config.gateway?.port || port,
-        token: config.gateway?.auth?.token || token,
-      }
-    } catch (err) { logError('gateway-chat/loadConfig', err) }
-  }
+  try {
+    const config = core.repo.configRepo.getGatewayConfig()
+    return {
+      port: config.port || port,
+      token: config.token || token,
+    }
+  } catch (err) { logError('gateway-chat/loadConfig', err) }
 
   return { port, token }
 }

@@ -9,11 +9,7 @@
  * - 通过注入的 sendFn 与 Agent 通信（不直接依赖 gateway）
  * - 审查者选择策略（专业匹配 → 标签匹配 → 最空闲）
  */
-const { existsSync, statSync } = require('fs')
-const { resolve } = require('path')
 const { getStrategy } = require('./strategy.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
 
 // Lazy require to avoid circular dependencies
 let _taskRepo
@@ -168,22 +164,18 @@ class QualityOrchestrator {
   async _requestSelfCheck(agentId, task) {
     if (!agentId) return { passed: false, score: 0, checklist: ['无执行者'], at: new Date().toISOString() }
 
-    // Hard validation: check output file exists
+    // Hard validation: check output content via injected readTaskOutput
     if (task.output) {
-      const outputPath = resolve(PROJECT_ROOT, task.output)
-      if (!existsSync(outputPath)) {
+      const content = this._readTaskOutput(task)
+      if (!content) {
         return { passed: false, score: 0, checklist: ['产出文件不存在: ' + task.output], at: new Date().toISOString() }
       }
-      try {
-        const stat = statSync(outputPath)
-        if (stat.size < 500) {
-          return { passed: false, score: 0, checklist: [`文件仅 ${stat.size}B，最低要求 500B`], at: new Date().toISOString() }
-        }
-        const content = (this._readTaskOutput(task) || '').slice(0, 5000)
-        if (/\$\{[^}]+\}/.test(content)) {
-          return { passed: false, score: 0, checklist: ['含未渲染模板变量 ${...}'], at: new Date().toISOString() }
-        }
-      } catch { /* skip */ }
+      if (content.length < 500) {
+        return { passed: false, score: 0, checklist: [`产出仅 ${content.length} 字符，最低要求 500`], at: new Date().toISOString() }
+      }
+      if (/\$\{[^}]+\}/.test(content.slice(0, 5000))) {
+        return { passed: false, score: 0, checklist: ['含未渲染模板变量 ${...}'], at: new Date().toISOString() }
+      }
     }
 
     let outputContent = ''
