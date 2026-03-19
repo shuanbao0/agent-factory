@@ -1,19 +1,8 @@
 import { NextResponse } from 'next/server'
-import { writeFileSync, renameSync } from 'fs'
-import { resolve, join } from 'path'
 import { getDepartments } from '@/services/autopilot-api'
 import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config/departments')
-
-function atomicWriteSync(filePath: string, data: string) {
-  const tmpPath = filePath + '.tmp.' + process.pid
-  writeFileSync(tmpPath, data)
-  renameSync(tmpPath, filePath)
-}
 
 /**
  * GET /api/autopilot/departments — list all department loop states
@@ -44,21 +33,15 @@ export async function POST(req: Request) {
     if (enabled !== undefined) config.enabled = enabled
     if (interval !== undefined) config.interval = interval
     core.repo.deptConfigRepo.save(deptId, config)
-    const deptDir = join(DEPARTMENTS_DIR, deptId)
 
     // Update department mission
     if (mission !== undefined) {
-      const missionPath = join(deptDir, 'mission.md')
-      atomicWriteSync(missionPath, mission)
+      core.repo.missionRepo.writeDeptMission(deptId, mission)
     }
 
     // Update CEO directives
     if (directives !== undefined) {
-      const directivesPath = join(deptDir, 'ceo-directives.json')
-      atomicWriteSync(directivesPath, JSON.stringify({
-        directives: Array.isArray(directives) ? directives : [directives],
-        updatedAt: new Date().toISOString(),
-      }, null, 2))
+      core.repo.missionRepo.writeDeptDirectives(deptId, directives)
     }
 
     return NextResponse.json({ ok: true, config })

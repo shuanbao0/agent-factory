@@ -4,6 +4,7 @@ import { join, resolve } from 'path'
 import { spawn, execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
 import { decodeProjectId } from '@/lib/utils'
+import core from '@/lib/core-bridge'
 
 const execFileAsync = promisify(execFileCb)
 import net from 'net'
@@ -21,12 +22,10 @@ const runningServers = new Map<string, { pid: number; port: number }>()
 function resolveCodeDir(projectId: string): string | null {
   const projectDir = join(PROJECTS_DIR, projectId)
   try {
-    const metaPath = join(projectDir, '.project-meta.json')
-    if (!existsSync(metaPath)) return null
-    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    if (!meta.codeLocation) return null
-    const fromRoot = resolve(PROJECT_ROOT, meta.codeLocation)
-    const fromProject = resolve(projectDir, meta.codeLocation)
+    const meta = core.repo.projectMetaRepo.readMeta(projectId) as Record<string, unknown> | null
+    if (!meta || !meta.codeLocation) return null
+    const fromRoot = resolve(PROJECT_ROOT, meta.codeLocation as string)
+    const fromProject = resolve(projectDir, meta.codeLocation as string)
     if (existsSync(fromRoot)) return fromRoot
     if (existsSync(fromProject)) return fromProject
   } catch { /* ignore */ }

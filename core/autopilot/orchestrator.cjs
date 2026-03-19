@@ -3,7 +3,7 @@
  *
  * Business logic only — CLI entry point remains in scripts/autopilot/index.cjs
  */
-const { existsSync, readdirSync, readFileSync } = require('fs')
+const { existsSync } = require('fs')
 const { join } = require('path')
 const {
   DEFAULT_INTERVAL_SEC, MAX_HISTORY_ENTRIES, MAX_CYCLE_RESULT_LENGTH, MAX_HISTORY_RESULT_LENGTH,
@@ -11,6 +11,7 @@ const {
   CEO_COORDINATION_INTERVAL_SEC, CEO_STRATEGY_INTERVAL_SEC, DEFAULT_DEPT_INTERVAL_SEC,
   IDLE_COMPLETE_MINS, STALE_TASK_MINS,
 } = require('./constants.cjs')
+const { deptConfigRepo } = require('../repo/dept-config.cjs')
 const { loadState, saveState } = require('../common/autopilot-state.cjs')
 const { sendToCeo } = require('./gateway-client.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
@@ -161,34 +162,29 @@ async function runCycle(options = {}) {
 // ── Discover active departments ─────────────────────────────────
 function discoverActiveDepartments() {
   const results = []
-  if (!existsSync(DEPARTMENTS_DIR)) return results
 
   try {
-    const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
+    const deptIds = deptConfigRepo.listDeptIds()
 
-    for (const dir of dirs) {
-      const configPath = join(DEPARTMENTS_DIR, dir.name, 'config.json')
-      if (!existsSync(configPath)) continue
-
+    for (const deptId of deptIds) {
       try {
-        const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-        if (!config.enabled) continue
+        const config = deptConfigRepo.load(deptId)
+        if (!config || !config.enabled) continue
 
         const headDir = join(AGENTS_DIR, config.head)
         if (!existsSync(headDir)) {
-          logger.warn('main', `Department ${dir.name} head ${config.head} not found, skipping`)
+          logger.warn('main', `Department ${deptId} head ${config.head} not found, skipping`)
           continue
         }
 
         results.push({
-          id: config.id || dir.name,
+          id: config.id || deptId,
           head: config.head,
           interval: config.interval || DEFAULT_DEPT_INTERVAL_SEC,
           config,
         })
       } catch (err) {
-        logger.warn('main', `Failed to parse config for dept ${dir.name}`, err)
+        logger.warn('main', `Failed to parse config for dept ${deptId}`, err)
       }
     }
   } catch (err) {

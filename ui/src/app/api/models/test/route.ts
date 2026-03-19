@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolve } from 'path'
-import { readFileSync, existsSync } from 'fs'
 import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const MODELS_PATH = resolve(PROJECT_ROOT, 'config/models.json')
-const ENV_PATH = resolve(PROJECT_ROOT, '.env')
 
 interface ProviderConfig {
   apiKey: string
@@ -16,41 +11,17 @@ interface ProviderConfig {
   models: Record<string, string>
 }
 
-function readModels(): { providers: Record<string, ProviderConfig> } {
-  if (!existsSync(MODELS_PATH)) {
-    return { providers: {} }
-  }
-  return JSON.parse(readFileSync(MODELS_PATH, 'utf-8'))
-}
-
-// Read .env file to get environment variables
-function readEnvFile(): Record<string, string> {
-  const vars: Record<string, string> = {}
-  if (!existsSync(ENV_PATH)) return vars
-  try {
-    const lines = readFileSync(ENV_PATH, 'utf-8').split('\n')
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      const eqIdx = trimmed.indexOf('=')
-      if (eqIdx === -1) continue
-      vars[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim()
-    }
-  } catch (err) { logError('models-test/read-env-file', err) }
-  return vars
-}
-
-// Resolve env var references like ${VAR_NAME} from .env file and process.env
-function resolveEnvVar(value: string): string {
-  const envVars = readEnvFile()
-  return value.replace(/\$\{(\w+)\}/g, (_, name) => envVars[name] || process.env[name] || '')
-}
-
 // Known builtin provider defaults
 const BUILTIN_DEFAULTS: Record<string, { baseUrl: string; api: string; envKey: string }> = {
   anthropic: { baseUrl: 'https://api.anthropic.com', api: 'anthropic-messages', envKey: 'ANTHROPIC_API_KEY' },
   openai: { baseUrl: 'https://api.openai.com', api: 'openai-completions', envKey: 'OPENAI_API_KEY' },
   deepseek: { baseUrl: 'https://api.deepseek.com', api: 'openai-completions', envKey: 'DEEPSEEK_API_KEY' },
+}
+
+function resolveEnvVar(value: string): string {
+  let envVars: Record<string, string> = {}
+  try { envVars = core.common.envManager.readEnv() } catch (err) { logError('models-test/read-env', err) }
+  return core.common.modelsService.resolveEnvVar(value, { ...envVars, ...process.env as Record<string, string> })
 }
 
 async function testAnthropicMessages(baseUrl: string, apiKey: string, modelId: string): Promise<{ success: boolean; error?: string }> {
@@ -108,7 +79,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'provider and modelId are required' }, { status: 400 })
     }
 
-    const config = readModels()
+    const config = core.repo.modelsRepo.readModels() as { providers: Record<string, ProviderConfig> }
     const providerConfig = config.providers[provider]
     const builtinDef = BUILTIN_DEFAULTS[provider]
 
@@ -117,7 +88,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (providerConfig?.apiKey) {
       apiKey = resolveEnvVar(providerConfig.apiKey)
     } else if (builtinDef) {
-      const envVars = readEnvFile()
+      let envVars: Record<string, string> = {}
+      try { envVars = core.common.envManager.readEnv() } catch (err) { logError('models-test/read-env', err) }
       apiKey = envVars[builtinDef.envKey] || process.env[builtinDef.envKey] || ''
     }
 

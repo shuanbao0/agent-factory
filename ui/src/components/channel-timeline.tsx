@@ -28,12 +28,12 @@ const typeBadgeColors: Record<string, string> = {
   log: 'bg-gray-400/10 text-gray-400 border-gray-400/20',
 }
 
-const typeLabels: Record<string, string> = {
-  spawn: 'spawn',
-  send: 'send',
-  complete: 'complete',
-  error: 'error',
-  log: 'log',
+const TYPE_LABEL_KEYS: Record<string, string> = {
+  spawn: 'messages.typeSpawn',
+  send: 'messages.typeSend',
+  complete: 'messages.typeComplete',
+  error: 'messages.typeError',
+  log: 'messages.typeLog',
 }
 
 const COLLAPSE_THRESHOLD = 300
@@ -206,7 +206,7 @@ export function ChannelTimeline({ channel, messages, loading, agents, onRefresh 
                     <ArrowRight className="w-3 h-3 text-muted-foreground" />
                     <span className="font-medium">{getAgentName(m.toAgent)}</span>
                     <Badge variant="muted" className={`text-[10px] ${typeBadgeColors[m.type] || ''}`}>
-                      {typeLabels[m.type] || m.type}
+                      {TYPE_LABEL_KEYS[m.type] ? t(TYPE_LABEL_KEYS[m.type]) : m.type}
                     </Badge>
                     <span className="text-muted-foreground ml-auto">{timeAgo(m.timestamp)}</span>
                   </div>

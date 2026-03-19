@@ -23,6 +23,8 @@ const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('../agent/memory.cjs')
 const { checkBudget, trackTokenUsage } = require('../observe/budget.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
+const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
+const { missionRepo } = require('../repo/mission.cjs')
 const logger = require('./logger.cjs')
 
 // Quality gate: lazy singleton (DI to avoid circular dependency at module load time)
@@ -74,76 +76,6 @@ function notifyAgentTaskChange(headAgent, agentId, taskId, taskName, newStatus, 
   }, (err) => {
     if (err) logger.debug('dept-loop', `Failed to notify ${agentId} about task ${taskId}: ${err.message}`)
   })
-}
-
-/**
- * Parse task assignments from the chief's structured response.
- * Extracts [任务分配] section and returns agent-task pairs.
- *
- * @param {string} text - Chief's response text
- * @returns {Array<{agentId: string, summary: string}>}
- */
-function parseTaskAssignments(text) {
-  if (!text) return []
-  const match = text.match(/\[任务分配\]\s*\n([\s\S]*?)(?=\n\[|$)/)
-  if (!match) return []
-
-  const lines = match[1].split('\n')
-  const assignments = []
-  for (const line of lines) {
-    // Match: - agent-id: 任务摘要 (peer-send 已发送)
-    // Or:    - agent-id：任务摘要
-    const m = line.match(/^[-*]\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
-    if (!m) continue
-    const [, agentId, summary] = m
-    // Skip "无需分配" and similar
-    if (/无需分配|不需要|跳过/.test(summary)) continue
-    // Skip lines that already contain a task ID (chief created it)
-    if (/task-[a-z0-9]/.test(line)) continue
-    assignments.push({ agentId, summary: summary.trim() })
-  }
-  return assignments
-}
-
-/**
- * Parse task completions from the chief's structured response.
- * Extracts [任务完成] section (priority) and [进展汇报] section,
- * looking for task IDs with completion keywords.
- *
- * @param {string} text - Chief's response text
- * @returns {string[]} - Deduplicated list of completed task IDs
- */
-function parseTaskCompletions(text) {
-  if (!text) return []
-
-  const completedIds = new Set()
-  const completionKeywords = /完成|已完成|已交付|done|finished|completed|100%/i
-
-  // Parse [任务完成] section (priority)
-  const completionMatch = text.match(/\[任务完成\]\s*\n([\s\S]*?)(?=\n\[|$)/)
-  if (completionMatch) {
-    const lines = completionMatch[1].split('\n')
-    for (const line of lines) {
-      const m = line.match(/(task-[a-z0-9-]+)/i)
-      if (m && !/无/.test(line.trim())) {
-        completedIds.add(m[1])
-      }
-    }
-  }
-
-  // Parse [进展汇报] section for completion keywords
-  const progressMatch = text.match(/\[进展汇报\]\s*\n([\s\S]*?)(?=\n\[|$)/)
-  if (progressMatch) {
-    const lines = progressMatch[1].split('\n')
-    for (const line of lines) {
-      const m = line.match(/(task-[a-z0-9-]+)/i)
-      if (m && completionKeywords.test(line)) {
-        completedIds.add(m[1])
-      }
-    }
-  }
-
-  return [...completedIds]
 }
 
 /**
@@ -824,10 +756,9 @@ async function fallbackDispatch(deptId, config) {
     // Record in department report
     const reportNote = `\n\n---\n⚠️ **Fallback Dispatch** (${new Date().toISOString()})\nChief 连续 ${MAX_CONSECUTIVE_FAILURES} 轮无有效产出，department-loop 直接派发任务给 ${dispatched} 个空闲 agent。\n`
     try {
-      const reportPath = join(DEPARTMENTS_DIR, deptId, 'report.md')
-      if (existsSync(reportPath)) {
-        const existing = readFileSync(reportPath, 'utf-8')
-        writeFileSync(reportPath, existing + reportNote)
+      const existing = missionRepo.readDeptReport(deptId)
+      if (existing) {
+        missionRepo.writeDeptReport(deptId, existing + reportNote)
       }
     } catch (e) {
       logger.debug('dept-loop', `Failed to append fallback note to report`, e)
@@ -839,15 +770,11 @@ async function fallbackDispatch(deptId, config) {
  * Generate a department report from the head's response.
  */
 function generateDepartmentReport(deptId, responseText) {
-  const deptDir = join(DEPARTMENTS_DIR, deptId)
-  if (!existsSync(deptDir)) mkdirSync(deptDir, { recursive: true })
-  const reportPath = join(deptDir, 'report.md')
   const timestamp = new Date().toISOString()
-
   const report = `# ${deptId} Department Report\n\nGenerated: ${timestamp}\n\n${responseText.slice(0, 3000)}\n`
 
   try {
-    writeFileSync(reportPath, report)
+    missionRepo.writeDeptReport(deptId, report)
     logger.debug('dept-loop', `Report generated for ${deptId}`)
   } catch (err) {
     logger.error('dept-loop', `Failed to write report for ${deptId}`, err)

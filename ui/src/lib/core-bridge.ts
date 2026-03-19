@@ -60,6 +60,7 @@ export default _core as {
       updateMeta(agentId: string, mutator: (meta: AgentMeta) => AgentMeta): AgentMeta
       listAllAgentIds(): string[]
       exists(agentId: string): boolean
+      readAgentFile(agentId: string, filename: string): string | null
       writeAgentFile(agentId: string, filename: string, content: string): void
       listAgentsByDepartment(deptId: string): string[]
       clearDepartment(deptId: string): number
@@ -73,6 +74,8 @@ export default _core as {
       writeDeptMission(deptId: string, content: string): void
       readDeptReport(deptId: string): string
       readDeptDirectives(deptId: string): string[]
+      writeDeptDirectives(deptId: string, directives: string[]): void
+      writeDeptReport(deptId: string, content: string): void
     }
     deptRegistryRepo: {
       readAll(): Array<{ id: string; name: string; nameEn: string; emoji: string; order: number; floorColor: Record<string, number>; furniture: Array<{ type: string; count: number }> }>
@@ -88,6 +91,16 @@ export default _core as {
     }
     sessionRepo: {
       fetchSessionTokens(): { all: number; byAgent: Record<string, number> }
+    }
+    modelsRepo: {
+      readModels(): { providers: Record<string, { apiKey: string; baseUrl?: string; api?: string; models: Record<string, string> }>; default: string }
+      writeModels(config: Record<string, unknown>): void
+      ensureDefaults(): void
+    }
+    authProfilesRepo: {
+      readProfiles(): { version: number; profiles: Record<string, { type: string; provider: string; token?: string; email?: string; expiresAt?: number }>; lastGood: Record<string, string>; usageStats: Record<string, unknown> } | null
+      writeProfiles(data: Record<string, unknown>): void
+      updateProfiles(mutator: (data: Record<string, unknown>) => Record<string, unknown>): Record<string, unknown>
     }
     readTemplate(id: string): { id: string; name: string; description: string; emoji: string; category: string; group?: string; hidden?: boolean; hasIdentityFiles: boolean; defaults: { model: string; skills: string[]; peers: string[] } } | null
     getTemplateDir(id: string): string | null
@@ -149,5 +162,13 @@ export default _core as {
     }
     parseSkillMeta(content: string): { name: string; description: string; bins: string[] }
     generateToolsMd(agentId: string, skills: string[], agentDir: string): string
+    envManager: {
+      readEnv(): Record<string, string>
+      writeEnv(vars: Record<string, string>): void
+      hasEnvFile(): boolean
+    }
+    modelsService: {
+      resolveEnvVar(value: string, envVars?: Record<string, string>): string
+    }
   }
 }

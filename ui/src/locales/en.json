@@ -41,7 +41,9 @@
     "edit": "Edit",
     "delete": "Delete",
     "refresh": "Refresh",
-    "retry": "Retry"
+    "retry": "Retry",
+    "switchLanguage": "Switch Language",
+    "unsaved": "unsaved"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -163,7 +165,8 @@
     "deptOrder": "Display Order",
     "deptDeleteConfirm": "Delete this department?",
     "deptHasAgents": "Agents in this department will become unassigned.",
-    "deptId": "Department ID"
+    "deptId": "Department ID",
+    "syncConfig": "Sync config (AGENTS.md → workspace)"
   },
   "pixelOffice": {
     "working": "Working...",
@@ -173,7 +176,10 @@
     "sleeping": "Sleeping",
     "error": "Error occurred",
     "walking": "Walking around",
-    "idle": "Idle"
+    "idle": "Idle",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "resetView": "Reset view"
   },
   "projects": {
     "title": "Projects",
@@ -576,7 +582,9 @@
     "clearCompleted": "Clear Completed",
     "confirmClearCompleted": "Delete all completed and failed tasks?",
     "showCompleted": "Show {count} completed/failed",
-    "hideCompleted": "Hide completed"
+    "hideCompleted": "Hide completed",
+    "status": "Status",
+    "tagsPlaceholder": "tag1, tag2, ..."
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -612,6 +620,11 @@
     "showLess": "Show less",
     "messagesCount": "{count} messages",
     "noChannels": "No channels yet",
-    "noChannelsHint": "Channels will appear when agents start communicating"
+    "noChannelsHint": "Channels will appear when agents start communicating",
+    "typeSpawn": "spawn",
+    "typeSend": "send",
+    "typeComplete": "complete",
+    "typeError": "error",
+    "typeLog": "log"
   }
 }

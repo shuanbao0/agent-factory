@@ -84,7 +84,7 @@ export function PixelOfficeView({ isVisible }: PixelOfficeViewProps) {
         <button
           onClick={handleZoomOut}
           className="p-1.5 rounded-md border border-border hover:bg-muted transition-colors"
-          title="Zoom out"
+          title={t('pixelOffice.zoomOut')}
         >
           <ZoomOut className="w-4 h-4" />
         </button>
@@ -92,14 +92,14 @@ export function PixelOfficeView({ isVisible }: PixelOfficeViewProps) {
         <button
           onClick={handleZoomIn}
           className="p-1.5 rounded-md border border-border hover:bg-muted transition-colors"
-          title="Zoom in"
+          title={t('pixelOffice.zoomIn')}
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
           onClick={handleResetZoom}
           className="p-1.5 rounded-md border border-border hover:bg-muted transition-colors"
-          title="Reset view"
+          title={t('pixelOffice.resetView')}
         >
           <Maximize2 className="w-4 h-4" />
         </button>

@@ -41,7 +41,9 @@
     "edit": "编辑",
     "delete": "删除",
     "refresh": "刷新",
-    "retry": "重试"
+    "retry": "重试",
+    "switchLanguage": "切换语言",
+    "unsaved": "未保存"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -163,7 +165,8 @@
     "deptOrder": "显示顺序",
     "deptDeleteConfirm": "确定删除此部门？",
     "deptHasAgents": "该部门下的智能体将变为未分配状态。",
-    "deptId": "部门 ID"
+    "deptId": "部门 ID",
+    "syncConfig": "同步配置 (AGENTS.md → 工作区)"
   },
   "pixelOffice": {
     "working": "工作中...",
@@ -173,7 +176,10 @@
     "sleeping": "休眠中",
     "error": "发生错误",
     "walking": "走动中",
-    "idle": "空闲"
+    "idle": "空闲",
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "resetView": "重置视图"
   },
   "projects": {
     "title": "项目",
@@ -576,7 +582,9 @@
     "clearCompleted": "清除已完成",
     "confirmClearCompleted": "删除所有已完成和失败的任务？",
     "showCompleted": "显示 {count} 个已完成/失败",
-    "hideCompleted": "隐藏已完成"
+    "hideCompleted": "隐藏已完成",
+    "status": "状态",
+    "tagsPlaceholder": "标签1, 标签2, ..."
   },
   "errorBoundary": {
     "title": "出现了问题",
@@ -612,6 +620,11 @@
     "showLess": "收起",
     "messagesCount": "{count} 条",
     "noChannels": "暂无对话频道",
-    "noChannelsHint": "Agent 开始通讯后频道会自动出现"
+    "noChannelsHint": "Agent 开始通讯后频道会自动出现",
+    "typeSpawn": "派生",
+    "typeSend": "发送",
+    "typeComplete": "完成",
+    "typeError": "错误",
+    "typeLog": "日志"
   }
 }

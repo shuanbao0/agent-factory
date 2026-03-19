@@ -1,39 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
-import { resolve, dirname } from 'path'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const STATE_DIR = resolve(PROJECT_ROOT, '.openclaw-state')
-const AUTH_PROFILES_PATH = resolve(STATE_DIR, 'agents/main/agent/auth-profiles.json')
-
-interface AuthProfile {
-  type: string
-  provider: string
-  token: string
-  expiresAt?: number
-}
-
-interface AuthProfiles {
-  version: number
-  profiles: Record<string, AuthProfile>
-  lastGood: Record<string, string>
-  usageStats: Record<string, unknown>
-}
-
-function readProfiles(): AuthProfiles | null {
-  if (!existsSync(AUTH_PROFILES_PATH)) return null
-  try {
-    return JSON.parse(readFileSync(AUTH_PROFILES_PATH, 'utf-8'))
-  } catch {
-    return null
-  }
-}
-
 // GET: return auth profiles (masked tokens)
 export async function GET() {
-  const profiles = readProfiles()
+  const profiles = core.repo.authProfilesRepo.readProfiles()
   if (!profiles) {
     return NextResponse.json({ exists: false, profiles: {} })
   }
@@ -62,7 +34,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const id = profileId || `${provider}:default`
-    let profiles = readProfiles() || { version: 1, profiles: {}, lastGood: {}, usageStats: {} }
+    const profiles = core.repo.authProfilesRepo.readProfiles() || { version: 1, profiles: {}, lastGood: {}, usageStats: {} }
 
     profiles.profiles[id] = {
       type: 'token',
@@ -74,9 +46,7 @@ export async function PUT(req: NextRequest) {
       profiles.usageStats[id] = { lastUsed: 0, errorCount: 0 }
     }
 
-    const dir = dirname(AUTH_PROFILES_PATH)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(AUTH_PROFILES_PATH, JSON.stringify(profiles, null, 2))
+    core.repo.authProfilesRepo.writeProfiles(profiles)
 
     return NextResponse.json({ ok: true })
   } catch (e) {
@@ -88,7 +58,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const { profileId } = await req.json()
-    const profiles = readProfiles()
+    const profiles = core.repo.authProfilesRepo.readProfiles()
     if (!profiles || !profileId) {
       return NextResponse.json({ ok: true })
     }
@@ -102,7 +72,7 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    writeFileSync(AUTH_PROFILES_PATH, JSON.stringify(profiles, null, 2))
+    core.repo.authProfilesRepo.writeProfiles(profiles)
     return NextResponse.json({ ok: true })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })

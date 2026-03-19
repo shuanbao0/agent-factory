@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { gwCallAsync } from '@/lib/gateway-client'
-import { readFileSync, existsSync } from 'fs'
-import { resolve, join } from 'path'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 // Max subagent sessions to fetch chat.history for (parallel)
 const MAX_HISTORY_FETCH = 15
@@ -116,10 +111,9 @@ function buildReverseSpawners(allowMap: Record<string, string[]>): Record<string
 /** Load assignedAgents for a project from .project-meta.json */
 function loadProjectAgents(projectId: string): string[] {
   try {
-    const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
-    if (!existsSync(metaPath)) return []
-    const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    return Array.isArray(meta.assignedAgents) ? meta.assignedAgents : []
+    const meta = core.repo.projectMetaRepo.readMeta(projectId) as Record<string, unknown> | null
+    if (!meta) return []
+    return Array.isArray(meta.assignedAgents) ? meta.assignedAgents as string[] : []
   } catch {
     return []
   }

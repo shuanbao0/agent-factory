@@ -1,33 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs'
+import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { syncSkillSymlinks, findBuiltinSkillsDir } from '@/lib/skill-symlinks'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
 const PROJECT_ROOT = resolve(process.cwd(), '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 const PROJECT_SKILLS_DIR = join(PROJECT_ROOT, 'skills')
 
 interface AgentConfig {
   model?: string
-  skills?: string[]  // enabled skill slugs
+  skills?: string[]
   [key: string]: unknown
-}
-
-function readAgentConfig(agentId: string): AgentConfig {
-  const configPath = join(AGENTS_DIR, agentId, 'agent.json')
-  if (!existsSync(configPath)) return {}
-  try {
-    return JSON.parse(readFileSync(configPath, 'utf-8'))
-  } catch {
-    return {}
-  }
-}
-
-function writeAgentConfig(agentId: string, config: AgentConfig) {
-  const configPath = join(AGENTS_DIR, agentId, 'agent.json')
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n')
 }
 
 interface SkillInfo {
@@ -98,12 +83,11 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const { id } = params
-  const agentDir = join(AGENTS_DIR, id)
-  if (!existsSync(agentDir)) {
+  if (!core.repo.agentMetaRepo.exists(id)) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   }
 
-  const config = readAgentConfig(id)
+  const config = (core.repo.agentMetaRepo.readMeta(id) || {}) as AgentConfig
   const enabledSlugs = new Set(config.skills || [])
   const skills = (await listAllSkills()).map(s => ({
     ...s,
@@ -123,8 +107,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const { id } = params
-  const agentDir = join(AGENTS_DIR, id)
-  if (!existsSync(agentDir)) {
+  if (!core.repo.agentMetaRepo.exists(id)) {
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   }
 
@@ -139,9 +122,9 @@ export async function PUT(
   const allSlugs = new Set((await listAllSkills()).map(s => s.slug))
   const validSlugs = skills.filter(s => allSlugs.has(s))
 
-  const config = readAgentConfig(id)
+  const config = (core.repo.agentMetaRepo.readMeta(id) || {}) as AgentConfig
   config.skills = validSlugs
-  writeAgentConfig(id, config)
+  core.repo.agentMetaRepo.writeMeta(id, config as Record<string, unknown>)
   await syncSkillSymlinks(id, validSlugs)
 
   return NextResponse.json({ skills: validSlugs, synced: true })

@@ -190,7 +190,7 @@ export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
           {/* Status (edit mode only) */}
           {isEdit && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Status</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.status')}</label>
               <select
                 className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 value={status}
@@ -302,7 +302,7 @@ export function TaskForm({ editTask, onClose, onSaved }: TaskFormProps) {
               className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               value={tags}
               onChange={e => setTags(e.target.value)}
-              placeholder="tag1, tag2, ..."
+              placeholder={t('tasks.tagsPlaceholder')}
             />
           </div>
         </div>

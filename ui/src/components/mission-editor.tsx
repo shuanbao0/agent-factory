@@ -123,7 +123,7 @@ function MissionCard({ viewKey, actionKey, titleKey, descKey, filePath, placehol
           {isDirty && (
             <div className="absolute top-2 right-2">
               <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded px-1.5 py-0.5">
-                unsaved
+                {t('common.unsaved')}
               </span>
             </div>
           )}

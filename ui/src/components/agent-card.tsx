@@ -71,7 +71,7 @@ export const AgentCard = React.memo(function AgentCard({ agent, onEdit, onDelete
                   onClick={handleSyncConfig}
                   disabled={syncing}
                   className="p-1 text-muted-foreground hover:text-blue-400 transition-colors"
-                  title="Sync config (AGENTS.md → workspace)"
+                  title={t('agents.syncConfig')}
                 >
                   {syncing
                     ? <Loader2 className="w-3.5 h-3.5 animate-spin" />

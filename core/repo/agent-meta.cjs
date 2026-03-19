@@ -11,7 +11,7 @@
  * 带 30 秒缓存的单例，供 Autopilot 循环高频读取
  */
 const { join } = require('path')
-const { existsSync, readdirSync, writeFileSync, mkdirSync } = require('fs')
+const { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -70,15 +70,30 @@ class AgentMetaRepository extends BaseRepository {
   }
 
   /**
+   * 读取 agents/{agentId}/{filename} 的非 JSON 文件
+   * @param {string} agentId
+   * @param {string} filename
+   * @returns {string|null} 文件内容，不存在返回 null
+   */
+  readAgentFile(agentId, filename) {
+    const filePath = join(AGENTS_DIR, agentId, filename)
+    try {
+      if (existsSync(filePath)) return readFileSync(filePath, 'utf-8')
+    } catch { /* skip */ }
+    return null
+  }
+
+  /**
    * 写入非 JSON 文件到 agents/{agentId}/{filename}
    * @param {string} agentId
    * @param {string} filename
    * @param {string} content
    */
   writeAgentFile(agentId, filename, content) {
-    const dir = join(AGENTS_DIR, agentId)
+    const filePath = join(AGENTS_DIR, agentId, filename)
+    const dir = join(filePath, '..')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, filename), content)
+    writeFileSync(filePath, content)
   }
 
   /**

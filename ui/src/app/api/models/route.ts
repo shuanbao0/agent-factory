@@ -1,29 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs'
-import { resolve } from 'path'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
 import { PROVIDERS } from '@/lib/providers'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
 import type { OpenClawConfig, OpenClawModelEntry, OpenClawProviderConfig } from '@entity/config'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const MODELS_PATH = resolve(PROJECT_ROOT, 'config/models.json')
-const MODELS_DEFAULT_PATH = resolve(PROJECT_ROOT, 'config/models.default.json')
-const OPENCLAW_CONFIG_PATH = resolve(PROJECT_ROOT, 'config/openclaw.json')
-const OPENCLAW_DEFAULT_PATH = resolve(PROJECT_ROOT, 'config/openclaw.default.json')
-const STATE_DIR = resolve(PROJECT_ROOT, '.openclaw-state')
-const AUTH_PROFILES_PATH = resolve(STATE_DIR, 'agents/main/agent/auth-profiles.json')
-
-/** Copy from .default.json template if runtime file doesn't exist */
-function ensureConfigFiles() {
-  if (!existsSync(MODELS_PATH) && existsSync(MODELS_DEFAULT_PATH)) {
-    copyFileSync(MODELS_DEFAULT_PATH, MODELS_PATH)
-  }
-  if (!existsSync(OPENCLAW_CONFIG_PATH) && existsSync(OPENCLAW_DEFAULT_PATH)) {
-    copyFileSync(OPENCLAW_DEFAULT_PATH, OPENCLAW_CONFIG_PATH)
-  }
-}
 
 export const dynamic = 'force-dynamic'
 
@@ -40,15 +20,11 @@ interface ModelsConfig {
 }
 
 function readModels(): ModelsConfig {
-  ensureConfigFiles()
-  if (!existsSync(MODELS_PATH)) {
-    return { providers: {}, default: '' }
-  }
-  return JSON.parse(readFileSync(MODELS_PATH, 'utf-8'))
+  return core.repo.modelsRepo.readModels() as ModelsConfig
 }
 
 async function writeModelsAndSync(config: ModelsConfig) {
-  writeFileSync(MODELS_PATH, JSON.stringify(config, null, 2) + '\n')
+  core.repo.modelsRepo.writeModels(config as unknown as Record<string, unknown>)
   syncOpenClawConfig(config)
   // If Gateway is running, auto-restart to pick up changes
   try {
@@ -175,18 +151,14 @@ function syncOpenClawConfig(modelsConfig: ModelsConfig) {
 }
 
 // Resolve env var references like ${VAR_NAME}
-// Accepts optional envVars map that includes manually parsed .env file values
 function resolveEnvVar(value: string, envVars?: Record<string, string>): string {
-  const env = envVars || (process.env as Record<string, string>)
-  return value.replace(/\$\{(\w+)\}/g, (_, name) => env[name] || '')
+  return core.common.modelsService.resolveEnvVar(value, envVars)
 }
 
 // ── Auth Profiles ──────────────────────────────────────────────
-// Reads the OpenClaw auth-profiles.json to detect Setup Token / OAuth auth
-// per provider. This lets the UI show a unified auth status on each provider card.
 
 interface AuthProfileEntry {
-  type: string       // 'token' | 'oauth' | 'api-key'
+  type: string
   provider: string
   token?: string
   email?: string
@@ -201,16 +173,13 @@ interface AuthProfilesFile {
 }
 
 function readAuthProfiles(): AuthProfilesFile | null {
-  if (!existsSync(AUTH_PROFILES_PATH)) return null
-  try {
-    return JSON.parse(readFileSync(AUTH_PROFILES_PATH, 'utf-8'))
-  } catch { return null }
+  return core.repo.authProfilesRepo.readProfiles() as AuthProfilesFile | null
 }
 
 /** Returns per-provider auth info from auth-profiles.json */
 function getAuthProfilesByProvider(): Record<string, {
   profileId: string
-  type: string          // 'token' | 'oauth'
+  type: string
   hasToken: boolean
   tokenPreview: string
 }> {
@@ -229,29 +198,24 @@ function getAuthProfilesByProvider(): Record<string, {
   return result
 }
 
-/** Determine auth mode for a provider: which method is actually providing credentials.
- *  Priority: auth-profile (token/oauth) > env var > config apiKey template */
+/** Determine auth mode for a provider */
 function resolveAuthMode(
   providerName: string,
   providerConfig: ProviderConfig,
   authProfiles: ReturnType<typeof getAuthProfilesByProvider>,
   envVars: Record<string, string>,
 ): { mode: 'setup-token' | 'oauth' | 'env-var' | 'config' | 'none'; detail?: string } {
-  // 1. Auth profile (highest priority)
   const profile = authProfiles[providerName]
   if (profile?.hasToken) {
     return { mode: profile.type === 'oauth' ? 'oauth' : 'setup-token', detail: profile.tokenPreview }
   }
 
-  // 2. Environment variable (use combined envVars which includes parsed .env file)
   const resolvedKey = resolveEnvVar(providerConfig.apiKey, envVars)
   if (resolvedKey) {
-    // Check if it came from an actual env var (not just a literal in config)
     const envVarMatch = providerConfig.apiKey.match(/\$\{(\w+)\}/)
     if (envVarMatch && envVars[envVarMatch[1]]) {
       return { mode: 'env-var', detail: envVarMatch[1] }
     }
-    // Literal key in config
     return { mode: 'config' }
   }
 
@@ -260,20 +224,9 @@ function resolveAuthMode(
 
 /** Read .env file to check which env vars are set */
 function readEnvFile(): Record<string, string> {
-  const envPath = resolve(PROJECT_ROOT, '.env')
-  const vars: Record<string, string> = {}
-  if (!existsSync(envPath)) return vars
   try {
-    const lines = readFileSync(envPath, 'utf-8').split('\n')
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      const eqIdx = trimmed.indexOf('=')
-      if (eqIdx === -1) continue
-      vars[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim()
-    }
-  } catch (err) { logError('models-api/read-env-file', err) }
-  return vars
+    return core.common.envManager.readEnv()
+  } catch (err) { logError('models-api/read-env-file', err); return {} }
 }
 
 export async function GET() {
@@ -316,10 +269,8 @@ export async function GET() {
         ...v,
         apiKey: v.apiKey,
         hasApiKey: auth.mode !== 'none',
-        // Unified auth info
-        authMode: auth.mode,          // 'setup-token' | 'oauth' | 'env-var' | 'config' | 'none'
-        authDetail: auth.detail,      // e.g. token preview or env var name
-        // Setup token specific
+        authMode: auth.mode,
+        authDetail: auth.detail,
         hasSetupToken: !!profile?.hasToken,
         setupTokenPreview: profile?.tokenPreview || null,
         setupTokenProfileId: profile?.profileId || null,
@@ -331,7 +282,6 @@ export async function GET() {
     providers,
     models,
     default: config.default,
-    // Also return orphan auth profiles (providers with token but not in models.json)
     orphanAuthProfiles: Object.fromEntries(
       Object.entries(authProfiles)
         .filter(([provider]) => !config.providers[provider])
@@ -362,7 +312,6 @@ export async function PUT(req: NextRequest) {
       }
     } else if (body.action === 'deleteProvider' && body.name) {
       delete config.providers[body.name]
-      // If default was from deleted provider, reset
       if (config.default.startsWith(body.name + '/')) {
         const first = Object.entries(config.providers)[0]
         if (first) {

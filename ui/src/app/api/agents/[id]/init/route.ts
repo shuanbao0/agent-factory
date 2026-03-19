@@ -9,15 +9,14 @@
  */
 import { NextRequest } from 'next/server'
 import { spawn } from 'child_process'
-import { resolve, join } from 'path'
-import { existsSync, readFileSync } from 'fs'
+import { resolve } from 'path'
+import { existsSync } from 'fs'
 import { logError } from '@/lib/error-logger'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
 const SCRIPT_PATH = resolve(process.cwd(), 'scripts/gateway-chat.js')
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 const INIT_PROMPT = `你好！请按以下步骤完成初始化，**不需要征求确认，直接执行**：
 
@@ -43,8 +42,7 @@ export async function POST(
   const { id } = params
 
   // Check agent exists
-  const agentDir = join(AGENTS_DIR, id)
-  if (!existsSync(agentDir)) {
+  if (!core.repo.agentMetaRepo.exists(id)) {
     return new Response(
       'event: error\ndata: {"error":"Agent not found"}\n\n',
       { status: 404, headers: { 'Content-Type': 'text/event-stream' } }
@@ -61,10 +59,9 @@ export async function POST(
 
   // Build agent name hint from AGENTS.md
   let agentHint = ''
-  const agentsMdPath = join(agentDir, 'AGENTS.md')
-  if (existsSync(agentsMdPath)) {
-    const content = readFileSync(agentsMdPath, 'utf-8')
-    const match = content.match(/^# AGENTS\.md — (.+)$/m)
+  const agentsMd = core.repo.agentMetaRepo.readAgentFile(id, 'AGENTS.md')
+  if (agentsMd) {
+    const match = agentsMd.match(/^# AGENTS\.md — (.+)$/m)
     if (match) agentHint = ` (你是 ${match[1].trim()})`
   }
 

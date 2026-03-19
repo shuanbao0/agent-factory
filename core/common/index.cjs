@@ -9,4 +9,6 @@ module.exports = {
   projectService: require('./project-service.cjs'),
   fileBrowser: require('./file-browser.cjs'),
   ...require('./skill-utils.cjs'),
+  envManager: require('./env-manager.cjs'),
+  modelsService: require('./models-service.cjs'),
 }

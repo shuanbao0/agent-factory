@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { exec as execCb } from 'child_process'
 import { promisify } from 'util'
 import { resolve } from 'path'
-import { readFileSync } from 'fs'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +10,8 @@ const PROJECT_ROOT = resolve(process.cwd(), '..')
 
 function getInstalledVersion(): string {
   try {
-    const pkg = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf-8'))
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require(resolve(PROJECT_ROOT, 'package.json'))
     return pkg.version || 'unknown'
   } catch {
     return 'unknown'

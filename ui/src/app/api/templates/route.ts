@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readTemplates } from '@/lib/template-meta'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 

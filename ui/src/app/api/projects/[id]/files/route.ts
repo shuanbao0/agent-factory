@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolve } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { decodeProjectId } from '@/lib/utils'
 import core from '@/lib/core-bridge'
 
@@ -67,11 +67,10 @@ export async function GET(
 
       if (agentIds.length === 0) {
         try {
-          const { readdirSync } = require('fs')
           if (existsSync(WORKSPACES_DIR)) {
             agentIds = readdirSync(WORKSPACES_DIR, { withFileTypes: true })
-              .filter((d: { isDirectory: () => boolean; name: string }) => d.isDirectory() && !d.name.startsWith('.'))
-              .map((d: { name: string }) => d.name)
+              .filter(d => d.isDirectory() && !d.name.startsWith('.'))
+              .map(d => d.name)
           }
         } catch { /* ignore */ }
       }

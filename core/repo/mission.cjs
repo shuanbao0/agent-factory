@@ -163,6 +163,30 @@ class MissionRepository extends BaseRepository {
     } catch { /* skip */ }
     return []
   }
+
+  /** Atomic write department directives */
+  writeDeptDirectives(deptId, directives) {
+    const dir = join(DEPARTMENTS_DIR, deptId)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, 'ceo-directives.json')
+    const data = {
+      directives: Array.isArray(directives) ? directives : [directives],
+      updatedAt: new Date().toISOString(),
+    }
+    const tmp = filePath + '.tmp.' + process.pid
+    writeFileSync(tmp, JSON.stringify(data, null, 2))
+    renameSync(tmp, filePath)
+  }
+
+  /** Atomic write department report */
+  writeDeptReport(deptId, content) {
+    const dir = join(DEPARTMENTS_DIR, deptId)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, 'report.md')
+    const tmp = filePath + '.tmp.' + process.pid
+    writeFileSync(tmp, content)
+    renameSync(tmp, filePath)
+  }
 }
 
 const missionRepo = new MissionRepository()

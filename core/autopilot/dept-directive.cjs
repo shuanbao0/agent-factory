@@ -1,8 +1,6 @@
 /**
  * Department Directive — build directives for department heads
  */
-const { join } = require('path')
-const { readFileSync, existsSync } = require('fs')
 const { DEPARTMENTS_DIR, PROJECTS_DIR } = require('./constants.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { taskRepo } = require('../repo/task.cjs')
@@ -24,11 +22,10 @@ function readAgentMeta(agentId) {
  * Read CEO directives for a specific department
  */
 function readCeoDirectives(deptId) {
-  const dirPath = join(DEPARTMENTS_DIR, deptId, 'ceo-directives.json')
-  if (!existsSync(dirPath)) return '(无 CEO 特别指令)'
   try {
-    const data = JSON.parse(readFileSync(dirPath, 'utf-8'))
-    return (data.directives || []).map(d => `- ${d}`).join('\n') || '(无)'
+    const directives = missionRepo.readDeptDirectives(deptId)
+    if (!directives || directives.length === 0) return '(无 CEO 特别指令)'
+    return directives.map(d => `- ${d}`).join('\n') || '(无)'
   } catch (err) {
     logger.debug('dept-directive', `Failed to read CEO directives for ${deptId}`, err)
     return '(读取失败)'
