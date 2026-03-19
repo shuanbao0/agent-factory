@@ -363,7 +363,6 @@ ui/src/
 | `migrate-sync-builtin.mjs` | 同步内置模板到已有 Agent | peers/skills/AGENTS.md 对齐 |
 | `migrate-sync-config.mjs` | 同步部门配置 | `AF_UPDATE_DIR` 支持 + 智能合并 |
 | `migrate-sync-gateway.mjs` | 同步 openclaw.json + models.json | 深度合并，保留用户值 |
-| `migrate-workspaces.mjs` | 迁移产出到 workspaces/ | `--dry-run` 支持 |
 | `patch-openclaw.mjs` | postinstall 自动补丁 | 幂等，版本 >= 2026.4.0 自动跳过 |
 
 ### templates/builtin/ — 内置 Agent 模板
@@ -751,10 +750,6 @@ cd ui && npm run dev
 # 重新注入 base-rules 到所有 Agent（修改 config/base-rules.md 后必须执行）
 node scripts/inject-base-rules.mjs
 
-# 工作空间迁移（将 agents/ 中的产出移到 workspaces/，修正 openclaw.json 路径）
-node scripts/migrate-workspaces.mjs --dry-run   # 预览
-node scripts/migrate-workspaces.mjs             # 执行
-
 # 同步部门配置（update 后自动执行，也可手动运行）
 node scripts/migrate-sync-config.mjs --dry-run   # 预览
 node scripts/migrate-sync-config.mjs             # 同步所有部门
@@ -789,7 +784,7 @@ agent-factory update
 - **Next.js webpack 错误（__webpack_modules__）**：清除缓存 `rm -rf ui/.next && cd ui && npm run dev`
 - **ws 模块类型错误**：已知问题，`gateway-chat.ts` 中的 `ws` import 在 `next build` 类型检查时会报错，不影响运行时（聊天通过独立子进程执行）
 - **Agent 不可用**：确认 Gateway 正在运行，检查 `config/openclaw.json` 中 agents 列表是否包含该 Agent
-- **Agent 产出写错位置**：如果 Agent 把产出写到了 `agents/{id}/` 而非 `workspaces/{id}/`，运行 `node scripts/migrate-workspaces.mjs` 迁移，并确认 base-rules 已注入（`node scripts/inject-base-rules.mjs`）
+- **Agent 产出写错位置**：如果 Agent 把产出写到了 `agents/{id}/` 而非 `workspaces/{id}/`，确认 base-rules 已注入（`node scripts/inject-base-rules.mjs`），工作空间目录在 Agent 创建时由 agent-service 自动创建
 - **MiniMax 模型 chat 无响应（`(no response)`）**：OpenClaw 2026.3.7 的 `enforceFinalTag` 机制会丢弃 MiniMax 输出（MiniMax 不使用 `<final>` 标签）。已通过 `postinstall` 自动补丁修复（`scripts/patch-openclaw.mjs`），`npm install` 时自动应用。上游 PR：https://github.com/openclaw/openclaw/pull/41115 ，待合并发版后补丁脚本会自动跳过
 
 ## 修改 OpenClaw 源码并提交 PR 流程

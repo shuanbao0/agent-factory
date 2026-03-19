@@ -11,13 +11,12 @@
     "gateway": "node scripts/start.mjs --gateway-only",
     "ui": "cd ui && npm run dev",
     "postinstall": "node scripts/patch-openclaw.mjs",
-    "test": "node --test 'shared/**/*.test.cjs' 'tests/core/**/*.test.cjs' 'tests/flows/**/*.test.cjs' 'tests/interfaces/**/*.test.cjs'",
+    "test": "node --test 'tests/core/**/*.test.cjs' 'tests/flows/**/*.test.cjs' 'tests/interfaces/**/*.test.cjs'",
     "test:e2e": "TEST_LLM=1 node --test 'tests/e2e/**/*.test.cjs'",
     "test:unit": "node --test 'tests/core/**/*.test.cjs'",
     "test:interfaces": "node --test 'tests/interfaces/**/*.test.cjs'",
     "test:flows": "node --test 'tests/flows/**/*.test.cjs'",
-    "test:shared": "node --test 'shared/**/*.test.cjs'",
-    "test:all": "TEST_LLM=1 node --test 'shared/**/*.test.cjs' 'tests/**/*.test.cjs'"
+    "test:all": "TEST_LLM=1 node --test 'tests/**/*.test.cjs'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

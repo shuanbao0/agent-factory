@@ -302,7 +302,7 @@ export interface CostsResult {
 export async function fetchCostsData(): Promise<CostsResult> {
   const { createRequire } = await import('module')
   const require = createRequire(import.meta.url)
-  const { getDailySummary } = require('../../../shared/cost-tracker.cjs')
+  const { getDailySummary } = require('../../../core/observe/cost-tracker.cjs')
 
   const summary = getDailySummary(7) as CostsSummaryItem[]
   let totalCost = 0

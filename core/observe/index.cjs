@@ -5,5 +5,8 @@ module.exports = {
   ...require('./budget.cjs'),
   ...require('./kpi.cjs'),
   ...require('./stall-detector.cjs'),
+  ...require('./scheduler.cjs'),
+  ...require('./signal-watcher.cjs'),
+  ...require('./adaptive-timer.cjs'),
   reactors: require('./reactors/index.cjs'),
 }
