@@ -12,6 +12,9 @@ dist/
 config/models.json
 config/openclaw.json
 config/autopilot-state.json
+config/autopilot-costs.jsonl
+config/autopilot-events.jsonl
+config/tasks.json
 
 # Claude Code local memory (session-specific)
 .claude/
