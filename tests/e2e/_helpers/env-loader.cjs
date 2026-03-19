@@ -83,10 +83,21 @@ function getRegisteredAgents() {
   } catch { return [] }
 }
 
+/**
+ * Check if all required agent IDs are registered in openclaw.json.
+ * @param {string[]} requiredIds
+ * @returns {boolean}
+ */
+function hasRegisteredAgents(requiredIds) {
+  const all = getRegisteredAgents()
+  return requiredIds.every(id => all.includes(id))
+}
+
 module.exports = {
   shouldSkip,
   isGatewayRunning,
   getRegisteredAgents,
+  hasRegisteredAgents,
   getGatewayPort,
   parseEnv,
   DEFAULT_MODEL,

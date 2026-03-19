@@ -67,9 +67,32 @@ function cleanupTestProjects(projectIds) {
   }
 }
 
+/**
+ * Snapshot a file's full content for later restore.
+ * @param {string} filePath
+ * @returns {string|null} file content or null if file doesn't exist
+ */
+function snapshotFile(filePath) {
+  try { return readFileSync(filePath, 'utf8') }
+  catch { return null }
+}
+
+/**
+ * Restore a file to previously captured content.
+ * @param {string} filePath
+ * @param {string|null} content
+ */
+function restoreFile(filePath, content) {
+  if (content === null) return
+  try { writeFileSync(filePath, content) }
+  catch { /* ignore */ }
+}
+
 module.exports = {
   snapshotJsonl,
   restoreJsonl,
+  snapshotFile,
+  restoreFile,
   cleanupTestTasks,
   cleanupTestProjects,
   COSTS_FILE,
