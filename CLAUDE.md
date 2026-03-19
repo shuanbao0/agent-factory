@@ -524,6 +524,47 @@ npm run build                  # 生产构建
 npm run lint                   # ESLint 检查
 ```
 
+## 测试
+
+使用 Node.js 内置 `node:test` + `node:assert/strict`，无外部测试框架依赖。
+
+### 测试分层
+
+| 层 | 目录 | 文件数 | 说明 |
+|----|------|--------|------|
+| 单元测试 | `tests/core/` | 54 | mock 隔离，按 core/ 子模块对应（agent/autopilot/common/llm/observe/repo/task） |
+| 接口测试 | `tests/interfaces/` | 21 | 真实文件 I/O，验证 Repository（`repo-*`）+ Service（`svc-*`）层契约 |
+| 流程测试 | `tests/flows/` | 8 | mock Gateway，验证跨模块业务流程（任务生命周期、质量门流水线、预算追踪等） |
+| E2E 测试 | `tests/e2e/` | 7 | 真实 LLM 调用（MiniMax），需 Gateway 运行 + `TEST_LLM=1` |
+
+### 运行命令
+
+```bash
+npm test                      # 单元 + 流程 + 接口（不调 LLM，日常开发用）
+npm run test:unit             # 仅单元测试
+npm run test:interfaces       # 仅接口测试
+npm run test:flows            # 仅流程测试
+npm run test:e2e              # 仅 E2E（需 Gateway 运行 + TEST_LLM=1）
+npm run test:all              # 全部（含 E2E）
+```
+
+### 测试 Helper
+
+| 目录 | 模块 | 用途 |
+|------|------|------|
+| `tests/e2e/_helpers/` | `env-loader.cjs` | Gateway 检测 + API Key 检查 + `shouldSkip()` 优雅跳过 |
+| | `cleanup.cjs` | 测试数据清理（tasks.json 截断、JSONL 截断） |
+| `tests/flows/_helpers/` | `mock-gateway.cjs` | mock sendFn + mock agent activity |
+| | `mock-repos.cjs` | MockConfigRepository、MockTaskRepository 等 stub |
+| | `test-context.cjs` | `createTestContext()` 组装完整测试上下文 |
+
+### 编写规范
+
+- 文件格式：CJS（`.test.cjs`），与 core/ 保持一致
+- 命名约定：`tests/{层}/{模块名}.test.cjs`，接口层用 `repo-*` / `svc-*` 前缀区分 Repository 和 Service
+- E2E 测试必须在顶部调用 `shouldSkip()` 检查环境，无 Gateway 或无 API Key 时优雅跳过
+- 流程测试通过 `_helpers/test-context.cjs` 注入 mock 依赖，不依赖真实 Gateway
+
 ## 端口
 
 | 服务 | 端口 | 说明 |
