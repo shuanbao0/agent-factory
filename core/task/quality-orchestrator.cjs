@@ -9,11 +9,18 @@
  * - 通过注入的 sendFn 与 Agent 通信（不直接依赖 gateway）
  * - 审查者选择策略（专业匹配 → 标签匹配 → 最空闲）
  */
-const { existsSync, statSync, readFileSync } = require('fs')
-const { resolve, join } = require('path')
+const { existsSync, statSync } = require('fs')
+const { resolve } = require('path')
 const { getStrategy } = require('./strategy.cjs')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
+
+// Lazy require to avoid circular dependencies
+let _taskRepo
+function getTaskRepo() {
+  if (!_taskRepo) _taskRepo = require('../repo/task.cjs').taskRepo
+  return _taskRepo
+}
 
 class QualityOrchestrator {
   /**
@@ -21,12 +28,14 @@ class QualityOrchestrator {
    * @param {function} opts.sendFn - (agentId, sessionKey, message, timeoutMs) => Promise<{ok, text, error}>
    * @param {function} [opts.readAgentActivity] - () => {[agentId]: {totalTokens, lastActive, idleMins}}
    * @param {function} [opts.loadDeptConfig] - (deptId) => config object
+   * @param {function} [opts.readTaskOutput] - (task) => string|null
    * @param {object} [opts.logger] - Logger with info/warn/debug/error methods
    */
-  constructor({ sendFn, readAgentActivity, loadDeptConfig, logger }) {
+  constructor({ sendFn, readAgentActivity, loadDeptConfig, readTaskOutput, logger }) {
     this._sendFn = sendFn
     this._readAgentActivity = readAgentActivity || (() => ({}))
     this._loadDeptConfig = loadDeptConfig || (() => null)
+    this._readTaskOutput = readTaskOutput || ((task) => getTaskRepo().readTaskOutput(task))
     this._log = logger || { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} }
   }
 
@@ -170,7 +179,7 @@ class QualityOrchestrator {
         if (stat.size < 500) {
           return { passed: false, score: 0, checklist: [`文件仅 ${stat.size}B，最低要求 500B`], at: new Date().toISOString() }
         }
-        const content = readFileSync(outputPath, 'utf8').slice(0, 5000)
+        const content = (this._readTaskOutput(task) || '').slice(0, 5000)
         if (/\$\{[^}]+\}/.test(content)) {
           return { passed: false, score: 0, checklist: ['含未渲染模板变量 ${...}'], at: new Date().toISOString() }
         }
@@ -179,12 +188,8 @@ class QualityOrchestrator {
 
     let outputContent = ''
     if (task.output) {
-      const outputPath = resolve(PROJECT_ROOT, task.output)
-      try {
-        outputContent = readFileSync(outputPath, 'utf8').slice(0, 5000)
-      } catch {
-        outputContent = `(无法读取: ${task.output})`
-      }
+      const raw = this._readTaskOutput(task)
+      outputContent = raw ? raw.slice(0, 5000) : `(无法读取: ${task.output})`
     }
 
     const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n1. 是否完成了任务要求的所有内容？\n2. 是否有明显的错误或遗漏？\n3. 格式和表述是否规范？\n4. 是否可以交付给下一环节？\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
@@ -215,12 +220,8 @@ class QualityOrchestrator {
   async _requestPeerReview(reviewerId, task) {
     let peerOutputContent = ''
     if (task.output) {
-      const outputPath = resolve(PROJECT_ROOT, task.output)
-      try {
-        peerOutputContent = readFileSync(outputPath, 'utf8').slice(0, 5000)
-      } catch {
-        peerOutputContent = `(无法读取: ${task.output})`
-      }
+      const raw = this._readTaskOutput(task)
+      peerOutputContent = raw ? raw.slice(0, 5000) : `(无法读取: ${task.output})`
     }
 
     const prompt = `请 review 以下任务的产出：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}\n${peerOutputContent ? `产出内容:\n${peerOutputContent}` : '(产出未附带)'}\n\n评审标准：\n1. 完成度 — 是否满足任务要求？\n2. 质量 — 是否有错误或可改进之处？\n3. 一致性 — 是否与项目整体风格一致？\n\n回复格式：\nSCORE: <0-100>\nPASSED: <true/false>\nCOMMENTS: <your review comments>`

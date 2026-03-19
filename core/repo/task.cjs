@@ -200,6 +200,22 @@ class TaskRepository extends BaseRepository {
     return true
   }
 
+  /**
+   * Read the content of a task's output file
+   * @param {object} task - Task with optional output path
+   * @returns {string|null} file content or null if not available
+   */
+  readTaskOutput(task) {
+    if (!task || !task.output) return null
+    const outputPath = resolve(PROJECT_ROOT, task.output)
+    try {
+      if (!existsSync(outputPath)) return null
+      return readFileSync(outputPath, 'utf-8')
+    } catch {
+      return null
+    }
+  }
+
   /** Update a task in-place (finds it wherever it is) */
   updateTaskInPlace(taskId, updates) {
     const standalone = this.readStandaloneTasks()

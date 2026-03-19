@@ -140,6 +140,29 @@ class MissionRepository extends BaseRepository {
     } catch { /* skip */ }
     return null
   }
+
+  /** Read a department's report.md */
+  readDeptReport(deptId) {
+    const reportPath = join(DEPARTMENTS_DIR, deptId, 'report.md')
+    try {
+      if (existsSync(reportPath)) {
+        return readFileSync(reportPath, 'utf-8').slice(0, 2000)
+      }
+    } catch { /* skip */ }
+    return ''
+  }
+
+  /** Read a department's ceo-directives.json */
+  readDeptDirectives(deptId) {
+    const directivesPath = join(DEPARTMENTS_DIR, deptId, 'ceo-directives.json')
+    try {
+      if (existsSync(directivesPath)) {
+        const data = JSON.parse(readFileSync(directivesPath, 'utf-8'))
+        return data.directives || []
+      }
+    } catch { /* skip */ }
+    return []
+  }
 }
 
 const missionRepo = new MissionRepository()

@@ -8,6 +8,7 @@
  */
 const costAlert = require('./cost-alert.cjs')
 const cycleMonitor = require('./cycle-monitor.cjs')
+const alertBridge = require('./alert-bridge.cjs')
 
 /**
  * 注册所有 Reactor 到指定的 EventBus
@@ -19,6 +20,11 @@ const cycleMonitor = require('./cycle-monitor.cjs')
 function registerAll(bus, opts = {}) {
   costAlert.register(bus, { dailyThreshold: opts.costThreshold })
   cycleMonitor.register(bus)
+  alertBridge.register(bus)
 }
 
-module.exports = { registerAll }
+module.exports = {
+  registerAll,
+  getAlerts: alertBridge.getAlerts,
+  dismissAlert: alertBridge.dismissAlert,
+}

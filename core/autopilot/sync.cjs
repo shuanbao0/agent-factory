@@ -6,6 +6,7 @@ const { join } = require('path')
 const { PROJECTS_DIR, CEO_WORKSPACE, PROJECT_ROOT } = require('./constants.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
+const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -26,11 +27,9 @@ function syncProjects(ceoResponseText) {
       .filter(d => d.isDirectory())
 
     for (const dir of dirs) {
-      const metaPath = join(PROJECTS_DIR, dir.name, '.project-meta.json')
-      if (!existsSync(metaPath)) continue
-
       try {
-        const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
+        const meta = projectMetaRepo.readMeta(dir.name)
+        if (!meta) continue
 
         let phase = meta.currentPhase || 1
         let status = meta.status || 'planning'
@@ -101,7 +100,7 @@ function syncProjects(ceoResponseText) {
         meta.blockers = blockers
         meta.updatedAt = new Date().toISOString()
 
-        writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
+        projectMetaRepo.writeMeta(dir.name, meta)
         logger.info('sync', `Synced project: ${dir.name} (phase ${phase}, ${status}, ${blockers.length} blockers)`)
       } catch (err) {
         logger.error('sync', `Failed to sync project ${dir.name}`, err)

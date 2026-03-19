@@ -6,4 +6,5 @@ module.exports = {
   ...require('./quality-validator.cjs'),
   ...require('./quality-orchestrator.cjs'),
   ...require('./auto-transition.cjs'),
+  ...require('./task-cleanup.cjs'),
 }

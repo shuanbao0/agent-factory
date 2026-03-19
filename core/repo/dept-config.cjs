@@ -13,6 +13,7 @@
  * - deptConfigRepoNoCache — 无缓存，供 API 路由并发写入（需要每次读到最新数据）
  */
 const { join } = require('path')
+const { existsSync, readdirSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -56,6 +57,17 @@ class DeptConfigRepository extends BaseRepository {
    */
   configPath(deptId) {
     return join(DEPARTMENTS_DIR, deptId, 'config.json')
+  }
+
+  /**
+   * 扫描 config/departments/ 返回所有部门 ID
+   * @returns {string[]}
+   */
+  listDeptIds() {
+    if (!existsSync(DEPARTMENTS_DIR)) return []
+    return readdirSync(DEPARTMENTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
   }
 }
 

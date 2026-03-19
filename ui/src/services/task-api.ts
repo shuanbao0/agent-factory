@@ -130,6 +130,51 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
   return { task, ok: true }
 }
 
+// ── Shared completion workflow ────────────────────────────────────
+
+function applyCompletionWorkflow(
+  currentTask: Task,
+  updates: Record<string, unknown>,
+  persistFn: (merged: Task) => void,
+): UpdateTaskResult {
+  const mergedTask = { ...currentTask, ...updates } as Task
+  const workflow = getWorkflowForTask(mergedTask)
+  const gate = checkQualityGate(mergedTask, workflow)
+
+  if (!gate.passed) {
+    if (gate.escalate) {
+      updates.status = 'failed'
+      updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
+      const merged = { ...currentTask, ...updates } as Task
+      if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
+      persistFn(merged)
+      return { task: merged, qualityGate: gate, ok: true }
+    }
+    if (gate.shouldRework) {
+      updates.status = 'rework'
+      updates.validationErrors = gate.errors
+      delete updates.completedAt
+      const merged = { ...currentTask, ...updates } as Task
+      if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
+      persistFn(merged)
+      const reworkTask = createReworkTask(merged, gate.errors)
+      persistNewTask(reworkTask)
+      return { task: merged, reworkTask, qualityGate: gate, ok: true }
+    }
+    return { error: 'Quality gate failed', qualityGate: gate, status: 422 }
+  }
+
+  // Quality passed
+  const merged = { ...currentTask, ...updates } as Task
+  if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
+  persistFn(merged)
+
+  const pipelineTask = createPipelineTask(merged, workflow)
+  if (pipelineTask) persistNewTask(pipelineTask)
+
+  return { task: merged, pipelineTask, ok: true }
+}
+
 // ── updateTask ───────────────────────────────────────────────────
 
 export function updateTask(id: string, updates: Record<string, unknown>): UpdateTaskResult {
@@ -147,47 +192,10 @@ export function updateTask(id: string, updates: Record<string, unknown>): Update
     const currentTask = standalone[sIdx]
 
     if (updates.status === 'completed') {
-      const mergedTask = { ...currentTask, ...updates } as Task
-      const workflow = getWorkflowForTask(mergedTask)
-      const gate = checkQualityGate(mergedTask, workflow)
-
-      if (!gate.passed) {
-        if (gate.escalate) {
-          updates.status = 'failed'
-          updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
-          const merged = { ...currentTask, ...updates }
-          if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
-          standalone[sIdx] = merged as Task
-          writeStandaloneTasks(standalone)
-          return { task: merged as Task, qualityGate: gate, ok: true }
-        }
-        if (gate.shouldRework) {
-          updates.status = 'rework'
-          updates.validationErrors = gate.errors
-          delete updates.completedAt
-          const merged = { ...currentTask, ...updates }
-          if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
-          standalone[sIdx] = merged as Task
-          writeStandaloneTasks(standalone)
-          const reworkTask = createReworkTask(merged as Task, gate.errors)
-          persistNewTask(reworkTask)
-          return { task: merged as Task, reworkTask, qualityGate: gate, ok: true }
-        }
-        return { error: 'Quality gate failed', qualityGate: gate, status: 422 }
-      }
-
-      // Quality passed
-      const merged = { ...currentTask, ...updates }
-      if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
-      standalone[sIdx] = merged as Task
-      writeStandaloneTasks(standalone)
-
-      const pipelineTask = createPipelineTask(merged as Task, workflow)
-      if (pipelineTask) {
-        persistNewTask(pipelineTask)
-      }
-
-      return { task: merged as Task, pipelineTask, ok: true }
+      return applyCompletionWorkflow(currentTask, updates, (merged) => {
+        standalone[sIdx] = merged
+        writeStandaloneTasks(standalone)
+      })
     }
 
     // Non-completion update
@@ -203,48 +211,15 @@ export function updateTask(id: string, updates: Record<string, unknown>): Update
   const pt = projectTasks.find(t => t.id === id)
   if (pt && pt.projectId) {
     if (updates.status === 'completed') {
-      const mergedTask = { ...pt, ...updates } as Task
-      const workflow = getWorkflowForTask(mergedTask)
-      const gate = checkQualityGate(mergedTask, workflow)
-
-      if (!gate.passed) {
-        if (gate.escalate) {
-          updates.status = 'failed'
-          updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
-          updateProjectTask(pt.projectId, id, updates)
-          const merged = { ...pt, ...updates }
-          return { task: merged as Task, qualityGate: gate, ok: true }
-        }
-        if (gate.shouldRework) {
-          updates.status = 'rework'
-          updates.validationErrors = gate.errors
-          delete updates.completedAt
-          updateProjectTask(pt.projectId, id, updates)
-          const merged = { ...pt, ...updates }
-          const reworkTask = createReworkTask(merged as Task, gate.errors)
-          persistNewTask(reworkTask)
-          return { task: merged as Task, reworkTask, qualityGate: gate, ok: true }
-        }
-        return { error: 'Quality gate failed', qualityGate: gate, status: 422 }
-      }
-
-      // Quality passed
-      const success = updateProjectTask(pt.projectId, id, updates)
-      if (success) {
-        const merged = { ...pt, ...updates }
-        const pipelineTask = createPipelineTask(merged as Task, workflow)
-        if (pipelineTask) {
-          persistNewTask(pipelineTask)
-        }
-        return { task: merged as Task, pipelineTask, ok: true }
-      }
-    } else {
-      // Non-completion update
-      const success = updateProjectTask(pt.projectId, id, updates)
-      if (success) {
-        const merged = { ...pt, ...updates }
-        return { task: merged as Task, ok: true }
-      }
+      return applyCompletionWorkflow(pt, updates, (merged) => {
+        updateProjectTask(pt.projectId!, id, merged)
+      })
+    }
+    // Non-completion update
+    const success = updateProjectTask(pt.projectId, id, updates)
+    if (success) {
+      const merged = { ...pt, ...updates }
+      return { task: merged as Task, ok: true }
     }
   }
 

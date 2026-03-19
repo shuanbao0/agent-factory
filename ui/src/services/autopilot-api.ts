@@ -1,5 +1,4 @@
 import { spawn } from 'child_process'
-import { readFileSync, existsSync, readdirSync } from 'fs'
 import { resolve, join } from 'path'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
@@ -11,8 +10,6 @@ import type { DepartmentConfig } from '@/lib/types'
 const PROJECT_ROOT = resolve(process.cwd(), '..')
 const AUTOPILOT_SCRIPT = join(PROJECT_ROOT, 'scripts/autopilot/index.cjs')
 const DEPT_LOOP_SCRIPT = join(PROJECT_ROOT, 'scripts/autopilot/department-loop.cjs')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config/departments')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 // --- Types ---
 
@@ -42,33 +39,23 @@ function isProcessRunning(pid: number): boolean {
 
 function loadDepartments(): DeptInfo[] {
   const results: DeptInfo[] = []
-  if (!existsSync(DEPARTMENTS_DIR)) return results
   try {
-    const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
-    for (const dir of dirs) {
-      const config = core.repo.deptConfigRepo.load(dir.name)
+    const deptIds = core.repo.deptConfigRepo.listDeptIds()
+    for (const deptId of deptIds) {
+      const config = core.repo.deptConfigRepo.load(deptId)
       if (!config) continue
       try {
-        const state = core.repo.deptStateRepo.load(dir.name)
-        const reportPath = join(DEPARTMENTS_DIR, dir.name, 'report.md')
-        const directivesPath = join(DEPARTMENTS_DIR, dir.name, 'ceo-directives.json')
+        const state = core.repo.deptStateRepo.load(deptId)
         let report = ''
         let directives: string[] = []
         let mission = ''
-        if (existsSync(reportPath)) {
-          try { report = readFileSync(reportPath, 'utf-8').slice(0, 2000) } catch (err) { logError('autopilot/load-dept-report', err) }
-        }
-        if (existsSync(directivesPath)) {
-          try {
-            const data = JSON.parse(readFileSync(directivesPath, 'utf-8'))
-            directives = data.directives || []
-          } catch (err) { logError('autopilot/load-dept-directives', err) }
-        }
-        try { mission = core.repo.missionRepo.readDeptMission(dir.name).slice(0, 3000) } catch { /* skip */ }
-        const headExists = config.head ? existsSync(join(AGENTS_DIR, config.head)) : false
+        try { report = core.repo.missionRepo.readDeptReport(deptId) } catch (err) { logError('autopilot/load-dept-report', err) }
+        try { directives = core.repo.missionRepo.readDeptDirectives(deptId) } catch (err) { logError('autopilot/load-dept-directives', err) }
+        try { mission = core.repo.missionRepo.readDeptMission(deptId).slice(0, 3000) } catch { /* skip */ }
+        const headExists = config.head ? core.repo.agentMetaRepo.exists(config.head) : false
         results.push({
-          id: config.id || dir.name,
-          name: config.name || dir.name,
+          id: config.id || deptId,
+          name: config.name || deptId,
           emoji: (config as DepartmentConfig & { emoji?: string }).emoji || '',
           head: config.head || '',
           enabled: config.enabled || false,
@@ -168,11 +155,11 @@ export async function stopAutopilot(): Promise<ServiceResult> {
     }
   }
   // In all mode, also stop all department child processes
-  if (state.mode === 'all' && existsSync(DEPARTMENTS_DIR)) {
+  if (state.mode === 'all') {
     try {
-      const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
-      for (const dir of dirs) {
-        const deptState = core.repo.deptStateRepo.load(dir.name)
+      const deptIds = core.repo.deptConfigRepo.listDeptIds()
+      for (const deptId of deptIds) {
+        const deptState = core.repo.deptStateRepo.load(deptId)
         if (typeof deptState.pid === 'number' && deptState.pid && isProcessRunning(deptState.pid)) {
           try { process.kill(deptState.pid, 'SIGTERM') } catch (err) { logError('autopilot/stop-dept-sigterm', err) }
           await new Promise(r => setTimeout(r, 500))
@@ -182,7 +169,7 @@ export async function stopAutopilot(): Promise<ServiceResult> {
         }
         deptState.status = 'stopped'
         deptState.pid = null
-        core.repo.deptStateRepo.save(dir.name, deptState)
+        core.repo.deptStateRepo.save(deptId, deptState)
       }
     } catch (err) { logError('autopilot/stop-all-depts', err) }
   }
@@ -250,7 +237,7 @@ export function startDeptLoop(deptId: string, interval?: number): ServiceResult 
   // Check head agent exists
   const deptConfig = core.repo.deptConfigRepo.load(deptId)
   if (deptConfig) {
-    if (deptConfig.head && !existsSync(join(AGENTS_DIR, deptConfig.head))) {
+    if (deptConfig.head && !core.repo.agentMetaRepo.exists(deptConfig.head)) {
       return { ok: false, error: `部门主管 ${deptConfig.head} 尚未创建，请先创建该智能体`, status: 400 }
     }
   }
@@ -290,7 +277,7 @@ export function runDeptCycle(deptId: string): ServiceResult {
   // Check head agent exists
   const deptConfig = core.repo.deptConfigRepo.load(deptId)
   if (deptConfig) {
-    if (deptConfig.head && !existsSync(join(AGENTS_DIR, deptConfig.head))) {
+    if (deptConfig.head && !core.repo.agentMetaRepo.exists(deptConfig.head)) {
       return { ok: false, error: `部门主管 ${deptConfig.head} 尚未创建，请先创建该智能体`, status: 400 }
     }
   }

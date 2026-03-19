@@ -1,12 +1,8 @@
 /**
- * Department Metadata — reads/writes config/departments.json
+ * Department Metadata — facade over core/repo/dept-registry
  */
-import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { join, resolve } from 'path'
+import core from '@/lib/core-bridge'
 import type { Department } from './types'
-
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const DEPARTMENTS_FILE = join(PROJECT_ROOT, 'config/departments.json')
 
 export function getDefaultDepartments(): Department[] {
   return [
@@ -44,17 +40,9 @@ export function getDefaultDepartments(): Department[] {
 }
 
 export function readDepartments(): Department[] {
-  if (!existsSync(DEPARTMENTS_FILE)) {
-    return getDefaultDepartments()
-  }
-  try {
-    const data = JSON.parse(readFileSync(DEPARTMENTS_FILE, 'utf-8'))
-    return data.departments || getDefaultDepartments()
-  } catch {
-    return getDefaultDepartments()
-  }
+  return core.repo.deptRegistryRepo.readAll() as Department[]
 }
 
 export function writeDepartments(departments: Department[]): void {
-  writeFileSync(DEPARTMENTS_FILE, JSON.stringify({ departments }, null, 2) + '\n')
+  core.repo.deptRegistryRepo.writeAll(departments)
 }

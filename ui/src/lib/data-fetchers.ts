@@ -4,16 +4,12 @@
  * as the original API JSON responses.
  */
 import { gwCallAsync } from '@/lib/gateway-client'
-import { existsSync, readFileSync, readdirSync } from 'fs'
-import { join, resolve } from 'path'
 import core from '@/lib/core-bridge'
 import type { Task } from '@entity/task'
 import type { AgentMeta } from '@entity/agent'
 import type { CostEntry, CompanyBudget } from '@entity/observe'
 import type { AgentConfigEntry } from '@entity/agent'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 const BUSY_THRESHOLD_MS = 300_000
 
 // ── Health ───────────────────────────────────────────────────────
@@ -80,20 +76,15 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
     if (ap.status === 'cycling') busyAgentIds.add('ceo')
   } catch { /* ignore */ }
 
-  // Read agent instance metadata from agents/ directory
+  // Read agent instance metadata via repo
   const agentInstances = new Map<string, AgentMeta>()
-  if (existsSync(AGENTS_DIR)) {
-    for (const entry of readdirSync(AGENTS_DIR, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      const agentJsonPath = join(AGENTS_DIR, entry.name, 'agent.json')
-      if (existsSync(agentJsonPath)) {
-        try {
-          const data = JSON.parse(readFileSync(agentJsonPath, 'utf-8')) as AgentMeta
-          agentInstances.set(entry.name, data)
-        } catch { /* ignore */ }
-      }
+  try {
+    const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
+    for (const id of agentIds) {
+      const meta = core.repo.agentMetaRepo.readMeta(id)
+      if (meta) agentInstances.set(id, meta as AgentMeta)
     }
-  }
+  } catch { /* ignore */ }
 
   const agents: AgentItem[] = result.agents.map(a => {
     const instance = agentInstances.get(a.id)
@@ -448,13 +439,16 @@ export interface AlertsResult {
 }
 
 export async function fetchAlertsData(): Promise<AlertsResult> {
-  const alertsFile = join(PROJECT_ROOT, 'config', 'alerts.json')
   let alerts: AlertItem[] = []
   try {
-    if (existsSync(alertsFile)) {
-      const data = JSON.parse(readFileSync(alertsFile, 'utf-8'))
-      alerts = Array.isArray(data) ? data : (data.alerts || [])
-    }
+    const raw = core.observe.reactors.getAlerts()
+    alerts = raw.map((a) => ({
+      id: a.id,
+      type: a.type,
+      message: a.data?.reason as string || `${a.type} alert`,
+      timestamp: a.ts,
+      severity: a.severity as 'info' | 'warn' | 'error',
+    }))
   } catch { /* skip */ }
   return { alerts, source: 'filesystem' }
 }
@@ -489,13 +483,9 @@ export interface AutopilotDeptsResult {
 }
 
 export async function fetchAutopilotDeptsData(): Promise<AutopilotDeptsResult> {
-  const deptsFile = join(PROJECT_ROOT, 'config', 'departments.json')
   let departments: Record<string, unknown>[] = []
   try {
-    if (existsSync(deptsFile)) {
-      const data = JSON.parse(readFileSync(deptsFile, 'utf-8'))
-      departments = Array.isArray(data) ? data : (data.departments || [])
-    }
+    departments = core.repo.deptRegistryRepo.readAll()
   } catch { /* skip */ }
   return { departments, source: 'filesystem' }
 }

@@ -35,6 +35,7 @@ export default _core as {
       updateProjectTask(projectId: string, taskId: string, updates: Partial<Task>): boolean
       deleteProjectTask(projectId: string, taskId: string): boolean
       updateTaskInPlace(taskId: string, updates: Partial<Task>): Task | null
+      readTaskOutput(task: Task): string | null
     }
     configRepo: {
       getConfig(): OpenClawConfig
@@ -47,14 +48,21 @@ export default _core as {
       load(deptId: string): DepartmentConfig | null
       save(deptId: string, config: DepartmentConfig): void
       updateConfig(deptId: string, mutator: (config: DepartmentConfig) => DepartmentConfig): void
+      listDeptIds(): string[]
     }
     deptStateRepo: {
       load(deptId: string): DepartmentLoopState
       save(deptId: string, state: DepartmentLoopState): void
     }
     agentMetaRepo: {
-      load(agentId: string): AgentMeta | null
-      save(agentId: string, meta: AgentMeta): void
+      readMeta(agentId: string): AgentMeta | null
+      writeMeta(agentId: string, meta: AgentMeta): void
+      updateMeta(agentId: string, mutator: (meta: AgentMeta) => AgentMeta): AgentMeta
+      listAllAgentIds(): string[]
+      exists(agentId: string): boolean
+      writeAgentFile(agentId: string, filename: string, content: string): void
+      listAgentsByDepartment(deptId: string): string[]
+      clearDepartment(deptId: string): number
     }
     missionRepo: {
       readMission(): string
@@ -63,6 +71,13 @@ export default _core as {
       writeMission(content: string): void
       writeBaseMission(content: string): void
       writeDeptMission(deptId: string, content: string): void
+      readDeptReport(deptId: string): string
+      readDeptDirectives(deptId: string): string[]
+    }
+    deptRegistryRepo: {
+      readAll(): Array<{ id: string; name: string; nameEn: string; emoji: string; order: number; floorColor: Record<string, number>; furniture: Array<{ type: string; count: number }> }>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      writeAll(departments: any[]): void
     }
     projectMetaRepo: {
       readMeta(projectId: string): ProjectMeta | null
@@ -70,6 +85,9 @@ export default _core as {
       updateMeta(projectId: string, mutator: (meta: ProjectMeta) => ProjectMeta): ProjectMeta
       readAll(): Array<{ projectId: string; meta: ProjectMeta }>
       deleteProject(projectId: string): void
+    }
+    sessionRepo: {
+      fetchSessionTokens(): { all: number; byAgent: Record<string, number> }
     }
     readTemplate(id: string): { id: string; name: string; description: string; emoji: string; category: string; group?: string; hidden?: boolean; hasIdentityFiles: boolean; defaults: { model: string; skills: string[]; peers: string[] } } | null
     getTemplateDir(id: string): string | null
@@ -81,6 +99,8 @@ export default _core as {
     }
     createPipelineTask(completedTask: Task, pipelineStep: PipelineStep | null, taskTypes?: TaskTypeDefinition[]): Task | null
     createReworkTask(task: Task, errors: string[]): Task
+    deleteBatch(statuses: string[], olderThanDays?: number): { deleted: number }
+    cleanupReworks(): { deletedDuplicates: number; closedOrphans: number; total: number }
   }
   observe: {
     getBudgetSummary(): {
@@ -96,6 +116,11 @@ export default _core as {
       totalOutputTokens: number
     }
     getDailySummary(days?: number): DailyCostSummary[]
+    reactors: {
+      registerAll(bus: unknown, opts?: Record<string, unknown>): void
+      getAlerts(): Array<{ id: string; type: string; severity: string; ts: string; data: Record<string, unknown> }>
+      dismissAlert(alertId: string): void
+    }
   }
   common: {
     loadState(): AutopilotState
@@ -106,5 +131,23 @@ export default _core as {
       updateAgent(body: Record<string, unknown>, hooks?: Record<string, Function>): Promise<{ ok: boolean; error?: string; status?: number }>
       deleteAgent(id: string): Promise<{ ok: boolean; archivedTo: string | null }>
     }
+    departmentService: {
+      createDepartment(body: Record<string, unknown>): { ok: boolean; id?: string; error?: string; status?: number }
+      updateDepartment(id: string, updates: Record<string, unknown>): { ok: boolean; error?: string; status?: number }
+      deleteDepartment(id: string): { ok: boolean; clearedAgents?: number; error?: string; status?: number }
+    }
+    projectService: {
+      listProjects(): Array<Record<string, unknown>>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      createProject(body: Record<string, unknown>, workflow: any): { ok: boolean; project?: Record<string, unknown>; error?: string; status?: number }
+    }
+    fileBrowser: {
+      listDirectory(baseDir: string, subDir: string): Record<string, unknown>
+      getFileContent(baseDir: string, filePath: string, maxSize?: number): Record<string, unknown>
+      listAgentWorkspaces(workspacesDir: string, agentIds: string[]): Array<{ agentId: string; fileCount: number; totalSize: number }>
+      countDirStats(dir: string, maxDepth?: number): { count: number; size: number }
+    }
+    parseSkillMeta(content: string): { name: string; description: string; bins: string[] }
+    generateToolsMd(agentId: string, skills: string[], agentDir: string): string
   }
 }

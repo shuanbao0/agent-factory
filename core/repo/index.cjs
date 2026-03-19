@@ -4,6 +4,7 @@ module.exports = {
   ...require('./config.cjs'),
   ...require('./dept-state.cjs'),
   ...require('./dept-config.cjs'),
+  ...require('./dept-registry.cjs'),
   ...require('./project-meta.cjs'),
   ...require('./agent-meta.cjs'),
   ...require('./session.cjs'),
