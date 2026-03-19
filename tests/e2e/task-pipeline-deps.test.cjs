@@ -241,7 +241,7 @@ describe('Task Pipeline & Dependencies — Novel Workflow', { timeout: 180_000 }
 
     const result = await sendToAgent(
       'novel-writer',
-      'agent:novel-writer:e2e-pipeline',
+      `agent:novel-writer:e2e-pipeline-${Date.now()}`,
       '请写一段500字左右的玄幻小说章节开头。要求：有场景描写和人物对话。不要写"全书完"、"终章"等结尾性词语。直接输出正文。',
       120000
     )

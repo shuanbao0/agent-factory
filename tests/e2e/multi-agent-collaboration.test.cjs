@@ -118,7 +118,7 @@ describe('Multi-Agent Department Collaboration — Novel Department', { timeout:
 - 无
 \`\`\``
 
-    const result = await sendToAgent('novel-chief', 'agent:novel-chief:e2e-collab', prompt, 90000)
+    const result = await sendToAgent('novel-chief', `agent:novel-chief:e2e-collab-${Date.now()}`, prompt, 90000)
     assert.ok(result.ok, `sendToAgent should succeed: ${result.error || ''}`)
     assert.ok(result.text.length > 50, 'response should have content')
 
@@ -162,7 +162,7 @@ describe('Multi-Agent Department Collaboration — Novel Department', { timeout:
 
     const results = await Promise.all(
       prompts.map(p =>
-        sendToAgent(p.agent, `agent:${p.agent}:e2e-concurrent`, p.msg, 90000)
+        sendToAgent(p.agent, `agent:${p.agent}:e2e-concurrent-${Date.now()}`, p.msg, 90000)
       )
     )
 
@@ -190,7 +190,7 @@ describe('Multi-Agent Department Collaboration — Novel Department', { timeout:
 
 请基于以上世界观，用200字写一段开场描写，必须包含"天玄大陆"和"天柱山"。直接输出正文。`
 
-    const result = await sendToAgent('novel-writer', 'agent:novel-writer:e2e-cross-ctx', prompt, 90000)
+    const result = await sendToAgent('novel-writer', `agent:novel-writer:e2e-cross-ctx-${Date.now()}`, prompt, 90000)
     assert.ok(result.ok, `sendToAgent should succeed: ${result.error || ''}`)
     assert.ok(result.text.length > 50, 'should produce substantial response')
   })
