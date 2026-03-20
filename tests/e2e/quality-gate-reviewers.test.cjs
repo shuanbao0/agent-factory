@@ -34,7 +34,7 @@ const SAMPLE_OUTPUT = [
 
 const NOVEL_DEPT_STATE_FILE = join(ROOT, 'config', 'departments', 'novel', 'state.json')
 
-// Preferred reviewers for writing tasks (from strategy.cjs)
+// Preferred reviewers for writing tasks — now set via dept config override (strategy.cjs has empty defaults)
 const WRITING_PREFERRED = ['reader-analyst', 'style-editor', 'continuity-mgr']
 
 describe('Quality Gate — Real Reviewer Selection (Novel Department)', { timeout: 300_000 }, () => {

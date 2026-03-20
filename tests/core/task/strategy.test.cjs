@@ -10,20 +10,19 @@ describe('TaskStrategy', () => {
     assert.equal(s.staleThresholdMins, 120)
     assert.equal(s.minPassingScore, 70)
     assert.ok(Array.isArray(s.preferredReviewers))
-    assert.ok(s.preferredReviewers.includes('reader-analyst'))
   })
 
   it('returns _fallback for unknown type', () => {
     const s = getStrategy('unknown-type')
-    assert.equal(s.idleThresholdMins, 8)
-    assert.equal(s.staleThresholdMins, 30)
+    assert.equal(s.idleThresholdMins, 20)
+    assert.equal(s.staleThresholdMins, 45)
     assert.equal(s.minPassingScore, 60)
   })
 
   it('returns _fallback for null/undefined type', () => {
-    assert.equal(getStrategy(null).idleThresholdMins, 8)
-    assert.equal(getStrategy(undefined).idleThresholdMins, 8)
-    assert.equal(getStrategy('').idleThresholdMins, 8)
+    assert.equal(getStrategy(null).idleThresholdMins, 20)
+    assert.equal(getStrategy(undefined).idleThresholdMins, 20)
+    assert.equal(getStrategy('').idleThresholdMins, 20)
   })
 
   it('department config partial override merges with builtin', () => {
@@ -38,7 +37,7 @@ describe('TaskStrategy', () => {
     assert.equal(s.idleThresholdMins, 90)        // overridden
     assert.equal(s.staleThresholdMins, 120)       // from builtin
     assert.equal(s.minPassingScore, 70)            // from builtin
-    assert.deepEqual(s.preferredReviewers, ['reader-analyst', 'style-editor', 'continuity-mgr'])
+    assert.deepEqual(s.preferredReviewers, [])  // builtin has empty, dept can override
   })
 
   it('department config full override replaces all fields', () => {
@@ -80,5 +79,14 @@ describe('TaskStrategy', () => {
   it('works with no deptConfig', () => {
     const s = getStrategy('coding', undefined)
     assert.equal(s.idleThresholdMins, 20)
+  })
+
+  it('returns strategy for new universal types', () => {
+    for (const type of ['design', 'marketing', 'tutorial', 'operations', 'finance', 'review']) {
+      const s = getStrategy(type)
+      assert.ok(s.idleThresholdMins > 0, `${type} should have idleThresholdMins`)
+      assert.ok(s.minPassingScore >= 60, `${type} should have minPassingScore >= 60`)
+      assert.ok(Array.isArray(s.preferredReviewers), `${type} should have preferredReviewers array`)
+    }
   })
 })
