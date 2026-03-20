@@ -25,6 +25,7 @@ const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } =
 const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { buildTaskContext } = require('./task-prompt.cjs')
+const { inferTaskType } = require('../task/type-inference.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const logger = require('./logger.cjs')
 
@@ -510,14 +511,17 @@ async function runDepartmentCycle(deptId) {
           return true
         })
         const taskPromises = uniqueAssignments.map(({ agentId, summary, projectId: assignmentProjectId }) => {
+          // Infer task type from summary keywords + agent role
+          const agentMeta = agentMetaRepo.readMeta(agentId)
+          const taskType = inferTaskType(summary, agentMeta)
           let description
           try {
-            description = buildTaskContext(agentId, summary, { deptId, deptConfig: config, taskType: 'dept-work' })
+            description = buildTaskContext(agentId, summary, { deptId, deptConfig: config, taskType })
           } catch (e) {
             logger.debug('dept-loop', `buildTaskContext failed for ${agentId}, using summary only`, e)
           }
           const projectId = assignmentProjectId || getDefaultProjectForDept(deptId)
-          return createWorkTask(agentId, summary, deptId, { type: 'dept-work', description, projectId })
+          return createWorkTask(agentId, summary, deptId, { type: taskType, description, projectId })
             .then(taskId => ({ agentId, taskId }))
         })
         const settled = await Promise.allSettled(taskPromises)
