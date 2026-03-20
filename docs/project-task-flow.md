@@ -1,6 +1,8 @@
 # 多 Agent 条件下 Project 与 Task 完整流程
 
 > 基于 Agent Factory v0.4.49，涵盖项目标准 + 任务标准体系。
+>
+> **本文档描述的是适用于所有部门的通用流程。** 无论是技术部门（coding/analysis）、创作部门（writing/worldbuilding/character/plotting/editing）、研究部门（research/analysis）还是其他任何部门，项目创建、任务分发、质量门评审的流程和机制完全一致——差异仅在于 `task.type` 驱动的标准内容不同。
 
 ## 目录
 
@@ -56,11 +58,15 @@ CEO 协调周期 (30min)
   └─ buildDepartmentDirective()
      └─ buildDeptProjects() — 展示项目列表时读取 project-standards.md
         → 每个项目显示: 名称 | 状态 | 任务数 | 当前阶段 | 出口条件
-        例:
-        - novel/default — 长篇小说 | 状态: active | 任务: 2进行/5总 | 阶段: 开发
+        例（不同部门）:
+        - tech/api-gateway — API 网关重构 | 状态: active | 任务: 3进行/8总 | 阶段: 开发
           出口条件: 核心功能已实现，代码可运行，基本自测通过
+        - novel/volume-1 — 长篇小说第一卷 | 状态: active | 任务: 2进行/5总 | 阶段: 需求
+          出口条件: 需求文档完成，所有关键需求已确认，验收标准已定义
+        - research/market-q1 — Q1 市场分析 | 状态: planning | 任务: 0进行/3总 | 阶段: 设计
+          出口条件: 设计方案已确定，技术选型完成，接口/结构已定义
 
-Chief 看到出口条件 → 判断是否达标 → 达标则向 CEO 汇报推进
+Chief 看到出口条件 → 判断当前阶段是否达标 → 达标则向 CEO 汇报推进
 ```
 
 ### 1.3 项目标准的来源与注入
@@ -96,12 +102,21 @@ department-loop.cjs parseTaskAssignments()
        ├─ buildTaskContext(agentId, summary, options)
        │     生成 enriched description:
        │     ├─ Chief 原始 summary
-       │     ├─ 质量标准: 最低 70 分（strategy.minPassingScore）
-       │     ├─ 评审关注点: 完成度、文笔质量、情节连贯性（strategy.reviewCriteria）
+       │     ├─ 质量标准: 最低 N 分（strategy.minPassingScore，按类型不同：coding=80, writing=70, research=65...）
+       │     ├─ 评审关注点: strategy.reviewCriteria（如有）
        │     ├─ 任务标准（← config/task-standards.md 按 task.type 提取）:
+       │     │   例 coding:
+       │     │   ├─ 完成定义: "代码可运行，有基本测试，无明显安全漏洞"
+       │     │   ├─ 要求: "遵循项目编码规范，编写测试，处理边界情况"
+       │     │   └─ 禁止: "不引入未经审批的第三方依赖，不硬编码敏感信息"
+       │     │   例 writing:
        │     │   ├─ 完成定义: "文稿完整，无未完成章节，字数达到要求"
        │     │   ├─ 要求: "参考角色设定和世界观文档，遵循大纲"
-       │     │   └─ 禁止: "不偏离大纲，不引入矛盾设定，不重复已写内容"
+       │     │   └─ 禁止: "不偏离大纲，不引入矛盾设定"
+       │     │   例 research:
+       │     │   ├─ 完成定义: "研究报告完整，数据来源可靠，结论有据可依"
+       │     │   ├─ 要求: "标注数据来源，区分事实与推断，提供多角度分析"
+       │     │   └─ 禁止: "不编造数据，不遗漏关键信息源"
        │     ├─ 项目背景（部门使命摘要 ≤500字符）
        │     ├─ 返工反馈（如有: 评审意见 + 上次自检分数）
        │     └─ 相关任务记忆（最近 5 个类似任务经验）
@@ -123,9 +138,10 @@ Agent :main session 收到任务
   │     ├─ worker 获得任务 description（含类型专属标准）
   │     ├─ 如果用 buildTaskPrompt() 完整 prompt:
   │     │     额外包含 "## 任务标准" 完整段落:
-  │     │     ├─ ### writing 类型标准
-  │     │     │   完成定义 + 质量检查清单(5条) + DO + DON'T
-  │     │     └─ 或 ### 通用标准（未知类型回退）
+  │     │     ├─ ### {task.type} 类型标准
+  │     │     │   完成定义 + 质量检查清单 + DO + DON'T
+  │     │     │   （8 种内置类型各有专属标准）
+  │     │     └─ 或 ### 通用标准（未知类型回退 GENERAL）
   │     └─ worker 在隔离环境执行 → 产出写入 workspaces/{agentId}/
   │
   ├─ 3. :main 保持响应
@@ -177,13 +193,7 @@ qualityOrchestrator.process(deptId, task)
   │   │   └─ 无未渲染模板 ${...}？
   │   │
   │   ├─ 构建类型专属检查清单（← config/task-standards.md）:
-  │   │
-  │   │   task.type = 'writing':
-  │   │     1. 情节是否连贯，无逻辑断裂？
-  │   │     2. 文笔质量是否达标（语言流畅、表达准确）？
-  │   │     3. 字数是否达到要求？
-  │   │     4. 是否遵循了世界观和角色设定？
-  │   │     5. 是否与前文保持一致（人物、地名、时间线）？
+  │   │   按 task.type 自动匹配，8 种内置类型各有专属清单。示例:
   │   │
   │   │   task.type = 'coding':
   │   │     1. 代码是否能编译/运行无错误？
@@ -191,6 +201,27 @@ qualityOrchestrator.process(deptId, task)
   │   │     3. 是否有安全漏洞（注入、XSS 等）？
   │   │     4. 代码风格是否与项目一致？
   │   │     5. 是否有适当的错误处理？
+  │   │
+  │   │   task.type = 'writing':
+  │   │     1. 情节是否连贯，无逻辑断裂？
+  │   │     2. 文笔质量是否达标？
+  │   │     3. 字数是否达到要求？
+  │   │     4. 是否遵循了世界观和角色设定？
+  │   │     5. 是否与前文保持一致？
+  │   │
+  │   │   task.type = 'research':
+  │   │     1. 数据来源是否可靠且已标注？
+  │   │     2. 分析是否全面覆盖了研究问题？
+  │   │     3. 结论是否有数据支撑？
+  │   │     4. 是否提供了可操作的建议？
+  │   │
+  │   │   task.type = 'analysis':
+  │   │     1. 数据是否准确无误？
+  │   │     2. 分析框架是否合理？
+  │   │     3. 洞察是否有实际价值？
+  │   │     4. 可视化/表格是否清晰？
+  │   │
+  │   │   （另有 editing/worldbuilding/character/plotting 各自专属清单）
   │   │
   │   │   未知类型 → 回退通用 4 条:
   │   │     1. 是否完成了任务要求的所有内容？
@@ -240,7 +271,7 @@ qualityOrchestrator.process(deptId, task)
   ├─ 4. Agent :main 收到 → spawn worker 修改产出
   │     buildTaskContext 自动注入返工信息:
   │       ├─ 返工信息（第 N 次）
-  │       ├─ 评审反馈: "情节第3章有逻辑断裂..."
+  │       ├─ 评审反馈: "<具体的评审意见>"
   │       └─ 上次自检评分: 55
   ├─ 5. Agent 调 API: status=completed → 系统转为 review
   └─ 6. 重新进入质量门（用同样的类型专属清单再次自检）
@@ -256,9 +287,22 @@ qualityOrchestrator.process(deptId, task)
 | Worker 执行 | `buildTaskPrompt()` → 完整 prompt | "## 任务标准" 完整段落 |
 | 质量门自检 | `_requestSelfCheck()` → 自检 prompt | 类型专属检查清单（替代通用 4 条） |
 
-**8 种内置类型标准：** writing、coding、research、analysis、editing、worldbuilding、character、plotting
+**8 种内置类型标准与适用场景：**
 
-未知类型自动回退 `## GENERAL` 通用标准。mtime 缓存，修改后自动生效。
+| 类型 | 适用场景 | minPassingScore |
+|------|----------|-----------------|
+| `coding` | 技术部门：后端/前端/数据工程/AI 研发 | 80 |
+| `writing` | 创作部门：小说写作、教程撰写、内容创作 | 70 |
+| `editing` | 创作部门：文稿修订、风格校对 | 75 |
+| `research` | 研究部门：市场调研、竞品分析、文献研究 | 65 |
+| `analysis` | 研究/金融部门：数据分析、风险评估、策略评估 | 65 |
+| `worldbuilding` | 创作部门：世界观设定、背景构建 | 65 |
+| `character` | 创作部门：角色设计、人物关系 | 65 |
+| `plotting` | 创作部门：情节设计、大纲规划 | 65 |
+
+部门可通过 `deptConfig.workflow.strategies[taskType]` 覆盖任何策略字段（浅合并，部门值优先）。
+
+未知类型（如部门自定义的 `dept-work`）自动回退 `## GENERAL` 通用标准 + `_fallback` 策略（minPassingScore=60）。mtime 缓存，修改后自动生效。
 
 ---
 
