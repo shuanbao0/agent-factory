@@ -10,8 +10,21 @@
  * 每个源有不同的 JSON 结构和字段标准化逻辑。这种复杂性使继承 BaseRepository 的 read/write
  * 不可行，因此直接使用 readFileSync/writeFileSync。这是经过审查的架构例外。
  */
-const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } = require('fs')
-const { join, resolve } = require('path')
+const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync } = require('fs')
+const { join, resolve, dirname } = require('path')
+
+/** Atomic write: tmp + rename to avoid partial writes */
+function atomicWrite(filePath, content) {
+  const dir = dirname(filePath)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  const tmp = filePath + '.tmp'
+  try {
+    writeFileSync(tmp, content)
+    renameSync(tmp, filePath)
+  } catch {
+    writeFileSync(filePath, content)
+  }
+}
 const { BaseRepository } = require('./base.cjs')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
@@ -70,9 +83,7 @@ class TaskRepository extends BaseRepository {
 
   /** Write standalone tasks to config/tasks.json */
   writeStandaloneTasks(tasks) {
-    const dir = join(PROJECT_ROOT, 'config')
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    writeFileSync(TASKS_FILE, JSON.stringify({ tasks, lastUpdated: new Date().toISOString() }, null, 2) + '\n')
+    atomicWrite(TASKS_FILE, JSON.stringify({ tasks, lastUpdated: new Date().toISOString() }, null, 2) + '\n')
   }
 
   /** Read project meta */
@@ -89,7 +100,7 @@ class TaskRepository extends BaseRepository {
   /** Write project meta */
   writeProjectMeta(projectId, meta) {
     const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n')
+    atomicWrite(metaPath, JSON.stringify(meta, null, 2) + '\n')
   }
 
   /**

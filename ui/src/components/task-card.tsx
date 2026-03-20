@@ -25,6 +25,16 @@ const statusColors: Record<string, string> = {
   failed: 'bg-red-500/20 text-red-400',
 }
 
+const statusLabelKey: Record<string, string> = {
+  pending: 'Pending',
+  assigned: 'Pending',
+  in_progress: 'InProgress',
+  review: 'Review',
+  rework: 'Rework',
+  completed: 'Completed',
+  failed: 'Failed',
+}
+
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000
 
 export function isTaskStale(task: Task): boolean {
@@ -64,7 +74,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </span>
         <div className="flex items-center gap-1">
           <span className={cn('text-[10px] px-1.5 py-0.5 rounded', statusColors[task.status] || statusColors.pending)}>
-            {t(`tasks.col${task.status === 'pending' || task.status === 'assigned' ? 'Pending' : task.status === 'in_progress' ? 'InProgress' : task.status === 'review' ? 'Review' : task.status === 'rework' ? 'Rework' : task.status === 'completed' ? 'Completed' : 'Failed'}`)}
+            {t(`tasks.col${statusLabelKey[task.status] || 'Failed'}`)}
           </span>
           {stale && (
             <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
