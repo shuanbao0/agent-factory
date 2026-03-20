@@ -324,9 +324,12 @@ Chief 接收的指令包含所有调度决策所需的上下文：
 [readCeoDirectives(deptId) — CEO 对本部门的特别指示]
 
 ## 部门项目
-[buildDeptProjects(deptId) — 列出部门下所有项目:
-  - novel/chapter-1 — 状态: in-progress, 任务: 2进行/5总
-  - novel/chapter-2 — 状态: planning, 任务: 0进行/2总]
+[buildDeptProjects(deptId) — 列出部门下所有项目（含阶段 + 出口条件）:
+  - novel/chapter-1 — 状态: in-progress, 任务: 2进行/5总 | 阶段: 开发
+    出口条件: 核心功能已实现，代码可运行，基本自测通过
+  - novel/chapter-2 — 状态: planning, 任务: 0进行/2总 | 阶段: 需求
+    出口条件: 需求文档完成，所有关键需求已确认
+  注: 阶段出口条件来自 config/project-standards.md]
 
 ## 部门预算
 今日已用: {tokensUsedToday} / {dailyTokenLimit} tokens
@@ -419,9 +422,12 @@ qualityGate.process(deptId, task)
   │   │   ├─ 内容 ≥ 500 字符
   │   │   └─ 无未渲染模板 ${...}
   │   │
-  │   ├─ LLM 自检:
+  │   ├─ LLM 自检（使用类型专属检查清单）:
+  │   │   从 config/task-standards.md 提取任务类型的检查清单
+  │   │   （如 writing: 情节连贯？文笔达标？字数达标？）
+  │   │   未知类型回退通用 4 条清单
   │   │   sendFn(assignee, 'agent:{id}:quality-check:{taskId}',
-  │   │     "请对你的产出评分 0-100。格式: SCORE: <n>, PASSED: <bool>, ISSUES: ...",
+  │   │     "请按以下清单自检... SCORE: <n>, PASSED: <bool>, ISSUES: ...",
   │   │     60s timeout)
   │   │
   │   └─ 判定: score ≥ strategy.minPassingScore → 通过
@@ -558,6 +564,10 @@ department-loop.cjs createWorkTask 时:
   → 生成 enriched description:
      ├─ Chief 原始 summary
      ├─ 质量标准（strategy.minPassingScore + reviewCriteria）
+     ├─ 任务标准（← config/task-standards.md）:
+     │   ├─ 完成定义（如 coding: "代码可运行，有基本测试"）
+     │   ├─ DO（如 "遵循项目编码规范"）
+     │   └─ DON'T（如 "不引入未审批的第三方依赖"）
      ├─ 项目背景（部门使命摘要，≤500 字符）
      ├─ 返工反馈（如有：评审意见 + 上次自检分数）
      └─ 相关任务记忆（最近 5 个类似任务经验）
@@ -567,9 +577,10 @@ department-loop.cjs createWorkTask 时:
 Agent 查询任务 API（base-rules 要求）时自动获得完整 description，传给 worker 子会话执行。
 
 **设计要点：**
-- `buildTaskContext` 只输出**补充上下文**（质量标准、记忆、返工反馈），不含 Agent 身份和执行要求（已在 AGENTS.md / base-rules 中）
+- `buildTaskContext` 只输出**补充上下文**（质量标准、任务标准、记忆、返工反馈），不含 Agent 身份和执行要求（已在 AGENTS.md / base-rules 中）
+- 任务标准来自 `config/task-standards.md`，按 `task.type` 提取完成定义 + DO/DON'T 边界（mtime 缓存，未知类型静默跳过）
 - 容错设计：`buildTaskContext` 任何环节失败都 catch 静默跳过，降级为仅使用 Chief 原始 summary
-- 完整版 `buildTaskPrompt()` 保留作为直接发送给 worker session 的自包含 prompt（当前未使用）
+- 完整版 `buildTaskPrompt()` 包含完整的类型专属任务标准段落（"## 任务标准"），作为直接发送给 worker session 的自包含 prompt
 
 ### 5.6 双目录隔离
 
@@ -977,6 +988,27 @@ buildMemoryContext(agentId, cycleType) {
 │  eventBus.fire('cost.tracked')                                 │
 │       └─ CostAlertReactor → 阈值告警                           │
 └────────────────────────────────────────────────────────────────┘
+
+┌─ 标准体系（项目标准 + 任务标准）──────────────────────────────┐
+│                                                                │
+│  config/project-standards.md                                   │
+│       │                                                        │
+│       ├─[创建时]→ projects/{dept}/{slug}/STANDARDS.md          │
+│       │           (marker 幂等注入，Agent 可读)                 │
+│       │                                                        │
+│       ├─[循环时]→ dept-directive buildDeptProjects()            │
+│       │           (阶段 + 出口条件展示给 Chief)                 │
+│       │                                                        │
+│       └─[手动]→ scripts/inject-project-standards.mjs           │
+│                                                                │
+│  config/task-standards.md                                      │
+│       │                                                        │
+│       ├─[分配时]→ buildTaskContext() / buildTaskPrompt()        │
+│       │           (类型专属完成定义 + DO/DON'T)                  │
+│       │                                                        │
+│       └─[自检时]→ _requestSelfCheck()                          │
+│                   (类型专属检查清单，替代通用 4 条)               │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ### C. 关键文件 I/O 一览
@@ -991,6 +1023,9 @@ buildMemoryContext(agentId, cycleType) {
 | `config/autopilot-costs.jsonl` | Append | CostTracker | — |
 | `config/autopilot-events.jsonl` | Append | EventBus | — |
 | `config/budget.json` | R/W | Budget | 实时 |
+| `config/project-standards.md` | R | project-standards.cjs | mtime 缓存 |
+| `config/task-standards.md` | R | task-standards.cjs | mtime 缓存 |
+| `projects/{dept}/{slug}/STANDARDS.md` | W | project-standards.cjs | 项目创建时注入 |
 | `agents/{id}/memory/` | R/W | MemoryManager | 实时 |
 | `config/mission.md` | R | Directive builder | 实时 |
 

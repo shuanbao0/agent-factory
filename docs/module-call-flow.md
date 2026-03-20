@@ -821,16 +821,18 @@ require('./readers.cjs')          → readAgentActivity, readProjectTasks,
 require('./memory.cjs')           → buildMemoryContext
 require('./constants.cjs')        → DEPARTMENTS_DIR, PROJECTS_DIR
 require('./logger.cjs')           → logger
+require('../common/project-standards.cjs') → loadProjectStandards, getPhaseStandards
 
 内部函数:
   buildTeamStatus(config, activity)     → 格式化团队成员状态 (idle/busy/任务数)
   buildDeptTasks(projects, standalone)  → 按项目+类型组织任务
+  buildDeptProjects(deptId, projects)   → 项目列表 + 当前阶段 + 出口条件 (← project-standards)
   buildKpiStatus(config)               → 展示 KPI 定义
   readCeoDirectives(deptId)            → 提取 CEO 对本部门的特定指令
 
 buildDepartmentDirective(deptId, config, state, transitions) → string
-  读取: 部门 mission + base-mission + 项目任务 + Agent 活跃度
-  注入: 记忆上下文 + 状态转换结果 + 团队状态 + KPI + CEO 指令
+  读取: 部门 mission + base-mission + 项目任务 + Agent 活跃度 + 项目标准
+  注入: 记忆上下文 + 状态转换结果 + 团队状态 + KPI + CEO 指令 + 阶段出口条件
   输出: 部门主管需要处理的综合指令文本
 ```
 
@@ -1076,11 +1078,14 @@ quality-validator.cjs (219 行) — 质量验证引擎 (Strategy Pattern)
   ├── createPipelineTask(completedTask, pipelineStep, taskTypes) → Task | null
   └── createReworkTask(task, errors) → Task
 
-quality-orchestrator.cjs (280 行) — 评审编排 (DI Pattern)
+quality-orchestrator.cjs (310 行) — 评审编排 (DI Pattern)
+  require('../common/task-standards.cjs') → getStandardsForType
   constructor({sendFn, readAgentActivity?, loadDeptConfig?, logger?})
   ├── process(deptId, task) → Promise<{passed, reason?}>
   │     流程: loadDeptConfig → requestSelfCheck → selectReviewer
   │          → requestPeerReview → requestHeadApproval
+  ├── _requestSelfCheck(agentId, task) → 使用类型专属检查清单 (← task-standards.md)
+  │     未知类型回退通用 4 条清单
   ├── selectReviewer(deptId, task, config) → agentId | null
   │     策略: REVIEWER_MAP[type] → tag 匹配 → 最空闲 candidate
   └── findTasksInReview(deptId, projects) → Task[]
@@ -1208,6 +1213,22 @@ config-validator.cjs (124 行) — 配置校验
 agent-service.cjs (72 行) — Agent 删除服务
   依赖: repo/config.cjs (ConfigRepository), repo/agent-meta.cjs (AgentMetaRepository)
   └── AgentService.deleteAgent(id) → {ok, archivedTo}
+
+project-standards.cjs — 项目标准解析 + 注入
+  依赖: repo/project-meta.cjs (ProjectMetaRepository)
+  ├── parseProjectStandards(raw) → {lifecycle, boundaries}
+  ├── getPhaseStandards(lifecycle, phaseKey) → string|null
+  ├── buildProjectStandardsMd(parsed, meta) → string (含 marker)
+  ├── injectStandardsForProject(projectId) → 幂等写入 STANDARDS.md
+  └── loadProjectStandards() → 缓存解析结果 (mtime)
+
+task-standards.cjs — 任务标准解析
+  无 core/ 内部依赖 (直接读 config/task-standards.md)
+  ├── parseTaskStandards(raw) → {general, types}
+  ├── getTaskTypeStandards(types, taskType) → string|null
+  ├── extractChecklist(standardsText) → string[]
+  ├── getStandardsForType(taskType) → {typeStandards, generalStandards, checklist}
+  └── loadTaskStandards() → 缓存解析结果 (mtime)
 ```
 
 ### `core/llm/` — LLM 通信与决策 (~1,530 行)
