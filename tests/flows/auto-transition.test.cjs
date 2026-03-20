@@ -147,9 +147,9 @@ describe('computeTransitions', () => {
     assert.equal(transitions.length, 0)
   })
 
-  it('skips tasks with no matching agent activity (uses default idle=9999)', () => {
-    // With no activity, idleMins defaults to 9999 which triggers stale
-    // But a task with progress >= 50 won't go to failed, it'll go to review
+  it('uses updatedAt fallback when no agent activity record', () => {
+    // With no activity, idleMins is computed from task.updatedAt
+    // Task updated 25 minutes ago → idle 25m > IDLE_COMPLETE_MINS → review
     const transitions = computeTransitions({
       allTasks: [{
         id: 'zzz-test-noact',
@@ -157,14 +157,33 @@ describe('computeTransitions', () => {
         status: 'in_progress',
         assignedAgent: 'zzz-test-unknown',
         progress: 60,
+        updatedAt: new Date(Date.now() - 25 * 60000).toISOString(),
       }],
       agentActivity: {},
       chiefResponseText: '',
     })
 
-    // idleMins=9999 > IDLE_COMPLETE_MINS, so goes to review
+    // idleMins≈25 > IDLE_COMPLETE_MINS(18), so goes to review
     assert.ok(transitions.length >= 1)
     assert.equal(transitions[0].to, 'review')
+  })
+
+  it('does not auto-fail recently updated task without activity record', () => {
+    // Task updated 5 minutes ago → idle 5m, should NOT auto-fail
+    const transitions = computeTransitions({
+      allTasks: [{
+        id: 'zzz-test-recent',
+        name: 'Recent Task',
+        status: 'in_progress',
+        assignedAgent: 'zzz-test-unknown',
+        progress: 30,
+        updatedAt: new Date(Date.now() - 5 * 60000).toISOString(),
+      }],
+      agentActivity: {},
+      chiefResponseText: '',
+    })
+
+    assert.equal(transitions.length, 0)
   })
 
   it('dual session mode with statusQueryResults', () => {

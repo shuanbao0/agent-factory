@@ -20,7 +20,7 @@ const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { sendToAgent, compactSession, killSession, queryAgentStatus } = require('./gateway-client.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole } = require('../agent/memory.cjs')
-const { checkBudget, trackTokenUsage } = require('../observe/budget.cjs')
+const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, reconcileBudget } = require('../observe/budget.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
 const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
@@ -172,13 +172,21 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
       if (assignee) agentsToQuery.add(assignee)
     }
     if (agentsToQuery.size > 0) {
+      const aids = Array.from(agentsToQuery)
+      const settled = await Promise.allSettled(
+        aids.map(aid => queryAgentStatus(aid, `agent:${aid}:main`, STATUS_QUERY_TIMEOUT_MS))
+      )
       statusQueryResults = {}
-      for (const aid of agentsToQuery) {
-        statusQueryResults[aid] = await queryAgentStatus(aid, `agent:${aid}:main`, STATUS_QUERY_TIMEOUT_MS)
+      for (let i = 0; i < aids.length; i++) {
+        statusQueryResults[aids[i]] = settled[i].status === 'fulfilled'
+          ? settled[i].value
+          : { timeout: true }
       }
       logger.debug('dept-loop', `Dual-session status queries for ${deptId}: ${JSON.stringify(statusQueryResults)}`)
     }
   }
+
+  const reviewItems = []  // Collect review tasks for parallel quality gate
 
   for (const task of allTasks) {
     if (!['in_progress', 'rework', 'assigned', 'review'].includes(task.status)) continue
@@ -187,7 +195,9 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
     const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
     if (!assignee) continue
     const activity = agentActivity[assignee]
-    const idleMins = activity ? activity.idleMins : 9999
+    const idleMins = activity
+      ? activity.idleMins
+      : Math.floor((Date.now() - new Date(task.updatedAt || task.createdAt).getTime()) / 60000)
 
     if (task.status === 'assigned') {
       if (idleMins < 5) {
@@ -198,58 +208,9 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
         logger.warn('dept-loop', `Assigned task ${task.id} never started, marked failed (agent ${assignee} idle ${idleMins}m)`)
       }
     } else if (task.status === 'review') {
-      // Review → in_progress revert is handled by peer-send autoClaimTasks
-      // when chief explicitly references [Task: xxx] in a message.
-      // Do NOT revert based on idle time — notifications can wake the agent.
+      // Collect review tasks for parallel quality gate processing
       if (idleMins >= IDLE_COMPLETE_MINS) {
-        // Run quality gate instead of auto-approving
-        const qualityGate = getQualityGate()
-        try {
-          const gate = await qualityGate.process(deptId, task)
-          if (gate.passed) {
-            gateErrorCounts.delete(task.id)
-            transition(task, assignee, 'review', 'completed',
-              `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
-              { quality: task.quality })
-            logger.info('dept-loop', `Task ${task.id} passed quality gate in ${deptId}`)
-            // Emit quality gate completed event
-            try {
-              const { eventBus } = require('../observe/event-bus.cjs')
-              eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: true })
-            } catch { /* event bus not available */ }
-          } else {
-            // Check rework count — fail after 3 rounds (use persisted reworkCount from API)
-            const reworkCount = (task.reworkCount || 0) + 1
-            if (reworkCount >= 3) {
-              transition(task, assignee, 'review', 'failed',
-                `质量审核不通过且已返工 ${reworkCount} 次: ${gate.reason}`,
-                { quality: task.quality, reworkCount })
-              logger.warn('dept-loop', `Task ${task.id} failed after ${reworkCount} rework rounds`)
-            } else {
-              gateErrorCounts.delete(task.id)
-              transition(task, assignee, 'review', 'rework',
-                `质量审核不通过 (第${reworkCount}次返工): ${gate.reason}`,
-                { quality: task.quality, reworkCount })
-              logger.info('dept-loop', `Task ${task.id} sent to rework #${reworkCount}: ${gate.reason}`)
-              // Emit quality gate completed event (not passed)
-              try {
-                const { eventBus } = require('../observe/event-bus.cjs')
-                eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: false, reason: gate.reason })
-              } catch { /* event bus not available */ }
-              notifyAgentTaskChange(config.head, assignee, task.id, task.name || '', 'rework', gate.reason)
-            }
-          }
-        } catch (gateErr) {
-          logger.error('dept-loop', `Quality gate error for task ${task.id}`, gateErr)
-          const errCount = (gateErrorCounts.get(task.id) || 0) + 1
-          gateErrorCounts.set(task.id, errCount)
-          if (errCount >= MAX_GATE_ERRORS) {
-            transition(task, assignee, 'review', 'failed',
-              `质量审核连续异常 ${errCount} 次: ${gateErr.message}`)
-            gateErrorCounts.delete(task.id)
-          }
-          // else: leave in review for next cycle retry
-        }
+        reviewItems.push({ task, assignee })
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
       if (dualEnabled && statusQueryResults) {
@@ -289,7 +250,71 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
     }
   }
 
+  // Parallel quality gate processing for review tasks
+  if (reviewItems.length > 0) {
+    const gateResults = await Promise.allSettled(
+      reviewItems.map(({ task, assignee }) =>
+        processOneQualityGate(task, assignee, deptId, config, transition)
+      )
+    )
+    for (const r of gateResults) {
+      if (r.status === 'rejected') {
+        logger.warn('dept-loop', `Quality gate batch error: ${r.reason?.message}`)
+      }
+    }
+  }
+
   return transitions
+}
+
+/**
+ * Process quality gate for a single review task.
+ * @returns {Promise<void>}
+ */
+async function processOneQualityGate(task, assignee, deptId, config, transition) {
+  const qualityGate = getQualityGate()
+  try {
+    const gate = await qualityGate.process(deptId, task)
+    if (gate.passed) {
+      gateErrorCounts.delete(task.id)
+      transition(task, assignee, 'review', 'completed',
+        `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
+        { quality: task.quality })
+      logger.info('dept-loop', `Task ${task.id} passed quality gate in ${deptId}`)
+      try {
+        const { eventBus } = require('../observe/event-bus.cjs')
+        eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: true })
+      } catch { /* event bus not available */ }
+    } else {
+      const reworkCount = (task.reworkCount || 0) + 1
+      if (reworkCount >= 3) {
+        transition(task, assignee, 'review', 'failed',
+          `质量审核不通过且已返工 ${reworkCount} 次: ${gate.reason}`,
+          { quality: task.quality, reworkCount })
+        logger.warn('dept-loop', `Task ${task.id} failed after ${reworkCount} rework rounds`)
+      } else {
+        gateErrorCounts.delete(task.id)
+        transition(task, assignee, 'review', 'rework',
+          `质量审核不通过 (第${reworkCount}次返工): ${gate.reason}`,
+          { quality: task.quality, reworkCount })
+        logger.info('dept-loop', `Task ${task.id} sent to rework #${reworkCount}: ${gate.reason}`)
+        try {
+          const { eventBus } = require('../observe/event-bus.cjs')
+          eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: false, reason: gate.reason })
+        } catch { /* event bus not available */ }
+        notifyAgentTaskChange(config.head, assignee, task.id, task.name || '', 'rework', gate.reason)
+      }
+    }
+  } catch (gateErr) {
+    logger.error('dept-loop', `Quality gate error for task ${task.id}`, gateErr)
+    const errCount = (gateErrorCounts.get(task.id) || 0) + 1
+    gateErrorCounts.set(task.id, errCount)
+    if (errCount >= MAX_GATE_ERRORS) {
+      transition(task, assignee, 'review', 'failed',
+        `质量审核连续异常 ${errCount} 次: ${gateErr.message}`)
+      gateErrorCounts.delete(task.id)
+    }
+  }
 }
 
 /**
@@ -329,9 +354,15 @@ async function queryDeptAgentStatuses(deptId, config) {
 
   if (agentsToQuery.size === 0) return {}
 
+  const aids = Array.from(agentsToQuery)
+  const settled = await Promise.allSettled(
+    aids.map(aid => queryAgentStatus(aid, `agent:${aid}:main`, STATUS_QUERY_TIMEOUT_MS))
+  )
   const results = {}
-  for (const aid of agentsToQuery) {
-    results[aid] = await queryAgentStatus(aid, `agent:${aid}:main`, STATUS_QUERY_TIMEOUT_MS)
+  for (let i = 0; i < aids.length; i++) {
+    results[aids[i]] = settled[i].status === 'fulfilled'
+      ? settled[i].value
+      : { timeout: true }
   }
   logger.debug('dept-loop', `Dual-session status queries for ${deptId}: ${JSON.stringify(results)}`)
   return results
@@ -417,8 +448,24 @@ async function runDepartmentCycle(deptId) {
     // Build directive for department head (include transition info + agent statuses so chief can make informed decisions)
     const directive = buildDepartmentDirective(deptId, config, state, preSendTransitions, deptStatusResults)
 
+    // Pre-reserve budget tokens
+    const estimated = estimateTokensPerCycle(deptId)
+    const reservation = reserveBudget(deptId, estimated)
+    if (reservation.blocked) {
+      logger.warn('dept-loop', `Department ${deptId} budget reservation blocked: ${reservation.reason}`)
+      state.status = 'idle'
+      deptStateRepo.save(deptId, state)
+      return { ok: false, error: reservation.reason }
+    }
+
     // Send to department head
-    const result = await sendToAgent(config.head, sessionKey, directive)
+    let result
+    try {
+      result = await sendToAgent(config.head, sessionKey, directive)
+    } catch (sendErr) {
+      reconcileBudget(deptId, reservation.reserved, 0)
+      throw sendErr
+    }
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
     if (result.ok) {
@@ -443,28 +490,34 @@ async function runDepartmentCycle(deptId) {
           createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
             .then(taskId => ({ agentId, taskId }))
         )
-        Promise.allSettled(taskPromises).then(results => {
-          const created = results.filter(r => r.status === 'fulfilled' && r.value?.taskId)
-          if (created.length > 0) {
-            logger.info('dept-loop', `Auto-created ${created.length} tasks from chief response in dept ${deptId}`)
-            for (const r of created) {
-              updateTaskStatus(r.value.agentId, r.value.taskId, 'in_progress')
-            }
+        const settled = await Promise.allSettled(taskPromises)
+        const created = settled.filter(r => r.status === 'fulfilled' && r.value?.taskId)
+        if (created.length > 0) {
+          logger.info('dept-loop', `Auto-created ${created.length} tasks from chief response in dept ${deptId}`)
+          for (const r of created) {
+            updateTaskStatus(r.value.agentId, r.value.taskId, 'in_progress')
           }
-        })
+        }
+        for (const r of settled) {
+          if (r.status === 'rejected') {
+            logger.warn('dept-loop', `createWorkTask failed in ${deptId}: ${r.reason?.message || r.reason}`)
+          }
+        }
       }
 
       // ── Auto-transition stale tasks (with chief response for completion parsing) ──
-      autoTransitionTasks(deptId, config, result.text, { statusQueryResults: deptStatusResults }).then(postTransitions => {
-        if (!postTransitions) return
-        for (const t of postTransitions) {
-          if (t.to === 'failed') {
-            notifyAgentTaskChange(config.head, t.agentId, t.taskId, t.taskName, t.to, t.reason)
+      try {
+        const postTransitions = await autoTransitionTasks(deptId, config, result.text, { statusQueryResults: deptStatusResults })
+        if (postTransitions) {
+          for (const t of postTransitions) {
+            if (t.to === 'failed') {
+              notifyAgentTaskChange(config.head, t.agentId, t.taskId, t.taskName, t.to, t.reason)
+            }
           }
         }
-      }).catch(e =>
-        logger.debug('dept-loop', `Auto-transition error for ${deptId}`, e)
-      )
+      } catch (e) {
+        logger.warn('dept-loop', `Auto-transition error for ${deptId}`, e)
+      }
 
       // ── Response validation: token check ──
       const responseLength = (result.text || '').trim().length
@@ -519,10 +572,9 @@ async function runDepartmentCycle(deptId) {
       // Generate department report
       generateDepartmentReport(deptId, result.text)
 
-      // Track token usage
-      if (result.usage) {
-        trackTokenUsage(deptId, result.usage)
-      }
+      // Reconcile budget: replace reserved with actual
+      const actualTokens = result.usage?.totalTokens || result.usage?.total_tokens || 0
+      reconcileBudget(deptId, reservation.reserved, actualTokens)
 
       // Compress memory for department head (role-aware)
       try {
@@ -588,6 +640,7 @@ async function runDepartmentCycle(deptId) {
       return { ok: true, text: result.text }
     } else {
       logger.error('dept-loop', `Department ${deptId} cycle failed: ${result.error}`)
+      reconcileBudget(deptId, reservation.reserved, 0)
       // Still run idle-based auto-transition even when chief fails
       autoTransitionTasks(deptId, config, '', { idleOnly: true }).catch(e =>
         logger.debug('dept-loop', `Auto-transition error for ${deptId} (on failure path)`, e)

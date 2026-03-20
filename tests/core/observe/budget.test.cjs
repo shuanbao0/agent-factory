@@ -10,6 +10,9 @@ describe('Budget module', () => {
     assert.ok(typeof mod.loadCompanyBudget === 'function')
     assert.ok(typeof mod.getBudgetSummary === 'function')
     assert.ok(typeof mod.shouldResetDaily === 'function')
+    assert.ok(typeof mod.estimateTokensPerCycle === 'function')
+    assert.ok(typeof mod.reserveBudget === 'function')
+    assert.ok(typeof mod.reconcileBudget === 'function')
   })
 
   it('shouldResetDaily returns true when null', () => {

@@ -147,4 +147,48 @@ function saveCompanyBudget(config) {
   renameSync(tmp, BUDGET_FILE)
 }
 
-module.exports = { checkBudget, trackTokenUsage, loadCompanyBudget, saveCompanyBudget, getBudgetSummary, shouldResetDaily }
+/**
+ * Estimate tokens per cycle based on historical average.
+ * @param {string} deptId
+ * @returns {number}
+ */
+function estimateTokensPerCycle(deptId) {
+  const state = getDeptStateRepo().load(deptId)
+  if (state.cycleCount > 0 && state.tokensUsedToday > 0) {
+    return Math.ceil(state.tokensUsedToday / state.cycleCount)
+  }
+  return 5000
+}
+
+/**
+ * Reserve budget tokens before sending LLM request.
+ * @param {string} deptId
+ * @param {number} tokens
+ * @returns {{reserved: number, blocked?: boolean, reason?: string}}
+ */
+function reserveBudget(deptId, tokens) {
+  const config = getDeptConfigRepo().load(deptId)
+  if (!config?.budget?.dailyTokenLimit) return { reserved: 0 }
+  const state = getDeptStateRepo().load(deptId)
+  const projected = (state.tokensUsedToday || 0) + tokens
+  if (projected > config.budget.dailyTokenLimit) {
+    return { reserved: 0, blocked: true, reason: `预扣后将超出限额 (${projected}/${config.budget.dailyTokenLimit})` }
+  }
+  state.tokensUsedToday = projected
+  getDeptStateRepo().save(deptId, state)
+  return { reserved: tokens }
+}
+
+/**
+ * Reconcile budget: replace reserved amount with actual usage.
+ * @param {string} deptId
+ * @param {number} reserved
+ * @param {number} actual
+ */
+function reconcileBudget(deptId, reserved, actual) {
+  const state = getDeptStateRepo().load(deptId)
+  state.tokensUsedToday = (state.tokensUsedToday || 0) - reserved + actual
+  getDeptStateRepo().save(deptId, state)
+}
+
+module.exports = { checkBudget, trackTokenUsage, loadCompanyBudget, saveCompanyBudget, getBudgetSummary, shouldResetDaily, estimateTokensPerCycle, reserveBudget, reconcileBudget }

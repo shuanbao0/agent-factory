@@ -222,7 +222,8 @@ class GatewayConnectionPool {
       this._chatListeners.set(sessionKey, {
         runId,
         handler: (p) => {
-          if (p.runId !== runId && p.sessionKey !== sessionKey) return
+          if (retried && p.runId && p.runId !== runId) return
+          if (!retried && p.runId !== runId && p.sessionKey !== sessionKey) return
 
           if (p.state === 'delta') {
             // 流式增量：提取 text 块内容

@@ -147,5 +147,87 @@ describe('AutoTransition', () => {
       assert.equal(result.length, 1)
       assert.equal(result[0].to, 'review')
     })
+
+    // Issue #4: idle=9999 fallback fix
+    it('does not auto-fail new agent with no activity (updatedAt 5 min ago)', () => {
+      const result = computeTransitions({
+        allTasks: [{
+          id: 't1', name: 'Task 1', status: 'in_progress', assignedAgent: 'a1',
+          progress: 30,
+          updatedAt: new Date(Date.now() - 5 * 60000).toISOString(),
+        }],
+        agentActivity: {},
+        chiefResponseText: '',
+      })
+      // idleMins ≈ 5, should not trigger any transition
+      assert.equal(result.length, 0)
+    })
+
+    it('auto-fails agent with no activity when updatedAt 35 min ago', () => {
+      const result = computeTransitions({
+        allTasks: [{
+          id: 't1', name: 'Task 1', status: 'in_progress', assignedAgent: 'a1',
+          progress: 30,
+          updatedAt: new Date(Date.now() - 35 * 60000).toISOString(),
+        }],
+        agentActivity: {},
+        chiefResponseText: '',
+      })
+      assert.equal(result.length, 1)
+      assert.equal(result[0].to, 'failed')
+    })
+
+    it('falls back to createdAt when updatedAt missing', () => {
+      const result = computeTransitions({
+        allTasks: [{
+          id: 't1', name: 'Task 1', status: 'in_progress', assignedAgent: 'a1',
+          progress: 80,
+          createdAt: new Date(Date.now() - 20 * 60000).toISOString(),
+        }],
+        agentActivity: {},
+        chiefResponseText: '',
+      })
+      // idleMins ≈ 20, goes to review
+      assert.equal(result.length, 1)
+      assert.equal(result[0].to, 'review')
+    })
+  })
+
+  // Issue #5: robust regex parsing
+  describe('parseTaskAssignments — robust regex', () => {
+    it('parses numbered list (1. prefix)', () => {
+      const text = '[任务分配]\n1. writer-a: 写第一章\n2. writer-b: 写第二章'
+      const result = parseTaskAssignments(text)
+      assert.equal(result.length, 2)
+      assert.equal(result[0].agentId, 'writer-a')
+      assert.equal(result[1].agentId, 'writer-b')
+    })
+
+    it('parses numbered list (1) prefix)', () => {
+      const text = '[任务分配]\n1) writer-a: 写第一章\n2) writer-b: 写第二章'
+      const result = parseTaskAssignments(text)
+      assert.equal(result.length, 2)
+    })
+
+    it('parses fullwidth brackets 【任务分配】', () => {
+      const text = '【任务分配】\n- writer-a: 写第一章'
+      const result = parseTaskAssignments(text)
+      assert.equal(result.length, 1)
+      assert.equal(result[0].agentId, 'writer-a')
+    })
+  })
+
+  describe('parseTaskCompletions — robust regex', () => {
+    it('parses fullwidth brackets 【任务完成】', () => {
+      const text = '【任务完成】\n- task-abc: 已完成'
+      const result = parseTaskCompletions(text)
+      assert.deepEqual(result, ['task-abc'])
+    })
+
+    it('parses fullwidth brackets 【进展汇报】', () => {
+      const text = '【进展汇报】\n- task-xyz: 已完成 100%'
+      const result = parseTaskCompletions(text)
+      assert.deepEqual(result, ['task-xyz'])
+    })
   })
 })

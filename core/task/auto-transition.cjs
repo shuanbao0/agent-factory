@@ -16,13 +16,13 @@ const { IDLE_COMPLETE_MINS, STALE_TASK_MINS } = require('../autopilot/constants.
  */
 function parseTaskAssignments(text) {
   if (!text) return []
-  const match = text.match(/\[任务分配\]\s*\n([\s\S]*?)(?=\n\[|$)/)
+  const match = text.match(/[\[【]任务分配[\]】]\s*\n([\s\S]*?)(?=\n[\[【]|$)/)
   if (!match) return []
 
   const lines = match[1].split('\n')
   const assignments = []
   for (const line of lines) {
-    const m = line.match(/^[-*]\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
+    const m = line.match(/^(?:[-*]|\d+[.)]\s*)\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
     if (!m) continue
     const [, agentId, summary] = m
     if (/无需分配|不需要|跳过/.test(summary)) continue
@@ -42,7 +42,7 @@ function parseTaskCompletions(text) {
   const completedIds = new Set()
   const completionKeywords = /完成|已完成|已交付|done|finished|completed|100%/i
 
-  const completionMatch = text.match(/\[任务完成\]\s*\n([\s\S]*?)(?=\n\[|$)/)
+  const completionMatch = text.match(/[\[【]任务完成[\]】]\s*\n([\s\S]*?)(?=\n[\[【]|$)/)
   if (completionMatch) {
     for (const line of completionMatch[1].split('\n')) {
       const m = line.match(/(task-[a-z0-9-]+)/i)
@@ -50,7 +50,7 @@ function parseTaskCompletions(text) {
     }
   }
 
-  const progressMatch = text.match(/\[进展汇报\]\s*\n([\s\S]*?)(?=\n\[|$)/)
+  const progressMatch = text.match(/[\[【]进展汇报[\]】]\s*\n([\s\S]*?)(?=\n[\[【]|$)/)
   if (progressMatch) {
     for (const line of progressMatch[1].split('\n')) {
       const m = line.match(/(task-[a-z0-9-]+)/i)
@@ -113,7 +113,9 @@ function computeTransitions(opts) {
     const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
     if (!assignee) continue
     const activity = agentActivity[assignee]
-    const idleMins = activity ? activity.idleMins : 9999
+    const idleMins = activity
+      ? activity.idleMins
+      : Math.floor((Date.now() - new Date(task.updatedAt || task.createdAt).getTime()) / 60000)
 
     if (task.status === 'assigned') {
       if (idleMins < 5) {

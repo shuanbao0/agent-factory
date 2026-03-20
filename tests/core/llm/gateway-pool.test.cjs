@@ -170,4 +170,125 @@ describe('GatewayConnectionPool', () => {
     pool.close()
     assert.strictEqual(pool.getStats().connected, false)
   })
+
+  it('retries on empty response and returns second response', async () => {
+    // Close default server, create one that sends empty first, then real content
+    await new Promise(r => server.close(r))
+    let chatSendCount = 0
+    await new Promise((resolve) => {
+      server = new WebSocket.Server({ port: serverPort }, () => {
+        server.on('connection', (ws) => {
+          ws.send(JSON.stringify({ type: 'event', event: 'connect.challenge' }))
+          ws.on('message', (data) => {
+            const frame = JSON.parse(data.toString())
+            if (frame.method === 'connect') {
+              ws.send(JSON.stringify({ type: 'res', id: frame.id, ok: true, payload: {} }))
+              return
+            }
+            if (frame.method === 'sessions.reset') {
+              ws.send(JSON.stringify({ type: 'res', id: frame.id, ok: true, payload: {} }))
+              return
+            }
+            if (frame.method === 'chat.send') {
+              chatSendCount++
+              const runId = frame.params.idempotencyKey || 'run-' + chatSendCount
+              ws.send(JSON.stringify({ type: 'res', id: frame.id, ok: true, payload: { runId } }))
+              if (chatSendCount === 1) {
+                // First: empty final
+                ws.send(JSON.stringify({
+                  type: 'event', event: 'chat',
+                  payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
+                    message: { content: [{ type: 'text', text: '' }] }, usage: { totalTokens: 10 } }
+                }))
+              } else {
+                // Second (retry): real content
+                ws.send(JSON.stringify({
+                  type: 'event', event: 'chat',
+                  payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
+                    message: { content: [{ type: 'text', text: 'Retry success' }] }, usage: { totalTokens: 200 } }
+                }))
+              }
+              return
+            }
+          })
+        })
+        resolve()
+      })
+    })
+
+    const pool = new GatewayConnectionPool({ port: serverPort, token: 'test' })
+    try {
+      const result = await pool.sendToAgent('ceo', 'agent:ceo:retry-test', 'Hello', 10000)
+      assert.ok(result.ok)
+      assert.strictEqual(result.text, 'Retry success')
+      assert.strictEqual(chatSendCount, 2)
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('discards old runId frames after retry', async () => {
+    // Close default server, create one that leaks old runId frames after retry
+    await new Promise(r => server.close(r))
+    let chatSendCount = 0
+    let oldRunId = null
+    await new Promise((resolve) => {
+      server = new WebSocket.Server({ port: serverPort }, () => {
+        server.on('connection', (ws) => {
+          ws.send(JSON.stringify({ type: 'event', event: 'connect.challenge' }))
+          ws.on('message', (data) => {
+            const frame = JSON.parse(data.toString())
+            if (frame.method === 'connect') {
+              ws.send(JSON.stringify({ type: 'res', id: frame.id, ok: true, payload: {} }))
+              return
+            }
+            if (frame.method === 'sessions.reset') {
+              ws.send(JSON.stringify({ type: 'res', id: frame.id, ok: true, payload: {} }))
+              return
+            }
+            if (frame.method === 'chat.send') {
+              chatSendCount++
+              const runId = frame.params.idempotencyKey || 'run-' + chatSendCount
+              ws.send(JSON.stringify({ type: 'res', id: frame.id, ok: true, payload: { runId } }))
+              if (chatSendCount === 1) {
+                oldRunId = runId
+                // First: empty final
+                ws.send(JSON.stringify({
+                  type: 'event', event: 'chat',
+                  payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
+                    message: { content: [{ type: 'text', text: '' }] }, usage: { totalTokens: 10 } }
+                }))
+              } else {
+                // After retry: send old runId delta (should be discarded), then new final
+                ws.send(JSON.stringify({
+                  type: 'event', event: 'chat',
+                  payload: { sessionKey: frame.params.sessionKey, runId: oldRunId, state: 'delta',
+                    message: { content: [{ type: 'text', text: 'OLD LEAKED DATA' }] } }
+                }))
+                setTimeout(() => {
+                  ws.send(JSON.stringify({
+                    type: 'event', event: 'chat',
+                    payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
+                      message: { content: [{ type: 'text', text: 'Clean retry' }] }, usage: { totalTokens: 100 } }
+                  }))
+                }, 10)
+              }
+              return
+            }
+          })
+        })
+        resolve()
+      })
+    })
+
+    const pool = new GatewayConnectionPool({ port: serverPort, token: 'test' })
+    try {
+      const result = await pool.sendToAgent('ceo', 'agent:ceo:leak-test', 'Hello', 10000)
+      assert.ok(result.ok)
+      assert.strictEqual(result.text, 'Clean retry')
+      assert.ok(!result.text.includes('OLD LEAKED DATA'))
+    } finally {
+      pool.close()
+    }
+  })
 })
