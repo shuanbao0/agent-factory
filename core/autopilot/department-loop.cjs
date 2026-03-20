@@ -25,7 +25,29 @@ const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } =
 const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { buildTaskContext } = require('./task-prompt.cjs')
+const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const logger = require('./logger.cjs')
+
+/**
+ * Get the default project ID for a department.
+ * Returns the first sub-project under projects/{deptId}/, or auto-creates {deptId}/default.
+ */
+function getDefaultProjectForDept(deptId) {
+  const allProjects = projectMetaRepo.readAll()
+  const deptProjects = allProjects.filter(({ projectId }) => projectId.startsWith(deptId + '/'))
+  if (deptProjects.length > 0) {
+    // Prefer one named "default" if it exists
+    const defaultProj = deptProjects.find(({ projectId }) => projectId === `${deptId}/default`)
+    return defaultProj ? defaultProj.projectId : deptProjects[0].projectId
+  }
+  // No sub-projects — auto-create {deptId}/default
+  const { createProject } = require('../common/project-service.cjs')
+  const result = createProject(
+    { name: 'default', department: deptId },
+    { phases: [{ labelEn: 'Execution', labelZh: '执行' }], directories: ['docs', 'src'] }
+  )
+  return result.ok ? result.project.id : `${deptId}/default`
+}
 
 // Quality gate: lazy singleton (DI to avoid circular dependency at module load time)
 let _qualityGate = null
@@ -487,14 +509,15 @@ async function runDepartmentCycle(deptId) {
           seen.add(agentId)
           return true
         })
-        const taskPromises = uniqueAssignments.map(({ agentId, summary }) => {
+        const taskPromises = uniqueAssignments.map(({ agentId, summary, projectId: assignmentProjectId }) => {
           let description
           try {
             description = buildTaskContext(agentId, summary, { deptId, deptConfig: config, taskType: 'dept-work' })
           } catch (e) {
             logger.debug('dept-loop', `buildTaskContext failed for ${agentId}, using summary only`, e)
           }
-          return createWorkTask(agentId, summary, deptId, { type: 'dept-work', description })
+          const projectId = assignmentProjectId || getDefaultProjectForDept(deptId)
+          return createWorkTask(agentId, summary, deptId, { type: 'dept-work', description, projectId })
             .then(taskId => ({ agentId, taskId }))
         })
         const settled = await Promise.allSettled(taskPromises)

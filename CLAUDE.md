@@ -110,7 +110,7 @@ agent-factory/
 ├── ui/                    # Next.js Dashboard（详见下方）
 ├── agents/                # Agent 核心定义（运行时创建，不提交）
 ├── workspaces/            # Agent 产出空间（不提交）
-├── projects/              # 项目级共享空间（按 department 分目录，不提交）
+├── projects/              # 项目空间（projects/{dept}/{project-slug}/，1 部门 N 项目，不提交）
 ├── bin/
 │   └── agent-factory.mjs  # CLI 入口（start/stop/update/doctor 等命令）
 ├── config/
@@ -166,7 +166,7 @@ agent-factory/
 | `DeptStateRepository` | `config/departments/{id}/state.json` — 部门运行时状态 | 30s |
 | `MissionRepository` | `config/mission.md` / `config/departments/{id}/mission.md` | 0 |
 | `AgentMetaRepository` | `agents/{id}/agent.json` — Agent 元数据 | 0 |
-| `ProjectMetaRepository` | `projects/{id}/.project-meta.json` — 项目元数据 | 0 |
+| `ProjectMetaRepository` | `projects/{dept}/{slug}/.project-meta.json` — 项目元数据（1 部门 N 项目） | 0 |
 
 ### core/task/ — 任务生命周期（State Machine + Strategy + Quality Gate）
 
@@ -238,7 +238,7 @@ CEO 协调周期 (30min)
 部门执行周期 (10min/部门)
   ├─ buildDepartmentDirective() + memory
   ├─ sendToAgent(chief) → WebSocket
-  ├─ parseTaskAssignments + parseTaskCompletions
+  ├─ parseTaskAssignments（含 [project: xxx] 解析）+ parseTaskCompletions
   ├─ autoTransitionTasks()
   │   ├─ checkBudget()
   │   ├─ queryAgentStatus() → 双 Session 模式（查 :main）
@@ -273,7 +273,7 @@ CEO 协调周期 (30min)
 | `config-validator.cjs` | 配置结构验证 |
 | `agent-service.cjs` | Agent 元数据服务 |
 | `department-service.cjs` | 部门生命周期管理（创建/更新/删除） |
-| `project-service.cjs` | 项目生命周期 + Token 用量聚合 |
+| `project-service.cjs` | 项目生命周期（1 部门 N 项目，dept/slug 复合 ID）+ Token 用量聚合 |
 | `file-browser.cjs` | 安全目录遍历 + workspace 管理 |
 | `skill-utils.cjs` | 技能元数据解析 + TOOLS.md 生成 |
 | `skill-symlinks.cjs` | 技能 symlink 同步（幂等） |
@@ -371,6 +371,7 @@ ui/src/
 | `migrate-sync-builtin.mjs` | 同步内置模板到已有 Agent | peers/skills/AGENTS.md 对齐 |
 | `migrate-sync-config.mjs` | 同步部门配置 | `AF_UPDATE_DIR` 支持 + 智能合并 |
 | `migrate-sync-gateway.mjs` | 同步 openclaw.json + models.json | 深度合并，保留用户值 |
+| `migrate-multi-project.mjs` | 1:1→1:N 项目迁移 | 幂等，`projects/{dept}/` → `projects/{dept}/default/` |
 | `patch-openclaw.mjs` | postinstall 自动补丁 | 幂等，版本 >= 2026.4.0 自动跳过 |
 
 ### templates/builtin/ — 内置 Agent 模板
@@ -395,6 +396,7 @@ ui/src/
 | `project-init` | 项目脚手架（vite/express/fullstack 模板）+ `.project-meta.json` |
 | `peer-status` | 查询 peer Agent 状态 + 跨 Agent 消息 |
 | `task-api` | 任务 CRUD + 质量门集成 |
+| `project-api` | 项目查询、创建、删除（1 部门 N 项目） |
 | `find-skills` | 从 ClawHub 市场发现技能 |
 | `skill-creator` | 自定义技能脚手架向导 |
 | `wechat-mp-cn` | 微信小程序集成 |
@@ -464,7 +466,7 @@ interface DepartmentLoopState {
 | `config/departments/{id}/config.json` | 部门策略 | DeptConfigRepository (30s 缓存) |
 | `config/departments/{id}/state.json` | 部门运行时状态 | DeptStateRepository (30s 缓存) |
 | `config/tasks.json` | 独立任务 | TaskRepository (实时) |
-| `projects/{id}/.project-meta.json` | 项目元数据 + 任务 | TaskRepository (实时) |
+| `projects/{dept}/{slug}/.project-meta.json` | 项目元数据 + 任务 | TaskRepository (实时) |
 | `config/autopilot-state.json` | Autopilot 进程状态 | AutopilotState (实时) |
 | `config/autopilot-costs.jsonl` | 成本审计日志 | CostTracker (append-only) |
 | `config/autopilot-events.jsonl` | 事件审计日志 | EventBus (append-only) |
@@ -637,7 +639,7 @@ Agent 的核心定义与工作产出严格分离：
 
 - `config/openclaw.json` 的 workspace 字段指向 `agents/{id}/`（Gateway 从这里读取 Agent 定义）
 - `config/base-rules.md` 中的规则强制 Agent 把产出写到 `workspaces/{id}/`
-- `projects/{department}/` 是按部门划分的共享空间，所有同部门 Agent 可读写
+- `projects/{department}/{project-slug}/` 是项目空间（1 部门 N 项目），同部门 Agent 可读写。项目 ID 格式为 `{department}/{slug}`
 
 ### 双 Session 架构（Chat + Worker）
 
@@ -676,7 +678,7 @@ Agent 的核心定义与工作产出严格分离：
 3. 注入 base-rules 到 AGENTS.md 和 SOUL.md
 4. 创建 `workspaces/{id}/`（空产出目录）
 5. 更新 `config/openclaw.json` 注册 Agent（workspace 指向 `agents/{id}/`）
-6. 如果 Agent 有 department，自动创建/更新 `projects/{department}/`
+6. 如果 Agent 有 department，确保 `projects/{department}/` 目录存在（项目由 Chief 通过 project-api skill 创建）
 7. 重启 Gateway 加载新 Agent
 
 ### 聊天协议
@@ -763,7 +765,7 @@ Gateway 核心配置，包含：模型定义、Agent 列表、端口、认证 To
 - `.env` — API Key 等敏感信息
 - `agents/` — Agent 核心定义（运行时创建，仅保留 `.gitkeep`）
 - `workspaces/` — Agent 产出空间（运行时写入）
-- `projects/` — 项目共享空间（按 department 自动创建）
+- `projects/` — 项目空间（`projects/{dept}/{slug}/`，1 部门 N 项目）
 - `templates/custom/` — 用户自定义模板（仅保留 `.gitkeep`）
 - `.openclaw-state/` — Gateway 运行时状态
 - `libs/` — 本地库源码
@@ -826,6 +828,10 @@ node scripts/migrate-sync-config.mjs novel        # 同步单个部门
 # 同步 Gateway 配置（openclaw.json + models.json，update 后自动执行）
 node scripts/migrate-sync-gateway.mjs --dry-run   # 预览
 node scripts/migrate-sync-gateway.mjs             # 同步
+
+# 迁移旧版 1:1 项目到 1:N 多项目（幂等，projects/{dept}/ → projects/{dept}/default/）
+node scripts/migrate-multi-project.mjs --dry-run  # 预览
+node scripts/migrate-multi-project.mjs            # 执行
 
 # OpenClaw postinstall 补丁（npm install 自动触发，通常无需手动运行）
 node scripts/patch-openclaw.mjs

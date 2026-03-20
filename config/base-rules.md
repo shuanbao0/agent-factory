@@ -291,9 +291,10 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 当你需要分派工作给其他 Agent 时，**必须**按以下顺序执行：
 
 1. **确认项目** — 查询你部门的项目，确认使用哪个 projectId：
-   - 部门项目通常位于 `projects/{部门ID}/`，projectId 即为部门 ID（如 `novel`）
-   - 可通过 API 查询：`curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects"`
-   - 如果项目不存在，先通过 Dashboard 或请 Orchestrator 创建
+   - 部门项目位于 `projects/{部门ID}/{项目名}/`，projectId 格式为 `{部门ID}/{项目名}`（如 `novel/chapter-1`、`tech/mobile-app`）
+   - 查询部门项目：`curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects?department=你的部门ID"`
+   - 创建新项目：`curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" -d '{"name":"项目名","department":"你的部门ID"}' "http://127.0.0.1:3100/api/projects"`
+   - 如果部门下没有项目，先创建再分派任务
 2. **查询现有任务** — 查看是否已有相关任务：
    ```bash
    curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
@@ -301,7 +302,7 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 3. **创建任务（必须关联项目）** — projectId 为必填字段，**先创建再分派**：
    ```bash
    curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
-     -d '{"agent":"YOUR_ID","name":"任务名","description":"具体要求","projectId":"你的部门ID","type":"writing","priority":"P1","assignees":["目标AgentID"]}' \
+     -d '{"agent":"YOUR_ID","name":"任务名","description":"具体要求","projectId":"部门ID/项目名","type":"writing","priority":"P1","assignees":["目标AgentID"]}' \
      "http://127.0.0.1:3100/api/agent-tasks"
    ```
    ⚠️ **禁止创建不带 projectId 的任务**。所有任务必须关联到具体项目，否则项目面板无法追踪。

@@ -289,6 +289,7 @@ runDepartmentCycle(deptId)
   │     │
   │     └─ parseTaskCompletions() → 提取 [任务完成]
   │         → in_progress/rework → review
+  │     注: assignment 可含 [project: xxx]，指定任务所属项目
   │
   ├─ 10. 后发送自动转换 + 质量门
   │      收集 review 任务 → Promise.allSettled(并行质量门)
@@ -321,6 +322,11 @@ Chief 接收的指令包含所有调度决策所需的上下文：
 
 ## CEO 指令
 [readCeoDirectives(deptId) — CEO 对本部门的特别指示]
+
+## 部门项目
+[buildDeptProjects(deptId) — 列出部门下所有项目:
+  - novel/chapter-1 — 状态: in-progress, 任务: 2进行/5总
+  - novel/chapter-2 — 状态: planning, 任务: 0进行/2总]
 
 ## 部门预算
 今日已用: {tokensUsedToday} / {dailyTokenLimit} tokens
@@ -361,7 +367,7 @@ API 创建: curl -X POST http://127.0.0.1:3100/api/agent-tasks -d '{"agent":...}
 
 ## 输出格式要求
 [任务分配]
-- <agent-id>: <summary>
+- <agent-id>: <summary> [project: <项目ID>]
 
 [任务完成]
 - <task-id>: <status>
@@ -981,7 +987,7 @@ buildMemoryContext(agentId, cycleType) {
 | `config/departments/{id}/config.json` | R | DeptConfigRepository | 30s |
 | `config/departments/{id}/state.json` | R/W | DeptStateRepository | 30s |
 | `config/tasks.json` | R/W | TaskRepository | 实时 |
-| `projects/{id}/.project-meta.json` | R/W | TaskRepository | 实时 |
+| `projects/{dept}/{slug}/.project-meta.json` | R/W | TaskRepository | 实时 |
 | `config/autopilot-costs.jsonl` | Append | CostTracker | — |
 | `config/autopilot-events.jsonl` | Append | EventBus | — |
 | `config/budget.json` | R/W | Budget | 实时 |

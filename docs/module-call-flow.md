@@ -1039,10 +1039,10 @@ config.cjs (107 行, extends BaseRepository)
   └── removeAgent(agentId)
 
 project-meta.cjs (87 行, extends BaseRepository)
-  ├── readMeta(projectId)  → projects/{id}/.project-meta.json
+  ├── readMeta(projectId)  → projects/{dept}/{slug}/.project-meta.json (1 部门 N 项目)
   ├── writeMeta(projectId, meta) → 原子写入
   ├── updateMeta(projectId, mutator) → 原子更新
-  └── readAll() → 扫描所有项目 (支持 1-2 级嵌套目录)
+  └── readAll() → 扫描所有项目 (两级目录: projects/{dept}/{slug}/)
 ```
 
 ### `core/task/` — 任务生命周期 (~955 行)
@@ -1263,7 +1263,7 @@ Browser
       → addToOpenclawConfig(id, dir, model)   [Layer 2: 内部函数]
         → core.repo.configRepo.addAgent()   [Layer 6: core/]
       → ensureProjectForDepartment(dept, id)  [Layer 2: 内部函数]
-        → fs 创建 projects/{dept}/ + .project-meta.json
+        → fs 确保 projects/{dept}/ 目录存在（项目由 Chief 通过 project-api 创建）
       → syncAutopilotDeptAgents(dept, id, 'add')
         → fs 更新 config/departments/{dept}/config.json
       → tryRestartGateway()                   [Layer 2: 内部函数]
@@ -1621,7 +1621,7 @@ Step 5: buildDepartmentDirective(...)                       [Layer 4: dept-direc
   → readBaseMission()
       ← "以盈利为核心目标..."
   → readProjectTasks()                                     [Layer 5 → core/repo/task]
-      → 扫描 projects/novel/ → 读 .project-meta.json → 任务列表:
+      → 扫描 projects/novel/*/ → 读 .project-meta.json → 任务列表:
          task-001: "细化第一卷大纲(Ch1-30)" type:plotting  status:assigned  assignee:plot-architect
          task-002: "主角人设完善"           type:character status:assigned  assignee:character-designer
          task-003: "返利系统规则设定"       type:worldbuilding status:in_progress assignee:worldbuilder

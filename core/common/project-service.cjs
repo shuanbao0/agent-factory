@@ -63,12 +63,14 @@ function createProject(body, workflow) {
     return { ok: false, error: 'name is required', status: 400 }
   }
 
-  const id = name.trim().toLowerCase()
+  const slug = name.trim().toLowerCase()
     .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '')
-  if (!id) return { ok: false, error: 'invalid project name', status: 400 }
+  if (!slug) return { ok: false, error: 'invalid project name', status: 400 }
+
+  const id = department ? `${department}/${slug}` : slug
 
   const existingMeta = projectMetaRepo.readMeta(id)
-  if (existingMeta || projectMetaRepo.listProjectIds().includes(id)) {
+  if (existingMeta) {
     return { ok: false, error: `Project "${id}" already exists`, status: 409 }
   }
 

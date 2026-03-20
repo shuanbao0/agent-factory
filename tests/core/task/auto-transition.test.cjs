@@ -215,6 +215,18 @@ describe('AutoTransition', () => {
       assert.equal(result.length, 1)
       assert.equal(result[0].agentId, 'writer-a')
     })
+
+    it('parses [project: xxx] annotation', () => {
+      const text = '[任务分配]\n- writer-a: 写第一章 [project: novel/chapter-1]\n- writer-b: 写第二章'
+      const result = parseTaskAssignments(text)
+      assert.equal(result.length, 2)
+      assert.equal(result[0].agentId, 'writer-a')
+      assert.equal(result[0].summary, '写第一章')
+      assert.equal(result[0].projectId, 'novel/chapter-1')
+      assert.equal(result[1].agentId, 'writer-b')
+      assert.equal(result[1].summary, '写第二章')
+      assert.equal(result[1].projectId, undefined)
+    })
   })
 
   describe('parseTaskCompletions — robust regex', () => {

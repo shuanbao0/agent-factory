@@ -11,8 +11,9 @@ const { IDLE_COMPLETE_MINS, STALE_TASK_MINS } = require('../autopilot/constants.
 
 /**
  * Parse task assignments from chief's response.
+ * Supports optional [project: xxx] annotation per line.
  * @param {string} text
- * @returns {Array<{agentId: string, summary: string}>}
+ * @returns {Array<{agentId: string, summary: string, projectId?: string}>}
  */
 function parseTaskAssignments(text) {
   if (!text) return []
@@ -24,10 +25,18 @@ function parseTaskAssignments(text) {
   for (const line of lines) {
     const m = line.match(/^(?:[-*]|\d+[.)]\s*)\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
     if (!m) continue
-    const [, agentId, summary] = m
-    if (/无需分配|不需要|跳过/.test(summary)) continue
+    const [, agentId, rawSummary] = m
+    if (/无需分配|不需要|跳过/.test(rawSummary)) continue
     if (/task-[a-z0-9]/.test(line)) continue
-    assignments.push({ agentId, summary: summary.trim() })
+
+    // Extract optional [project: xxx]
+    const projMatch = rawSummary.match(/\[project:\s*([^\]]+)\]/)
+    const projectId = projMatch ? projMatch[1].trim() : undefined
+    const summary = rawSummary.replace(/\[project:\s*[^\]]+\]\s*/, '').trim()
+
+    const entry = { agentId, summary }
+    if (projectId) entry.projectId = projectId
+    assignments.push(entry)
   }
   return assignments
 }

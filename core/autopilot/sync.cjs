@@ -21,12 +21,10 @@ function syncProjects(ceoResponseText) {
   const memory = missionRepo.readCeoWorkspaceFile('MEMORY.md')
 
   try {
-    const projectIds = projectMetaRepo.listProjectIds()
+    const allProjects = projectMetaRepo.readAll()
 
-    for (const dirName of projectIds) {
+    for (const { projectId: dirName, meta } of allProjects) {
       try {
-        const meta = projectMetaRepo.readMeta(dirName)
-        if (!meta) continue
 
         let phase = meta.currentPhase || 1
         let status = meta.status || 'planning'
@@ -85,7 +83,7 @@ function syncProjects(ceoResponseText) {
     // Copy new docs from agent workspaces to project docs/
     const ceoDocsDir = join(CEO_WORKSPACE, 'docs')
     const pmDocsDir = join(PROJECT_ROOT, 'agents/pm/docs')
-    for (const dirName of projectIds) {
+    for (const { projectId: dirName } of allProjects) {
       const projDocsDir = join(PROJECTS_DIR, dirName, 'docs')
       if (!existsSync(projDocsDir)) continue
       for (const src of [ceoDocsDir, pmDocsDir]) {

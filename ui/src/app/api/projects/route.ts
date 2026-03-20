@@ -4,9 +4,15 @@ import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const projects = core.common.projectService.listProjects()
+    let projects = core.common.projectService.listProjects()
+    const dept = req.nextUrl.searchParams.get('department')
+    if (dept) {
+      projects = projects.filter((p: { id: string; department?: string }) =>
+        p.department === dept || p.id.startsWith(dept + '/')
+      )
+    }
     return NextResponse.json({ projects, source: 'filesystem' })
   } catch (e) {
     return NextResponse.json({ error: String(e), projects: [], source: 'error' }, { status: 500 })

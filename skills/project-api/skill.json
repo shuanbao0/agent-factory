@@ -1,0 +1,5 @@
+{
+  "id": "project-api",
+  "name": "Project API",
+  "description": "Query, create, and delete projects via HTTP API. Allows agents to manage department projects and organize work."
+}

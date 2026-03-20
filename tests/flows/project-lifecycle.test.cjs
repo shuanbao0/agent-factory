@@ -8,7 +8,9 @@ const { createProject, listProjects } = require('../../core/common/project-servi
 const PROJECT_ROOT = join(__dirname, '..', '..')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
-const TEST_ID = 'zzz-test-proj-' + process.pid
+const TEST_SLUG = 'zzz-test-proj-' + process.pid
+const TEST_DEPT = 'zzz-test-dept'
+const TEST_ID = `${TEST_DEPT}/${TEST_SLUG}`
 
 afterEach(() => {
   // Clean up any test project directories
@@ -34,15 +36,16 @@ describe('Project lifecycle — create + list', () => {
     }
 
     const result = createProject(
-      { name: TEST_ID, description: 'Test Project', department: 'test' },
+      { name: TEST_SLUG, description: 'Test Project', department: TEST_DEPT },
       workflow
     )
 
     assert.equal(result.ok, true)
     assert.ok(result.project)
-    assert.equal(result.project.name, TEST_ID)
+    assert.equal(result.project.id, TEST_ID)
+    assert.equal(result.project.name, TEST_SLUG)
     assert.equal(result.project.description, 'Test Project')
-    assert.equal(result.project.department, 'test')
+    assert.equal(result.project.department, TEST_DEPT)
     assert.equal(result.project.totalPhases, 2)
     assert.equal(result.project.status, 'planning')
 
@@ -51,7 +54,7 @@ describe('Project lifecycle — create + list', () => {
     assert.ok(existsSync(metaPath), '.project-meta.json should exist')
 
     const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    assert.equal(meta.name, TEST_ID)
+    assert.equal(meta.name, TEST_SLUG)
     assert.equal(meta.description, 'Test Project')
     assert.ok(meta.createdAt)
     assert.deepEqual(meta.tasks, [])
@@ -86,13 +89,13 @@ describe('Project lifecycle — create + list', () => {
     }
 
     createProject(
-      { name: TEST_ID, description: 'List Test', department: 'test' },
+      { name: TEST_SLUG, description: 'List Test', department: TEST_DEPT },
       workflow
     )
 
     const projects = listProjects()
     const found = projects.find(p => p.id === TEST_ID)
     assert.ok(found, 'newly created project should appear in list')
-    assert.equal(found.name, TEST_ID)
+    assert.equal(found.name, TEST_SLUG)
   })
 })

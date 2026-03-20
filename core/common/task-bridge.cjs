@@ -69,7 +69,7 @@ async function createWorkTask(assignee, taskName, deptId, options = {}) {
       agent: assignee,
       name: taskName,
       description: options.description || undefined,
-      projectId: deptId || undefined,
+      projectId: options.projectId || deptId || undefined,
       type: options.type || 'dept-work',
       priority: options.priority || 'P1',
     })
@@ -86,10 +86,9 @@ async function updateTaskStatus(agentId, taskId, status, extras) {
   } catch { /* skip */ }
 }
 
-async function findActiveTaskForAgent(assignee, deptId) {
+async function findActiveTaskForAgent(assignee, _deptId) {
   try {
     const params = new URLSearchParams({ agent: assignee })
-    if (deptId) params.set('projectId', deptId)
     const result = await apiRequest('GET', `/api/agent-tasks?${params.toString()}`)
     if (!result || !Array.isArray(result.tasks)) return null
     const activeStatuses = new Set(['pending', 'assigned', 'in_progress', 'rework', 'review'])

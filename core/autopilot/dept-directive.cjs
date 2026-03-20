@@ -6,6 +6,7 @@ const { sessionRepo } = require('../repo/session.cjs')
 const { taskRepo } = require('../repo/task.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
+const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { buildMemoryContext } = require('../agent/memory.cjs')
 const logger = require('./logger.cjs')
 
@@ -164,6 +165,23 @@ function buildDeptTasks(deptId, config, projects) {
 }
 
 /**
+ * Build department projects listing
+ */
+function buildDeptProjects(deptId, projects) {
+  const allProjects = projectMetaRepo.readAll()
+  const deptProjects = allProjects.filter(({ projectId }) => projectId.startsWith(deptId + '/'))
+  if (deptProjects.length === 0) return '(无部门项目，使用 Project API 创建)'
+
+  let result = ''
+  for (const { projectId, meta } of deptProjects) {
+    const taskCount = (meta.tasks || []).length
+    const activeTasks = (meta.tasks || []).filter(t => t.status === 'in_progress').length
+    result += `- **${projectId}** — ${meta.name || projectId} | 状态: ${meta.status || 'unknown'} | 任务: ${activeTasks}进行/${taskCount}总\n`
+  }
+  return result
+}
+
+/**
  * Build KPI status display
  */
 function buildKpiStatus(deptId, kpiDefs) {
@@ -251,6 +269,9 @@ ${memorySection}${missionSection}
 ## CEO 指令
 ${readCeoDirectives(deptId)}
 
+## 部门项目
+${buildDeptProjects(deptId, projects)}
+
 ## 部门预算
 ${budgetInfo}
 ${transitionSection}
@@ -306,8 +327,20 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-w
 
 \`\`\`bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
-  -d '{"agent":"${config.head}","name":"任务名","projectId":"${deptId}","type":"dept-work","assignees":["实际执行的agent-id"]}' \\
+  -d '{"agent":"${config.head}","name":"任务名","projectId":"具体项目ID如${deptId}/xxx","type":"dept-work","assignees":["实际执行的agent-id"]}' \\
   "http://127.0.0.1:3100/api/agent-tasks"
+\`\`\`
+
+### 🗂️ 项目管理
+查询部门项目：
+\`\`\`bash
+curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects?department=${deptId}"
+\`\`\`
+创建新项目：
+\`\`\`bash
+curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"name":"项目名","description":"项目描述","department":"${deptId}"}' \\
+  "http://127.0.0.1:3100/api/projects"
 \`\`\`
 peer-send 消息中引用任务 ID：\`[Task: task-xxx] 具体指令...\`
 
@@ -340,7 +373,7 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-
 请在响应中包含以下结构化总结：
 \`\`\`
 [任务分配]
-- <agent-id>: <分配的任务摘要> (peer-send 已发送/无需分配)
+- <agent-id>: <分配的任务摘要> [project: <项目ID>] (peer-send 已发送/无需分配)
 [任务完成]
 - <task-id>: <完成情况> 或 "无"
 [进展汇报]
@@ -351,4 +384,4 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-
 `
 }
 
-module.exports = { buildDepartmentDirective, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildKpiStatus }
+module.exports = { buildDepartmentDirective, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildDeptProjects, buildKpiStatus }

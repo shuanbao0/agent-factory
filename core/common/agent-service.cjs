@@ -382,35 +382,21 @@ class AgentService {
   }
 
   _ensureProjectForDepartment(department, agentId) {
-    const meta = this._projectMetaRepo.readMeta(department)
+    // Ensure the department directory exists; projects are created by Chief via project-api skill
+    const { existsSync, mkdirSync } = require('fs')
+    const deptDir = join(PROJECT_ROOT, 'projects', department)
+    if (!existsSync(deptDir)) mkdirSync(deptDir, { recursive: true })
 
-    if (!meta) {
-      this._projectMetaRepo.ensureProjectDirs(department, ['docs', 'design', 'src', 'tests'])
-
-      const now = new Date().toISOString()
-      const newMeta = {
-        name: department,
-        description: `Auto-created project for ${department} department`,
-        status: 'planning',
-        currentPhase: 1,
-        totalPhases: 5,
-        createdAt: now,
-        tokensUsed: 0,
-        tasks: [],
-        assignedAgents: [agentId],
-      }
-      this._projectMetaRepo.writeMeta(department, newMeta)
-
-      const projectDir = join(PROJECT_ROOT, 'projects', department)
-      const brief = `# Project Brief: ${department}\n\n**Project ID:** ${department}\n**Created:** ${now}\n**Description:** Auto-created project for ${department} department\n\n## Shared Workspace\n\nThis project's shared workspace is at:\n\`${projectDir}\`\n\n## Directory Conventions\n\n- \`docs/\` — All written documents: PRD, research, meeting notes\n- \`design/\` — Designs, wireframes, design tokens\n- \`src/\` — Source code and outputs\n- \`tests/\` — Test files, test reports, QA notes\n`
-      this._projectMetaRepo.writeProjectFile(department, 'BRIEF.md', brief)
-    } else {
+    // If any sub-projects exist under this department, add agent to their assignedAgents
+    const allProjects = this._projectMetaRepo.readAll()
+    for (const { projectId, meta } of allProjects) {
+      if (!projectId.startsWith(department + '/')) continue
       try {
         const assigned = meta.assignedAgents || []
         if (!assigned.includes(agentId)) {
           assigned.push(agentId)
           meta.assignedAgents = assigned
-          this._projectMetaRepo.writeMeta(department, meta)
+          this._projectMetaRepo.writeMeta(projectId, meta)
         }
       } catch { /* skip */ }
     }
