@@ -35,7 +35,7 @@ describe('task-prompt', () => {
       id: 'task-002', name: 'Test', type: 'writing',
       reworkCount: 2,
       quality: {
-        peerReview: { feedback: '需要改进情节连贯性' },
+        peerReview: { comments: '需要改进情节连贯性' },
         selfCheck: { score: 65 },
       },
     }
@@ -66,5 +66,44 @@ describe('task-prompt', () => {
     const prompt = buildTaskPrompt('test-agent', task)
     assert.ok(prompt.includes('执行要求'))
     assert.ok(prompt.includes('workspaces/'))
+  })
+
+  // ── buildTaskContext tests ──
+
+  it('exports buildTaskContext function', () => {
+    const mod = require('../../../core/autopilot/task-prompt.cjs')
+    assert.ok(typeof mod.buildTaskContext === 'function')
+  })
+
+  it('buildTaskContext includes summary and quality standards', () => {
+    const { buildTaskContext } = require('../../../core/autopilot/task-prompt.cjs')
+    const ctx = buildTaskContext('test-agent', '写第一章初稿', { taskType: 'writing' })
+    assert.ok(ctx.includes('写第一章初稿'))
+    assert.ok(ctx.includes('70'))  // writing minPassingScore
+  })
+
+  it('buildTaskContext includes rework feedback when provided', () => {
+    const { buildTaskContext } = require('../../../core/autopilot/task-prompt.cjs')
+    const ctx = buildTaskContext('test-agent', '修改第一章', {
+      taskType: 'writing',
+      reworkCount: 1,
+      quality: { peerReview: { comments: '情节不连贯' }, selfCheck: { score: 55 } },
+    })
+    assert.ok(ctx.includes('第 1 次'))
+    assert.ok(ctx.includes('情节不连贯'))
+    assert.ok(ctx.includes('55'))
+  })
+
+  it('buildTaskContext omits rework info when reworkCount is 0', () => {
+    const { buildTaskContext } = require('../../../core/autopilot/task-prompt.cjs')
+    const ctx = buildTaskContext('test-agent', '普通任务', { reworkCount: 0 })
+    assert.ok(!ctx.includes('返工'))
+  })
+
+  it('buildTaskContext does not include identity or execution instructions', () => {
+    const { buildTaskContext } = require('../../../core/autopilot/task-prompt.cjs')
+    const ctx = buildTaskContext('test-agent', '任务摘要')
+    assert.ok(!ctx.includes('你的身份'))
+    assert.ok(!ctx.includes('执行要求'))
   })
 })

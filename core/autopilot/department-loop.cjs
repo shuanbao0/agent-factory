@@ -24,6 +24,7 @@ const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, rec
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
 const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
+const { buildTaskContext } = require('./task-prompt.cjs')
 const logger = require('./logger.cjs')
 
 // Quality gate: lazy singleton (DI to avoid circular dependency at module load time)
@@ -486,10 +487,16 @@ async function runDepartmentCycle(deptId) {
           seen.add(agentId)
           return true
         })
-        const taskPromises = uniqueAssignments.map(({ agentId, summary }) =>
-          createWorkTask(agentId, summary, deptId, { type: 'dept-work' })
+        const taskPromises = uniqueAssignments.map(({ agentId, summary }) => {
+          let description
+          try {
+            description = buildTaskContext(agentId, summary, { deptId, deptConfig: config, taskType: 'dept-work' })
+          } catch (e) {
+            logger.debug('dept-loop', `buildTaskContext failed for ${agentId}, using summary only`, e)
+          }
+          return createWorkTask(agentId, summary, deptId, { type: 'dept-work', description })
             .then(taskId => ({ agentId, taskId }))
-        )
+        })
         const settled = await Promise.allSettled(taskPromises)
         const created = settled.filter(r => r.status === 'fulfilled' && r.value?.taskId)
         if (created.length > 0) {

@@ -68,6 +68,7 @@ async function createWorkTask(assignee, taskName, deptId, options = {}) {
     const result = await apiRequest('POST', '/api/agent-tasks', {
       agent: assignee,
       name: taskName,
+      description: options.description || undefined,
       projectId: deptId || undefined,
       type: options.type || 'dept-work',
       priority: options.priority || 'P1',

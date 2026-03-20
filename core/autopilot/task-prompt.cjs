@@ -113,4 +113,69 @@ function buildTaskPrompt(agentId, task, options = {}) {
   return sections.join('\n\n')
 }
 
-module.exports = { buildTaskPrompt }
+/**
+ * Build lightweight supplementary context for a task description.
+ *
+ * Unlike buildTaskPrompt (full self-contained prompt), this only returns
+ * context the worker sub-session wouldn't otherwise have: quality standards,
+ * rework feedback, project background, and task memories.
+ * Agent identity and execution instructions are omitted (already in AGENTS.md / base-rules).
+ *
+ * @param {string} agentId
+ * @param {string} summary - Chief's one-line task summary
+ * @param {object} [options]
+ * @param {string} [options.deptId]
+ * @param {object} [options.deptConfig]
+ * @param {string} [options.taskType]
+ * @param {number} [options.reworkCount]
+ * @param {object} [options.quality] - Previous quality gate results
+ * @returns {string}
+ */
+function buildTaskContext(agentId, summary, options = {}) {
+  const { deptId, deptConfig, taskType, reworkCount, quality } = options
+  const parts = [summary]
+
+  // Quality standards from strategy
+  try {
+    const strategy = getStrategy(taskType, deptConfig)
+    parts.push(`\n质量标准: 最低 ${strategy.minPassingScore} 分`)
+    if (strategy.reviewCriteria) {
+      parts.push(`评审关注点: ${strategy.reviewCriteria}`)
+    }
+  } catch { /* skip if strategy unavailable */ }
+
+  // Project background
+  if (deptId) {
+    try {
+      const mission = missionRepo.readDeptMission(deptId)
+      if (mission) {
+        parts.push(`\n项目背景: ${mission.slice(0, 500)}`)
+      }
+    } catch { /* skip */ }
+  }
+
+  // Rework feedback
+  if (reworkCount > 0 && quality) {
+    const reworkParts = [`\n返工信息（第 ${reworkCount} 次）:`]
+    if (quality.peerReview?.comments) {
+      reworkParts.push(`评审反馈: ${quality.peerReview.comments.slice(0, 500)}`)
+    }
+    if (quality.selfCheck?.score != null) {
+      reworkParts.push(`上次自检评分: ${quality.selfCheck.score}`)
+    }
+    parts.push(reworkParts.join('\n'))
+  }
+
+  // Related task memories
+  try {
+    const memories = loadTaskMemories(agentId, { limit: MAX_TASK_MEMORIES })
+    if (memories.length > 0) {
+      const memLines = memories.map(m => `- ${m.taskId}: ${m.content.slice(0, 200)}`).join('\n')
+      parts.push(`\n相关任务经验:\n${memLines}`)
+    }
+  } catch { /* skip */ }
+
+  return parts.join('\n')
+}
+
+module.exports = { buildTaskPrompt, buildTaskContext }
