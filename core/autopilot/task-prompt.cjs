@@ -9,6 +9,7 @@ const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { buildMemoryContext, loadTaskMemories } = require('../agent/memory.cjs')
 const { getStrategy } = require('../task/strategy.cjs')
+const { getStandardsForType } = require('../common/task-standards.cjs')
 const { MAX_TASK_MEMORIES, MEMORY_MAX_CHARS } = require('./constants.cjs')
 
 /**
@@ -78,6 +79,21 @@ function buildTaskPrompt(agentId, task, options = {}) {
   ].filter(Boolean).join('\n')
   sections.push(taskSection)
 
+  // 4b. Task standards (from config/task-standards.md)
+  try {
+    const standards = getStandardsForType(task.type)
+    if (standards.typeStandards || standards.generalStandards) {
+      const stdParts = ['## 任务标准']
+      if (standards.typeStandards) {
+        stdParts.push(`\n### ${task.type} 类型标准\n${standards.typeStandards}`)
+      }
+      if (standards.generalStandards && !standards.typeStandards) {
+        stdParts.push(`\n### 通用标准\n${standards.generalStandards}`)
+      }
+      sections.push(stdParts.join('\n'))
+    }
+  } catch { /* skip if standards unavailable */ }
+
   // 5. Rework info
   if (task.reworkCount > 0) {
     const reworkSection = [`## 返工信息（第 ${task.reworkCount} 次返工）`]
@@ -143,6 +159,20 @@ function buildTaskContext(agentId, summary, options = {}) {
       parts.push(`评审关注点: ${strategy.reviewCriteria}`)
     }
   } catch { /* skip if strategy unavailable */ }
+
+  // Task standards (completion definition + boundaries)
+  try {
+    const standards = getStandardsForType(taskType)
+    if (standards.typeStandards) {
+      // Extract just completion definition and DO/DON'T from type standards
+      const completionMatch = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
+      if (completionMatch) parts.push(`完成定义: ${completionMatch[1]}`)
+      const doMatch = standards.typeStandards.match(/\*\*DO[：:]\*\*\s*(.+)/)
+      if (doMatch) parts.push(`要求: ${doMatch[1]}`)
+      const dontMatch = standards.typeStandards.match(/\*\*DON'T[：:]\*\*\s*(.+)/)
+      if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
+    }
+  } catch { /* skip */ }
 
   // Project background
   if (deptId) {

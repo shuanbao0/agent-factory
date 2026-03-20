@@ -8,6 +8,7 @@ const { missionRepo } = require('../repo/mission.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { buildMemoryContext } = require('../agent/memory.cjs')
+const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -172,11 +173,30 @@ function buildDeptProjects(deptId, projects) {
   const deptProjects = allProjects.filter(({ projectId }) => projectId.startsWith(deptId + '/'))
   if (deptProjects.length === 0) return '(无部门项目，使用 Project API 创建)'
 
+  // Load project standards for phase exit criteria
+  const projStandards = loadProjectStandards()
+
   let result = ''
   for (const { projectId, meta } of deptProjects) {
     const taskCount = (meta.tasks || []).length
     const activeTasks = (meta.tasks || []).filter(t => t.status === 'in_progress').length
-    result += `- **${projectId}** — ${meta.name || projectId} | 状态: ${meta.status || 'unknown'} | 任务: ${activeTasks}进行/${taskCount}总\n`
+    const phaseLabel = meta.currentPhase && meta.phases
+      ? (meta.phases[meta.currentPhase - 1]?.labelZh || meta.phases[meta.currentPhase - 1]?.labelEn || `Phase ${meta.currentPhase}`)
+      : ''
+    const phaseSuffix = phaseLabel ? ` | 阶段: ${phaseLabel}` : ''
+    result += `- **${projectId}** — ${meta.name || projectId} | 状态: ${meta.status || 'unknown'} | 任务: ${activeTasks}进行/${taskCount}总${phaseSuffix}\n`
+
+    // Show exit criteria for current phase if standards exist
+    if (projStandards?.lifecycle && meta.currentPhase && meta.phases) {
+      const phaseKey = meta.phases[meta.currentPhase - 1]?.labelEn?.toLowerCase()
+      if (phaseKey) {
+        const phaseStd = getPhaseStandards(projStandards.lifecycle, phaseKey)
+        if (phaseStd) {
+          const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+          if (exitMatch) result += `  出口条件: ${exitMatch[1]}\n`
+        }
+      }
+    }
   }
   return result
 }

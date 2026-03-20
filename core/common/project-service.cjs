@@ -7,6 +7,7 @@
 const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
+const { injectStandardsForProject } = require('./project-standards.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
@@ -124,6 +125,9 @@ Agents should coordinate through tasks and use the shared directories above for 
 Leave notes for other agents in the project directory.
 `
   projectMetaRepo.writeProjectFile(id, 'BRIEF.md', brief)
+
+  // Fire-and-forget: inject project standards
+  try { injectStandardsForProject(id) } catch { /* non-blocking */ }
 
   return { ok: true, project: { id, ...meta } }
 }

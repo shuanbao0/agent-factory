@@ -10,6 +10,7 @@
  * - 审查者选择策略（专业匹配 → 标签匹配 → 最空闲）
  */
 const { getStrategy } = require('./strategy.cjs')
+const { getStandardsForType } = require('../common/task-standards.cjs')
 
 // Lazy require to avoid circular dependencies
 let _taskRepo
@@ -222,7 +223,18 @@ class QualityOrchestrator {
       outputContent = raw ? raw.slice(0, 5000) : `(无法读取: ${task.output})`
     }
 
-    const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n1. 是否完成了任务要求的所有内容？\n2. 是否有明显的错误或遗漏？\n3. 格式和表述是否规范？\n4. 是否可以交付给下一环节？\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
+    // Build checklist: prefer type-specific from task-standards.md, fallback to generic
+    let checklistItems
+    try {
+      const standards = getStandardsForType(task.type)
+      checklistItems = standards.checklist.length > 0 ? standards.checklist : null
+    } catch { checklistItems = null }
+
+    const checklist = checklistItems
+      ? checklistItems.map((item, i) => `${i + 1}. ${item}`).join('\n')
+      : '1. 是否完成了任务要求的所有内容？\n2. 是否有明显的错误或遗漏？\n3. 格式和表述是否规范？\n4. 是否可以交付给下一环节？'
+
+    const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n${checklist}\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
 
     try {
       const result = await this._sendFn(agentId, `agent:${agentId}:quality-check:${task.id}`, prompt, 60000)

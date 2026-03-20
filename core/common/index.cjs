@@ -12,6 +12,8 @@ module.exports = {
   envManager: require('./env-manager.cjs'),
   modelsService: require('./models-service.cjs'),
   baseRulesInjector: require('./base-rules-injector.cjs'),
+  projectStandards: require('./project-standards.cjs'),
+  taskStandards: require('./task-standards.cjs'),
   skillSymlinks: require('./skill-symlinks.cjs'),
   eventRelay: require('./event-relay.cjs'),
 }
