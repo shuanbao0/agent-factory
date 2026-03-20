@@ -2,10 +2,12 @@
 import React from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { useAppStore } from '@/lib/store'
+import { useTranslation } from '@/lib/i18n'
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#14b8a6']
 
 export const AgentTokenChart = React.memo(function AgentTokenChart() {
+  const { t } = useTranslation()
   const usageByAgent = useAppStore(s => s.usageByAgent)
 
   const data = usageByAgent
@@ -16,7 +18,7 @@ export const AgentTokenChart = React.memo(function AgentTokenChart() {
     }))
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[250px] text-muted-foreground text-sm">暂无数据</div>
+    return <div className="flex items-center justify-center h-[250px] text-muted-foreground text-sm">{t('common.noData')}</div>
   }
 
   return (

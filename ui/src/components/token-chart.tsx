@@ -2,8 +2,10 @@
 import React from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useAppStore } from '@/lib/store'
+import { useTranslation } from '@/lib/i18n'
 
 export const TokenChart = React.memo(function TokenChart() {
+  const { t } = useTranslation()
   const usageDaily = useAppStore(s => s.usageDaily)
 
   const data = usageDaily.map(d => ({
@@ -13,7 +15,7 @@ export const TokenChart = React.memo(function TokenChart() {
   }))
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[250px] text-muted-foreground text-sm">暂无数据</div>
+    return <div className="flex items-center justify-center h-[250px] text-muted-foreground text-sm">{t('common.noData')}</div>
   }
 
   return (

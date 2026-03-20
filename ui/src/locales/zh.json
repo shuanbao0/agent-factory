@@ -43,7 +43,8 @@
     "refresh": "刷新",
     "retry": "重试",
     "switchLanguage": "切换语言",
-    "unsaved": "未保存"
+    "unsaved": "未保存",
+    "noData": "暂无数据"
   },
   "dashboard": {
     "title": "仪表盘",

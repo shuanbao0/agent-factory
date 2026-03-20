@@ -43,7 +43,8 @@
     "refresh": "Refresh",
     "retry": "Retry",
     "switchLanguage": "Switch Language",
-    "unsaved": "unsaved"
+    "unsaved": "unsaved",
+    "noData": "No data"
   },
   "dashboard": {
     "title": "Dashboard",
