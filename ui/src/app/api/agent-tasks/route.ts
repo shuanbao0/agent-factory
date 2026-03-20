@@ -92,21 +92,40 @@ export async function POST(req: NextRequest) {
       } catch { /* fallback: no type */ }
     }
 
-    // Enrich description with task standards if not already provided
+    // Enrich description with task + project standards if not already provided
     let enrichedDescription = description
-    if (!description && resolvedType) {
+    if (!description) {
       try {
-        const standards = core.task.getStandardsForType(resolvedType)
-        if (standards.typeStandards) {
-          const completionMatch = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
-          const doMatch = standards.typeStandards.match(/\*\*DO[：:]\*\*\s*(.+)/)
-          const dontMatch = standards.typeStandards.match(/\*\*DON'T[：:]\*\*\s*(.+)/)
-          const parts = []
-          if (completionMatch) parts.push(`完成定义: ${completionMatch[1]}`)
-          if (doMatch) parts.push(`要求: ${doMatch[1]}`)
-          if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
-          if (parts.length > 0) enrichedDescription = parts.join('\n')
+        const parts: string[] = []
+        // Task standards
+        if (resolvedType) {
+          const standards = core.task.getStandardsForType(resolvedType)
+          if (standards.typeStandards) {
+            const completionMatch = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
+            const doMatch = standards.typeStandards.match(/\*\*DO[：:]\*\*\s*(.+)/)
+            const dontMatch = standards.typeStandards.match(/\*\*DON'T[：:]\*\*\s*(.+)/)
+            if (completionMatch) parts.push(`完成定义: ${completionMatch[1]}`)
+            if (doMatch) parts.push(`要求: ${doMatch[1]}`)
+            if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
+          }
         }
+        // Project phase standards
+        if (projectId) {
+          const projMeta = core.repo.projectMetaRepo.readMeta(projectId)
+          const projStandards = core.common.projectStandards?.loadProjectStandards?.()
+          if (projMeta && projStandards?.lifecycle && projMeta.currentPhase && projMeta.phases) {
+            const phase = projMeta.phases[projMeta.currentPhase - 1]
+            const phaseKey = phase?.labelEn?.toLowerCase()
+            if (phaseKey) {
+              const phaseStd = core.common.projectStandards.getPhaseStandards(projStandards.lifecycle, phaseKey)
+              if (phaseStd) {
+                const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+                if (exitMatch) parts.push(`项目阶段: ${phase.labelZh || phase.labelEn} | 出口条件: ${exitMatch[1]}`)
+              }
+            }
+          }
+        }
+        if (parts.length > 0) enrichedDescription = parts.join('\n')
       } catch { /* non-blocking */ }
     }
 

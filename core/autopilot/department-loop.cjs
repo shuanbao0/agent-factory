@@ -514,13 +514,13 @@ async function runDepartmentCycle(deptId) {
           // Infer task type from summary keywords + agent role
           const agentMeta = agentMetaRepo.readMeta(agentId)
           const taskType = inferTaskType(summary, agentMeta)
+          const projectId = assignmentProjectId || getDefaultProjectForDept(deptId)
           let description
           try {
-            description = buildTaskContext(agentId, summary, { deptId, deptConfig: config, taskType })
+            description = buildTaskContext(agentId, summary, { deptId, deptConfig: config, taskType, projectId })
           } catch (e) {
             logger.debug('dept-loop', `buildTaskContext failed for ${agentId}, using summary only`, e)
           }
-          const projectId = assignmentProjectId || getDefaultProjectForDept(deptId)
           return createWorkTask(agentId, summary, deptId, { type: taskType, description, projectId })
             .then(taskId => ({ agentId, taskId }))
         })

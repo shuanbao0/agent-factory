@@ -6,10 +6,12 @@
  * a task in an isolated worker session (clean context, no history).
  */
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
+const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { buildMemoryContext, loadTaskMemories } = require('../agent/memory.cjs')
 const { getStrategy } = require('../task/strategy.cjs')
 const { getStandardsForType } = require('../common/task-standards.cjs')
+const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 const { MAX_TASK_MEMORIES, MEMORY_MAX_CHARS } = require('./constants.cjs')
 
 /**
@@ -94,6 +96,27 @@ function buildTaskPrompt(agentId, task, options = {}) {
     }
   } catch { /* skip if standards unavailable */ }
 
+  // 4c. Project standards (from config/project-standards.md via project meta)
+  if (task.projectId) {
+    try {
+      const projMeta = projectMetaRepo.readMeta(task.projectId)
+      const projStandards = loadProjectStandards()
+      if (projMeta && projStandards?.lifecycle && projMeta.currentPhase && projMeta.phases) {
+        const phase = projMeta.phases[projMeta.currentPhase - 1]
+        const phaseKey = phase?.labelEn?.toLowerCase()
+        if (phaseKey) {
+          const phaseStd = getPhaseStandards(projStandards.lifecycle, phaseKey)
+          if (phaseStd) {
+            sections.push(`## 项目阶段标准\n当前阶段: **${phase.labelZh || phase.labelEn}**\n\n${phaseStd}`)
+          }
+        }
+      }
+      if (projStandards?.boundaries) {
+        sections.push(`## 项目边界\n${projStandards.boundaries}`)
+      }
+    } catch { /* skip */ }
+  }
+
   // 5. Rework info
   if (task.reworkCount > 0) {
     const reworkSection = [`## 返工信息（第 ${task.reworkCount} 次返工）`]
@@ -143,12 +166,13 @@ function buildTaskPrompt(agentId, task, options = {}) {
  * @param {string} [options.deptId]
  * @param {object} [options.deptConfig]
  * @param {string} [options.taskType]
+ * @param {string} [options.projectId] - Project ID for project standards
  * @param {number} [options.reworkCount]
  * @param {object} [options.quality] - Previous quality gate results
  * @returns {string}
  */
 function buildTaskContext(agentId, summary, options = {}) {
-  const { deptId, deptConfig, taskType, reworkCount, quality } = options
+  const { deptId, deptConfig, taskType, projectId, reworkCount, quality } = options
   const parts = [summary]
 
   // Quality standards from strategy
@@ -173,6 +197,25 @@ function buildTaskContext(agentId, summary, options = {}) {
       if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
     }
   } catch { /* skip */ }
+
+  // Project phase standards (from config/project-standards.md)
+  if (projectId) {
+    try {
+      const projMeta = projectMetaRepo.readMeta(projectId)
+      const projStandards = loadProjectStandards()
+      if (projMeta && projStandards?.lifecycle && projMeta.currentPhase && projMeta.phases) {
+        const phase = projMeta.phases[projMeta.currentPhase - 1]
+        const phaseKey = phase?.labelEn?.toLowerCase()
+        if (phaseKey) {
+          const phaseStd = getPhaseStandards(projStandards.lifecycle, phaseKey)
+          if (phaseStd) {
+            const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+            if (exitMatch) parts.push(`\n项目阶段: ${phase.labelZh || phase.labelEn} | 出口条件: ${exitMatch[1]}`)
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
 
   // Project background
   if (deptId) {

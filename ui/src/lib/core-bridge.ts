@@ -168,6 +168,10 @@ export default _core as {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       createProject(body: Record<string, unknown>, workflow: any): { ok: boolean; project?: Record<string, unknown>; error?: string; status?: number }
     }
+    projectStandards: {
+      loadProjectStandards(): { lifecycle: string; boundaries: string } | null
+      getPhaseStandards(lifecycle: string, phaseKey: string): string | null
+    }
     fileBrowser: {
       listDirectory(baseDir: string, subDir: string): Record<string, unknown>
       getFileContent(baseDir: string, filePath: string, maxSize?: number): Record<string, unknown>
