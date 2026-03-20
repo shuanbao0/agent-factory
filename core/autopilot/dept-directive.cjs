@@ -9,6 +9,7 @@ const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { buildMemoryContext } = require('../agent/memory.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
+const { loadTaskStandards, getTaskTypeStandards } = require('../common/task-standards.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -202,6 +203,36 @@ function buildDeptProjects(deptId, projects) {
 }
 
 /**
+ * Build task type standards summary for Chief reference.
+ * Shows completion definitions for task types used in the department's current tasks.
+ */
+function buildTaskStandardsSummary(deptId, projects) {
+  const parsed = loadTaskStandards()
+  if (!parsed) return ''
+
+  // Collect task types actively used in department projects
+  const usedTypes = new Set()
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      if (t.type && t.type !== 'dept-work') usedTypes.add(t.type)
+    }
+  }
+  // Always include common types
+  for (const t of ['coding', 'writing', 'research', 'analysis', 'design']) usedTypes.add(t)
+
+  let result = ''
+  for (const type of usedTypes) {
+    const typeStd = getTaskTypeStandards(parsed.types, type)
+    if (!typeStd) continue
+    const completionMatch = typeStd.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
+    if (completionMatch) {
+      result += `- **${type}**: ${completionMatch[1]}\n`
+    }
+  }
+  return result || '(无类型标准定义)'
+}
+
+/**
  * Build KPI status display
  */
 function buildKpiStatus(deptId, kpiDefs) {
@@ -303,6 +334,9 @@ ${buildDeptTasks(deptId, config, projects)}
 
 ## 部门 KPI
 ${buildKpiStatus(deptId, config.kpis)}
+
+## 任务类型标准（分配任务时参考）
+${buildTaskStandardsSummary(deptId, projects)}
 
 ## 行动要求
 

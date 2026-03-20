@@ -11,6 +11,7 @@
  */
 const { getStrategy } = require('./strategy.cjs')
 const { getStandardsForType } = require('../common/task-standards.cjs')
+const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 
 // Lazy require to avoid circular dependencies
 let _taskRepo
@@ -129,6 +130,30 @@ class QualityOrchestrator {
     }
   }
 
+  /** @private — Build project phase context string for quality gate prompts */
+  _getProjectContext(task) {
+    if (!task.projectId) return ''
+    try {
+      const projMetaRepo = getTaskRepo() // lazy — avoids circular
+      // Read project meta via projectMetaRepo (accessed through task repo's parent)
+      const { projectMetaRepo } = require('../repo/project-meta.cjs')
+      const projMeta = projectMetaRepo.readMeta(task.projectId)
+      if (!projMeta?.currentPhase || !projMeta?.phases) return ''
+      const phase = projMeta.phases[projMeta.currentPhase - 1]
+      if (!phase) return ''
+      const phaseLabel = phase.labelZh || phase.labelEn || `Phase ${projMeta.currentPhase}`
+      const projStandards = loadProjectStandards()
+      if (!projStandards?.lifecycle) return `\n项目: ${task.projectId} | 阶段: ${phaseLabel}`
+      const phaseKey = phase.labelEn?.toLowerCase()
+      if (!phaseKey) return `\n项目: ${task.projectId} | 阶段: ${phaseLabel}`
+      const phaseStd = getPhaseStandards(projStandards.lifecycle, phaseKey)
+      if (!phaseStd) return `\n项目: ${task.projectId} | 阶段: ${phaseLabel}`
+      const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+      const exitCriteria = exitMatch ? ` | 出口条件: ${exitMatch[1]}` : ''
+      return `\n项目: ${task.projectId} | 阶段: ${phaseLabel}${exitCriteria}`
+    } catch { return '' }
+  }
+
   /** @private */
   _cleanupSessions(sessionKeys) {
     if (sessionKeys.length === 0 || !this._killSessionFn) return
@@ -234,7 +259,10 @@ class QualityOrchestrator {
       ? checklistItems.map((item, i) => `${i + 1}. ${item}`).join('\n')
       : '1. 是否完成了任务要求的所有内容？\n2. 是否有明显的错误或遗漏？\n3. 格式和表述是否规范？\n4. 是否可以交付给下一环节？'
 
-    const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n${checklist}\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
+    // Project phase context
+    const projectCtx = this._getProjectContext(task)
+
+    const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}${projectCtx ? `\n${projectCtx}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n${checklist}\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
 
     try {
       const result = await this._sendFn(agentId, `agent:${agentId}:quality-check:${task.id}`, prompt, 60000)
@@ -264,7 +292,15 @@ class QualityOrchestrator {
       peerOutputContent = raw ? raw.slice(0, 5000) : `(无法读取: ${task.output})`
     }
 
-    const prompt = `请 review 以下任务的产出：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}\n${peerOutputContent ? `产出内容:\n${peerOutputContent}` : '(产出未附带)'}\n\n评审标准：\n1. 完成度 — 是否满足任务要求？\n2. 质量 — 是否有错误或可改进之处？\n3. 一致性 — 是否与项目整体风格一致？\n\n回复格式：\nSCORE: <0-100>\nPASSED: <true/false>\nCOMMENTS: <your review comments>`
+    // Task type standards for reviewer reference
+    let reviewStandards = ''
+    try {
+      const standards = getStandardsForType(task.type)
+      if (standards.typeStandards) reviewStandards = `\n任务类型标准 (${task.type}):\n${standards.typeStandards}\n`
+    } catch { /* skip */ }
+    const projectCtx = this._getProjectContext(task)
+
+    const prompt = `请 review 以下任务的产出：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}${projectCtx ? `\n${projectCtx}` : ''}${reviewStandards}\n${peerOutputContent ? `产出内容:\n${peerOutputContent}` : '(产出未附带)'}\n\n评审标准：\n1. 完成度 — 是否满足任务要求？\n2. 质量 — 是否有错误或可改进之处？\n3. 一致性 — 是否与项目整体风格一致？\n\n回复格式：\nSCORE: <0-100>\nPASSED: <true/false>\nCOMMENTS: <your review comments>`
 
     try {
       const result = await this._sendFn(reviewerId, `agent:${reviewerId}:peer-review:${task.id}`, prompt, 60000)
@@ -294,7 +330,18 @@ class QualityOrchestrator {
     const peerScore = task.quality?.peerReview?.score || 'N/A'
     const peerComments = task.quality?.peerReview?.comments || '(无)'
 
-    const prompt = `作为部门主管，请审批以下任务：\n\n任务: ${task.name}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}\n自检评分: ${selfScore}\n同行评审评分: ${peerScore}\n评审意见: ${peerComments}\n\n是否批准完成？回复 APPROVED 或 REJECTED + 原因`
+    // Include completion definition for head to judge against
+    let completionDef = ''
+    try {
+      const standards = getStandardsForType(task.type)
+      if (standards.typeStandards) {
+        const match = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
+        if (match) completionDef = `\n完成定义: ${match[1]}`
+      }
+    } catch { /* skip */ }
+    const projectCtx = this._getProjectContext(task)
+
+    const prompt = `作为部门主管，请审批以下任务：\n\n任务: ${task.name}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}${completionDef}${projectCtx ? `\n${projectCtx}` : ''}\n自检评分: ${selfScore}\n同行评审评分: ${peerScore}\n评审意见: ${peerComments}\n\n是否批准完成？回复 APPROVED 或 REJECTED + 原因`
 
     try {
       const result = await this._sendFn(headId, `agent:${headId}:approval:${task.id}`, prompt, 60000)
