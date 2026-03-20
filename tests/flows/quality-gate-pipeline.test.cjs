@@ -218,6 +218,33 @@ describe('QualityOrchestrator', () => {
     })
   })
 
+  describe('process — low score with PASSED: true is rejected', () => {
+    it('score below threshold fails even if Agent replies PASSED: true', async () => {
+      const orchestrator = new QualityOrchestrator({
+        sendFn: async () => ({
+          ok: true,
+          text: 'SCORE: 30\nPASSED: true\nISSUES: none',
+        }),
+        readAgentActivity: () => ({}),
+        loadDeptConfig: () => ({
+          id: 'zzz-test-dept',
+          head: 'zzz-test-head',
+          agents: ['zzz-test-agent-a', 'zzz-test-peer', 'zzz-test-head'],
+        }),
+        readTaskOutput: () => null,
+        logger: silentLogger,
+      })
+
+      // writing type → minPassingScore = 70, SCORE: 30 should fail
+      const task = makeTask({ id: 'zzz-test-orch-bypass', type: 'writing' })
+      const result = await orchestrator.process('zzz-test-dept', task)
+
+      assert.equal(result.passed, false, 'low score must not be bypassed by PASSED: true')
+      assert.equal(task.quality.selfCheck.passed, false)
+      assert.equal(task.quality.selfCheck.score, 30)
+    })
+  })
+
   describe('process — self-check failure terminates pipeline', () => {
     it('returns passed=false on self-check fail', async () => {
       const orchestrator = new QualityOrchestrator({

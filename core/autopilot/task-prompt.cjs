@@ -81,8 +81,8 @@ function buildTaskPrompt(agentId, task, options = {}) {
   // 5. Rework info
   if (task.reworkCount > 0) {
     const reworkSection = [`## 返工信息（第 ${task.reworkCount} 次返工）`]
-    if (task.quality?.peerReview?.feedback) {
-      reworkSection.push(`\n评审反馈:\n${task.quality.peerReview.feedback.slice(0, 800)}`)
+    if (task.quality?.peerReview?.comments) {
+      reworkSection.push(`\n评审反馈:\n${task.quality.peerReview.comments.slice(0, 800)}`)
     }
     if (task.quality?.selfCheck?.score != null) {
       reworkSection.push(`上次自检评分: ${task.quality.selfCheck.score}`)
