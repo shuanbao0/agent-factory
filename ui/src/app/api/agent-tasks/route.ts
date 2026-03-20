@@ -18,6 +18,7 @@ import {
   getWorkflowForTask,
 } from '@/lib/quality-gate'
 import { relayEvent } from '@/lib/event-relay'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,11 +82,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Infer task type if not explicitly provided
+    let resolvedType = type
+    if (!resolvedType) {
+      try {
+        const assignee = Array.isArray(assignees) && assignees.length > 0 ? assignees[0] : agent
+        const agentMeta = core.repo.agentMetaRepo.readMeta(assignee)
+        resolvedType = core.task.inferTaskType(name, agentMeta)
+      } catch { /* fallback: no type */ }
+    }
+
+    // Enrich description with task standards if not already provided
+    let enrichedDescription = description
+    if (!description && resolvedType) {
+      try {
+        const standards = core.task.getStandardsForType(resolvedType)
+        if (standards.typeStandards) {
+          const completionMatch = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
+          const doMatch = standards.typeStandards.match(/\*\*DO[：:]\*\*\s*(.+)/)
+          const dontMatch = standards.typeStandards.match(/\*\*DON'T[：:]\*\*\s*(.+)/)
+          const parts = []
+          if (completionMatch) parts.push(`完成定义: ${completionMatch[1]}`)
+          if (doMatch) parts.push(`要求: ${doMatch[1]}`)
+          if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
+          if (parts.length > 0) enrichedDescription = parts.join('\n')
+        }
+      } catch { /* non-blocking */ }
+    }
+
     const now = new Date().toISOString()
     const task: Task = {
       id: `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       name,
-      description: description || undefined,
+      description: enrichedDescription || undefined,
       projectId: projectId || null,
       status: 'pending',
       priority: priority || 'P1',
@@ -94,7 +123,7 @@ export async function POST(req: NextRequest) {
       creator: agent,
       progress: 0,
       dependencies: dependencies || [],
-      type: type || undefined,
+      type: resolvedType || undefined,
       parentTaskId: parentTaskId || undefined,
       createdAt: now,
       updatedAt: now,

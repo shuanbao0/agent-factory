@@ -126,6 +126,8 @@ export default _core as {
     createReworkTask(task: Task, errors: string[]): Task
     deleteBatch(statuses: string[], olderThanDays?: number): { deleted: number }
     cleanupReworks(): { deletedDuplicates: number; closedOrphans: number; total: number }
+    inferTaskType(summary: string, agentMeta?: Record<string, unknown> | null): string
+    getStandardsForType(taskType: string): { typeStandards: string | null; generalStandards: string; checklist: string[] }
   }
   observe: {
     getBudgetSummary(): {
