@@ -12,7 +12,8 @@
       "session-logs",
       "document-pro",
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": [
       "cfo",

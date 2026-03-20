@@ -12,7 +12,8 @@
       "github",
       "tmux",
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": [
       "pm",

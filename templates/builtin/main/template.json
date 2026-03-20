@@ -10,7 +10,8 @@
     "model": "minimax/MiniMax-M2.5-highspeed",
     "skills": [
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": []
   }

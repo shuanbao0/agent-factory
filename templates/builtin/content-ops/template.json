@@ -12,7 +12,8 @@
       "session-logs",
       "wechat-mp-cn",
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": [
       "coo",

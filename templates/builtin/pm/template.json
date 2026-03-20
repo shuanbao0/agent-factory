@@ -12,7 +12,8 @@
       "github",
       "session-logs",
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": [
       "ceo",

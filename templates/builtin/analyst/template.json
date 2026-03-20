@@ -11,7 +11,8 @@
       "summarize",
       "nano-pdf",
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": [
       "ceo",

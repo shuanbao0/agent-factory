@@ -13,7 +13,8 @@
       "nano-pdf",
       "github",
       "peer-status",
-      "task-api"
+      "task-api",
+      "project-api"
     ],
     "peers": [
       "chief-scientist",
