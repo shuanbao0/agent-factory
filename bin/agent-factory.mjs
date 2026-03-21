@@ -10,7 +10,7 @@
 //   stop      Stop all services
 //   restart   Restart all services
 //   status    Show running status (ports, PIDs, version)
-//   logs      Tail service logs
+//   logs      View structured system logs (--level=ERROR/WARN/INFO/DEBUG)
 //   update    Update to latest version
 //   version   Show version
 //   doctor    Check environment (Node, deps, config)
@@ -259,17 +259,77 @@ async function cmdStatus() {
 }
 
 async function cmdLogs() {
-  const logFile = resolve(ROOT, '.openclaw-state/startup.log');
-  if (!existsSync(logFile)) {
-    console.log(c.yellow('No log file found at: ' + logFile));
+  const args = process.argv.slice(3);
+  const showStartup = args.includes('--startup');
+  const levelFilter = args.find(a => a.startsWith('--level='))?.split('=')[1]?.toUpperCase();
+  const lines = parseInt(args.find(a => a.startsWith('--lines='))?.split('=')[1] || '100');
+
+  if (showStartup) {
+    // Legacy: tail startup.log
+    const logFile = resolve(ROOT, 'data/openclaw-state/startup.log');
+    if (!existsSync(logFile)) {
+      console.log(c.yellow('No startup log found.'));
+      return;
+    }
+    console.log(c.dim('Tailing ' + logFile + ' (Ctrl-C to stop)'));
+    const child = spawn('tail', ['-f', logFile], { stdio: 'inherit' });
+    process.on('SIGINT', () => { child.kill(); process.exit(0); });
+    child.on('exit', (code) => process.exit(code ?? 0));
+    return;
+  }
+
+  // Structured logs: data/logs/YYYY-MM-DD.log
+  const logsDir = resolve(ROOT, 'data/logs');
+  if (!existsSync(logsDir)) {
+    console.log(c.yellow('No logs directory found at: ' + logsDir));
     console.log(c.dim('Start the service first with: agent-factory start'));
     return;
   }
 
-  console.log(c.dim('Tailing ' + logFile + ' (Ctrl-C to stop)'));
-  const child = spawn('tail', ['-f', logFile], { stdio: 'inherit' });
-  process.on('SIGINT', () => { child.kill(); process.exit(0); });
-  child.on('exit', (code) => process.exit(code ?? 0));
+  // Find today's log file (or most recent)
+  const logFiles = readdirSync(logsDir)
+    .filter(f => f.endsWith('.log'))
+    .sort()
+    .reverse();
+
+  if (logFiles.length === 0) {
+    console.log(c.yellow('No log files found in ' + logsDir));
+    return;
+  }
+
+  const follow = !args.includes('--no-follow');
+  const latestLog = resolve(logsDir, logFiles[0]);
+
+  if (follow) {
+    // Tail mode: show last N lines + follow
+    console.log(c.dim(`Tailing ${logFiles[0]} (Ctrl-C to stop)`));
+    if (levelFilter) console.log(c.dim(`Filtering: ${levelFilter}`));
+    console.log('');
+
+    const tailArgs = ['-n', String(lines), '-f', latestLog];
+    if (levelFilter) {
+      // Use grep to filter by level
+      const tail = spawn('tail', ['-n', String(lines), '-f', latestLog], { stdio: ['pipe', 'pipe', 'inherit'] });
+      const grep = spawn('grep', ['--line-buffered', `\\[${levelFilter}\\]`], { stdio: ['pipe', 'inherit', 'inherit'] });
+      tail.stdout.pipe(grep.stdin);
+      process.on('SIGINT', () => { tail.kill(); grep.kill(); process.exit(0); });
+      grep.on('exit', (code) => process.exit(code ?? 0));
+    } else {
+      const child = spawn('tail', tailArgs, { stdio: 'inherit' });
+      process.on('SIGINT', () => { child.kill(); process.exit(0); });
+      child.on('exit', (code) => process.exit(code ?? 0));
+    }
+  } else {
+    // Static mode: dump last N lines
+    const content = readFileSync(latestLog, 'utf-8');
+    let outputLines = content.trim().split('\n').slice(-lines);
+    if (levelFilter) {
+      outputLines = outputLines.filter(l => l.includes(`[${levelFilter}]`));
+    }
+    for (const line of outputLines) {
+      console.log(line);
+    }
+  }
 }
 
 async function cmdUpdate() {
@@ -531,14 +591,22 @@ ${c.bold('Commands:')}
   stop        Stop all services
   restart     Restart all services
   status      Show running status (ports, PIDs, version)
-  logs        Tail service logs
+  logs        View structured system logs (data/logs/)
   update      Update to latest version
   version     Show version
   doctor      Check environment (Node, deps, config)
 
+${c.bold('Logs options:')}
+  agent-factory logs                     # Tail today's log (follow mode)
+  agent-factory logs --level=ERROR       # Filter by level (ERROR/WARN/INFO/DEBUG)
+  agent-factory logs --lines=50          # Show last 50 lines (default: 100)
+  agent-factory logs --no-follow         # Print and exit (no follow)
+  agent-factory logs --startup           # Tail startup.log (legacy)
+
 ${c.bold('Examples:')}
   agent-factory start
   agent-factory status
+  agent-factory logs --level=WARN
   agent-factory update
 `);
 }
