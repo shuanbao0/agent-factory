@@ -778,6 +778,8 @@ WebSocket 连接 `ws://127.0.0.1:19100`，帧协议：
 - LLM 调用必须通过 retry + circuit breaker 包装
 - JSONL 日志用 `fs.appendFileSync()`，避免 read-modify-write 竞争
 - 惰性 require 预防循环依赖
+- 所有 catch 块必须有 logger 调用（不允许静默吞错）
+- 关键操作流程（CRUD、状态变迁）必须有 INFO 级别的开始/完成日志
 
 ### 全局
 
@@ -793,6 +795,71 @@ WebSocket 连接 `ws://127.0.0.1:19100`，帧协议：
 - Hook：`const { t, locale, setLocale } = useTranslation()`
 - 翻译函数：`t('dashboard.title')` → 点分路径查找
 - 新增文案时，`en.json` 和 `zh.json` 必须同步更新
+
+## 日志系统
+
+全局结构化日志模块 `core/common/logger.cjs`，所有 core/ 和 UI 服务层模块统一使用。
+
+### 日志级别
+
+| 级别 | 用途 | 示例 |
+|------|------|------|
+| ERROR | 操作完全失败，需立即关注 | JSON 解析失败、API 认证失败、质量门崩溃 |
+| WARN | 可恢复但异常 | 原子写回退、预算接近阈值、重试触发、无效状态转换 |
+| INFO | 关键操作里程碑 | Agent 创建/删除、部门创建、任务状态变迁、Gateway 启停 |
+| DEBUG | 排查用详情 | 缓存命中、重试次数、类型推断、文件写入、技能同步 |
+
+### 日志存储
+
+- **路径**：`data/logs/YYYY-MM-DD.log`（按天自动轮转）
+- **清理**：14 天自动删除旧日志（模块加载时触发）
+- **格式**：`[ISO时间戳] [LEVEL] [component] message | {JSON数据}`
+
+```
+[2026-03-22T10:00:01.000Z] [INFO] [agent-service] Agent creation started | {"id":"novel-writer","templateId":"novel-writer"}
+[2026-03-22T10:00:01.050Z] [DEBUG] [base-rules] Base-rules injected | {"agentDir":"data/agents/novel-writer"}
+[2026-03-22T10:00:02.105Z] [INFO] [agent-service] Agent created | {"id":"novel-writer"}
+[2026-03-22T10:05:00.000Z] [INFO] [state-machine] Task transition | {"taskId":"task-abc","from":"in_progress","to":"review","actor":"system","reason":"idle > 18min"}
+[2026-03-22T10:05:01.000Z] [WARN] [budget] Budget exceeded | {"deptId":"novel","used":810000,"limit":800000}
+[2026-03-22T10:05:02.000Z] [ERROR] [repo] JSON parse failed | {"file":"data/config/tasks.json"}
+```
+
+### 使用方式
+
+```javascript
+// core/ 层
+const logger = require('./logger.cjs')           // core/common/ 内
+const logger = require('../common/logger.cjs')    // core/ 其他子模块
+
+logger.info('component-name', '操作描述', { key: 'value' })
+logger.error('component-name', '错误描述', { error: err.message })
+
+// UI 层（通过 core-bridge）
+import core from '@/lib/core-bridge'
+core.common.logger.info('gateway', 'Gateway started', { port: 19100 })
+```
+
+### 覆盖范围
+
+全系统 ~200 个日志点，覆盖所有执行流程：
+
+| 层 | 模块 | 覆盖内容 |
+|---|---|---|
+| core/repo | base, task, agent-meta, session, mission 等 | 文件 I/O 错误、JSON 解析失败 |
+| core/llm | gateway-pool, retry, anthropic-client | 连接/超时/重试/断路器 |
+| core/common | agent-service, dept-service, project-service 等 | CRUD 全流程链路（12 步 Agent 创建等） |
+| core/task | state-machine, quality-orchestrator, auto-transition | 状态变迁审计、质量门流水线 |
+| core/observe | budget, cost-tracker, event-bus, kpi | 预算追踪、成本记录 |
+| core/agent | memory | 记忆压缩/更新 |
+| core/autopilot | orchestrator, department-loop, sync 等 | CEO/部门循环全流程 |
+| UI 服务层 | gateway-manager, task-api, data-fetchers 等 | Gateway 启停、任务操作 |
+
+### 编码规范
+
+- 新增模块必须引入 logger 并在关键操作点添加日志
+- catch 块不允许静默吞错 — 至少 `logger.debug()` 记录
+- 操作流程的开始和完成必须有 INFO 日志
+- component 名称与模块名一致（如 `'agent-service'`、`'state-machine'`、`'gateway'`）
 
 ## 关键配置文件
 
