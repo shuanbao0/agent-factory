@@ -10,10 +10,10 @@
  *   node scripts/autopilot/department-loop.cjs --dept novel --loop
  *   node scripts/autopilot/department-loop.cjs --dept novel --loop --interval 600
  */
-const { DEFAULT_DEPT_INTERVAL_SEC } = require('../../core/autopilot/constants.cjs')
-const { runDepartmentCycle } = require('../../core/autopilot/department-loop.cjs')
-const { deptStateRepo } = require('../../core/repo/dept-state.cjs')
-const logger = require('../../core/autopilot/logger.cjs')
+const { DEFAULT_DEPT_INTERVAL_SEC } = require('../../../core/autopilot/constants.cjs')
+const { runDepartmentCycle } = require('../../../core/autopilot/department-loop.cjs')
+const { deptStateRepo } = require('../../../core/repo/dept-state.cjs')
+const logger = require('../../../core/common/logger.cjs')
 
 // ── CLI mode ────────────────────────────────────────────────────
 if (require.main === module) {
@@ -85,4 +85,4 @@ if (require.main === module) {
 }
 
 // Re-export for backward compatibility
-module.exports = require('../../core/autopilot/department-loop.cjs')
+module.exports = require('../../../core/autopilot/department-loop.cjs')

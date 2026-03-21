@@ -11,7 +11,7 @@ import { logError } from '@/lib/error-logger'
 
 export const dynamic = 'force-dynamic'
 
-const SCRIPT_PATH = resolve(process.cwd(), 'scripts/gateway-chat.js')
+const SCRIPT_PATH = resolve(process.cwd(), 'scripts/runtime/gateway-chat.js')
 
 export async function POST(
   req: NextRequest,

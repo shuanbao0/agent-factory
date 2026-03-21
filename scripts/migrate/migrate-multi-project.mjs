@@ -11,7 +11,7 @@
  */
 import { existsSync, readdirSync, mkdirSync, renameSync, readFileSync, writeFileSync, statSync } from 'fs'
 import { join } from 'path'
-import paths from '../core/common/paths.mjs'
+import paths from '../../core/common/paths.mjs'
 
 const { PROJECTS_DIR, DEPARTMENTS_DIR, TASKS_FILE } = paths
 

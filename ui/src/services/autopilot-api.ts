@@ -8,8 +8,8 @@ import type { DepartmentConfig } from '@/lib/types'
 // --- Constants ---
 
 const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
-const AUTOPILOT_SCRIPT = join(PROJECT_ROOT, 'scripts/autopilot/index.cjs')
-const DEPT_LOOP_SCRIPT = join(PROJECT_ROOT, 'scripts/autopilot/department-loop.cjs')
+const AUTOPILOT_SCRIPT = join(PROJECT_ROOT, 'scripts/runtime/autopilot/index.cjs')
+const DEPT_LOOP_SCRIPT = join(PROJECT_ROOT, 'scripts/runtime/autopilot/department-loop.cjs')
 
 // --- Types ---
 

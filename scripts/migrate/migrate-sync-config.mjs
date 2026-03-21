@@ -22,7 +22,7 @@
 import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, cpSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
-import paths from '../core/common/paths.mjs';
+import paths from '../../core/common/paths.mjs';
 
 const { DEPARTMENTS_DIR, DEPARTMENTS_FILE: DEPARTMENTS_JSON, BUDGET_FILE: BUDGET_JSON } = paths;
 const UPDATE_DIR = process.env.AF_UPDATE_DIR || null;  // tmpDir from agent-factory update

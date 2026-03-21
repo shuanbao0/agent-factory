@@ -9,10 +9,10 @@ import { resolve, join } from 'node:path';
 import { existsSync, readFileSync, copyFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { spawn, execSync } from 'node:child_process';
 import net from 'node:net';
-import paths from '../core/common/paths.mjs';
+import paths from '../../core/common/paths.mjs';
 import { createRequire } from 'node:module';
 const _require = createRequire(import.meta.url);
-const { ensureDataDir } = _require('../core/common/data-init.cjs');
+const { ensureDataDir } = _require('../../core/common/data-init.cjs');
 
 const {
   PROJECT_ROOT: ROOT,

@@ -12,7 +12,7 @@
 
 import { existsSync, readdirSync, renameSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, statSync, rmSync } from 'fs'
 import { join, resolve } from 'path'
-import paths from '../core/common/paths.mjs'
+import paths from '../../core/common/paths.mjs'
 
 const { PROJECT_ROOT, DATA_DIR } = paths
 const DRY_RUN = process.argv.includes('--dry-run')

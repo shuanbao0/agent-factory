@@ -138,7 +138,7 @@ async function cmdStart() {
   const { openSync } = await import('node:fs');
   const out = openSync(logFile, 'a');
 
-  const child = spawn('node', ['scripts/start.mjs'], {
+  const child = spawn('node', ['scripts/runtime/start.mjs'], {
     cwd: ROOT,
     stdio: ['ignore', out, out],
     env: { ...process.env, AGENT_FACTORY_DIR: ROOT },
@@ -447,10 +447,10 @@ async function cmdUpdate() {
 
   // 5. Run migration scripts (with AF_UPDATE_DIR so they can read new version files)
   try {
-    const scriptsDir = resolve(ROOT, 'scripts');
-    const migrationScripts = readdirSync(scriptsDir)
-      .filter(f => f.startsWith('migrate-') && f.endsWith('.mjs'))
-      .sort();
+    const scriptsDir = resolve(ROOT, 'scripts', 'migrate');
+    const migrationScripts = existsSync(scriptsDir)
+      ? readdirSync(scriptsDir).filter(f => f.endsWith('.mjs')).sort()
+      : [];
 
     if (migrationScripts.length > 0) {
       console.log('Running migrations...');
@@ -468,7 +468,7 @@ async function cmdUpdate() {
   execSync(`rm -rf "${tmpDir}" "${tarball}"`);
 
   // 6. Re-inject base-rules into all agents
-  const injectScript = resolve(ROOT, 'scripts/inject-base-rules.mjs');
+  const injectScript = resolve(ROOT, 'scripts/tools/inject-base-rules.mjs');
   if (existsSync(injectScript)) {
     console.log('Re-injecting base-rules...');
     execSync(`node "${injectScript}"`, { cwd: ROOT, stdio: 'inherit' });

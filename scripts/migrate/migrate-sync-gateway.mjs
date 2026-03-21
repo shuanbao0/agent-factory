@@ -25,7 +25,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import paths from '../core/common/paths.mjs';
+import paths from '../../core/common/paths.mjs';
 
 const {
   GATEWAY_CONFIG_FILE: OPENCLAW_JSON,

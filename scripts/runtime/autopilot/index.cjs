@@ -14,10 +14,10 @@
  *   node scripts/autopilot/index.cjs --stop                  # 停止运行中的循环
  *   node scripts/autopilot/index.cjs --all                   # 启动全部循环（CEO + 部门循环）
  */
-const { DEFAULT_INTERVAL_SEC } = require('../../core/autopilot/constants.cjs')
-const { loadState, saveState } = require('../../core/common/autopilot-state.cjs')
-const { runCycle, startAll, killExistingAutopilot } = require('../../core/autopilot/orchestrator.cjs')
-const logger = require('../../core/autopilot/logger.cjs')
+const { DEFAULT_INTERVAL_SEC } = require('../../../core/autopilot/constants.cjs')
+const { loadState, saveState } = require('../../../core/common/autopilot-state.cjs')
+const { runCycle, startAll, killExistingAutopilot } = require('../../../core/autopilot/orchestrator.cjs')
+const logger = require('../../../core/common/logger.cjs')
 
 // ── Parse CLI args ──────────────────────────────────────────────
 const args = process.argv.slice(2)
@@ -109,4 +109,4 @@ async function main() {
   }
 }
 
-module.exports = { runCycle, startAll, discoverActiveDepartments: require('../../core/autopilot/orchestrator.cjs').discoverActiveDepartments }
+module.exports = { runCycle, startAll, discoverActiveDepartments: require('../../../core/autopilot/orchestrator.cjs').discoverActiveDepartments }

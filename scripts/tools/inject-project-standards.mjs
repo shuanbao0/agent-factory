@@ -13,7 +13,7 @@
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
-import paths from '../core/common/paths.mjs'
+import paths from '../../core/common/paths.mjs'
 
 const { PROJECT_ROOT: ROOT, PROJECTS_DIR, PROJECT_STANDARDS_FILE: STANDARDS_FILE } = paths
 

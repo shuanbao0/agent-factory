@@ -20,7 +20,7 @@
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, copyFileSync, symlinkSync, lstatSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import paths from '../core/common/paths.mjs';
+import paths from '../../core/common/paths.mjs';
 
 const { PROJECT_ROOT: ROOT, AGENTS_DIR, BUILTIN_AGENT_TEMPLATES_DIR, SKILLS_DIR } = paths;
 const TEMPLATES_DIR = join(BUILTIN_AGENT_TEMPLATES_DIR, 'builtin');
