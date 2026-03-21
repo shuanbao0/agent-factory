@@ -381,7 +381,7 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to novel-w
 
 \`\`\`bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
-  -d '{"agent":"${config.head}","name":"任务名","projectId":"具体项目ID如${deptId}/xxx","type":"dept-work","assignees":["实际执行的agent-id"]}' \\
+  -d '{"agent":"${config.head}","name":"任务名","projectId":"具体项目ID如${deptId}/xxx","assignees":["实际执行的agent-id"]}' \\
   "http://127.0.0.1:3100/api/agent-tasks"
 \`\`\`
 

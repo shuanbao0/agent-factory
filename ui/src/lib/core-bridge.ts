@@ -127,7 +127,6 @@ export default _core as {
     deleteBatch(statuses: string[], olderThanDays?: number): { deleted: number }
     cleanupReworks(): { deletedDuplicates: number; closedOrphans: number; total: number }
     inferTaskType(summary: string, agentMeta?: Record<string, unknown> | null): string
-    getStandardsForType(taskType: string): { typeStandards: string | null; generalStandards: string; checklist: string[] }
   }
   observe: {
     getBudgetSummary(): {
@@ -171,6 +170,10 @@ export default _core as {
     projectStandards: {
       loadProjectStandards(): { lifecycle: string; boundaries: string } | null
       getPhaseStandards(lifecycle: string, phaseKey: string): string | null
+    }
+    taskStandards: {
+      getStandardsForType(taskType: string): { typeStandards: string | null; generalStandards: string; checklist: string[] }
+      loadTaskStandards(): { general: string; types: string } | null
     }
     fileBrowser: {
       listDirectory(baseDir: string, subDir: string): Record<string, unknown>

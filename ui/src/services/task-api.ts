@@ -112,7 +112,7 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
     try {
       const parts: string[] = []
       if (resolvedType) {
-        const standards = core.task.getStandardsForType(resolvedType)
+        const standards = core.common.taskStandards.getStandardsForType(resolvedType)
         if (standards.typeStandards) {
           const completionMatch = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
           const doMatch = standards.typeStandards.match(/\*\*DO[：:]\*\*\s*(.+)/)
