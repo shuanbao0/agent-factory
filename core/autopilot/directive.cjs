@@ -4,6 +4,7 @@
 const { missionRepo } = require('../repo/mission.cjs')
 const { taskRepo } = require('../repo/task.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
+const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -68,6 +69,9 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
   const projects = taskRepo.readProjectsWithTasks()
   const agentActivity = sessionRepo.readAgentActivity()
 
+  // Load project standards for phase context
+  const projStandards = loadProjectStandards()
+
   if (projects.length > 0) {
     context += `\n## 📊 项目实时数据（来自系统，非记忆）\n`
     for (const proj of projects) {
@@ -76,9 +80,32 @@ function buildCoordinationDirective(cycleNum, memoryContext) {
       const running = tasks.filter(t => t.status === 'in_progress')
       const pending = tasks.filter(t => !['completed', 'in_progress', 'review', 'failed'].includes(t.status))
 
+      // Resolve phase label + exit criteria
+      let phaseInfo = `${proj.currentPhase}/${proj.totalPhases}`
+      if (proj.phases && proj.currentPhase) {
+        const phase = proj.phases[proj.currentPhase - 1]
+        if (phase) {
+          const label = phase.labelZh || phase.labelEn || ''
+          phaseInfo = label ? `${label} (${proj.currentPhase}/${proj.totalPhases})` : phaseInfo
+        }
+      }
+
       context += `\n### ${proj.name} (${proj.id})\n`
-      context += `- 状态: ${proj.status} | 阶段: ${proj.currentPhase}/${proj.totalPhases}\n`
+      context += `- 状态: ${proj.status} | 阶段: ${phaseInfo}\n`
       context += `- 进度: ${completed}/${tasks.length} 任务完成\n`
+
+      // Show exit criteria for current phase
+      if (projStandards?.lifecycle && proj.phases && proj.currentPhase) {
+        const phase = proj.phases[proj.currentPhase - 1]
+        const phaseKey = phase?.labelEn?.toLowerCase()
+        if (phaseKey) {
+          const phaseStd = getPhaseStandards(projStandards.lifecycle, phaseKey)
+          if (phaseStd) {
+            const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+            if (exitMatch) context += `- 📋 出口条件: ${exitMatch[1]}\n`
+          }
+        }
+      }
 
       if (running.length > 0) {
         context += `- ⚡ 进行中:\n`
@@ -192,13 +219,31 @@ function buildStrategyDirective(cycleNum, memoryContext) {
     }
   }
 
-  // High-level project summary
+  // High-level project summary with phase labels
+  const stratProjStandards = loadProjectStandards()
   if (projects.length > 0) {
     context += `\n## 项目总览\n`
     for (const proj of projects) {
       const tasks = proj.tasks || []
       const completed = tasks.filter(t => t.status === 'completed').length
-      context += `- ${proj.name}: ${proj.status} (${completed}/${tasks.length} tasks, phase ${proj.currentPhase}/${proj.totalPhases})\n`
+      let phaseLabel = `phase ${proj.currentPhase}/${proj.totalPhases}`
+      if (proj.phases && proj.currentPhase) {
+        const phase = proj.phases[proj.currentPhase - 1]
+        if (phase) phaseLabel = `${phase.labelZh || phase.labelEn || phaseLabel}`
+      }
+      context += `- ${proj.name}: ${proj.status} (${completed}/${tasks.length} tasks, ${phaseLabel})\n`
+
+      if (stratProjStandards?.lifecycle && proj.phases && proj.currentPhase) {
+        const phase = proj.phases[proj.currentPhase - 1]
+        const phaseKey = phase?.labelEn?.toLowerCase()
+        if (phaseKey) {
+          const phaseStd = getPhaseStandards(stratProjStandards.lifecycle, phaseKey)
+          if (phaseStd) {
+            const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+            if (exitMatch) context += `  出口条件: ${exitMatch[1]}\n`
+          }
+        }
+      }
     }
   }
 
