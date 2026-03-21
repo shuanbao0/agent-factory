@@ -14,6 +14,7 @@ module.exports = {
   baseRulesInjector: require('./base-rules-injector.cjs'),
   projectStandards: require('./project-standards.cjs'),
   taskStandards: require('./task-standards.cjs'),
+  phaseDeliverables: require('./phase-deliverables.cjs'),
   skillSymlinks: require('./skill-symlinks.cjs'),
   eventRelay: require('./event-relay.cjs'),
 }

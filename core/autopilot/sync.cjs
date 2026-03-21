@@ -10,6 +10,7 @@ const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const fileBrowser = require('../common/file-browser.cjs')
 const { injectStandardsForProject } = require('../common/project-standards.cjs')
+const { generatePhaseDeliverables } = require('../common/phase-deliverables.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -77,9 +78,20 @@ function syncProjects(ceoResponseText) {
 
         projectMetaRepo.writeMeta(dirName, meta)
 
-        // Re-inject STANDARDS.md when phase advances (updates "当前阶段" marker)
+        // Re-inject STANDARDS.md + generate phase deliverable templates when phase advances
         if (phaseChanged) {
           try { injectStandardsForProject(dirName) } catch { /* non-blocking */ }
+          try {
+            const phaseObj = meta.phases?.[phase - 1]
+            const phaseKey = phaseObj?.key || phaseObj?.labelEn?.toLowerCase()
+            if (phaseKey) {
+              const deptId = dirName.split('/')[0]
+              let deptConfig = null
+              try { deptConfig = require('../repo/dept-config.cjs').deptConfigRepo.load(deptId) } catch { /* skip */ }
+              const files = generatePhaseDeliverables(dirName, phaseKey, meta, deptConfig)
+              if (files.length > 0) logger.info('sync', `Generated ${files.length} deliverable templates for ${dirName} phase ${phaseKey}`)
+            }
+          } catch { /* non-blocking */ }
         }
 
         logger.info('sync', `Synced project: ${dirName} (phase ${phase}, ${status}, ${blockers.length} blockers)`)

@@ -8,6 +8,7 @@ const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { injectStandardsForProject } = require('./project-standards.cjs')
+const { generatePhaseDeliverables } = require('./phase-deliverables.cjs')
 
 const PROJECT_ROOT = join(__dirname, '..', '..')
 const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
@@ -126,8 +127,19 @@ Leave notes for other agents in the project directory.
 `
   projectMetaRepo.writeProjectFile(id, 'BRIEF.md', brief)
 
-  // Fire-and-forget: inject project standards
+  // Fire-and-forget: inject project standards + phase 1 deliverable templates
   try { injectStandardsForProject(id) } catch { /* non-blocking */ }
+  try {
+    const phase1 = workflow.phases[0]
+    const phaseKey = phase1?.key || phase1?.labelEn?.toLowerCase()
+    if (phaseKey) {
+      let deptConfig = null
+      if (department) {
+        try { deptConfig = require('../repo/dept-config.cjs').deptConfigRepo.load(department) } catch { /* skip */ }
+      }
+      generatePhaseDeliverables(id, phaseKey, meta, deptConfig)
+    }
+  } catch { /* non-blocking */ }
 
   return { ok: true, project: { id, ...meta } }
 }
