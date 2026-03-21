@@ -76,6 +76,7 @@ function trackCost({ model, usage, source, agentId }) {
     const dir = dirname(COSTS_FILE)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     appendFileSync(COSTS_FILE, JSON.stringify(entry) + '\n')
+    logger.debug('cost-tracker', 'Cost recorded', { model: entry.model, inputTokens: entry.inputTokens, outputTokens: entry.outputTokens, cost: entry.cost })
   } catch (err) {
     logger.error('cost-tracker', 'Cost log append failed', { error: err.message })
   }

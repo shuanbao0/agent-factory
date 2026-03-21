@@ -71,6 +71,8 @@ function createProject(body, workflow) {
 
   const id = department ? `${department}/${slug}` : slug
 
+  logger.info('project-service', 'Project creation started', { id, department })
+
   const existingMeta = projectMetaRepo.readMeta(id)
   if (existingMeta) {
     return { ok: false, error: `Project "${id}" already exists`, status: 409 }
@@ -78,6 +80,7 @@ function createProject(body, workflow) {
 
   // Create directory structure from workflow
   projectMetaRepo.ensureProjectDirs(id, workflow.directories)
+  logger.debug('project-service', 'Project directories created', { id })
 
   const now = new Date().toISOString()
   const meta = {
@@ -94,6 +97,7 @@ function createProject(body, workflow) {
     assignedAgents: [],
   }
   projectMetaRepo.writeMeta(id, meta)
+  logger.debug('project-service', 'Project metadata written', { id, phases: meta.phases?.length })
 
   // Build BRIEF.md
   const projectDir = join(PROJECTS_DIR, id)
@@ -126,9 +130,10 @@ Agents should coordinate through tasks and use the shared directories above for 
 Leave notes for other agents in the project directory.
 `
   projectMetaRepo.writeProjectFile(id, 'BRIEF.md', brief)
+  logger.debug('project-service', 'BRIEF.md written', { id })
 
   // Fire-and-forget: inject project standards + phase 1 deliverable templates
-  try { injectStandardsForProject(id) } catch { logger.debug('project-service', 'Standards injection failed', { projectId: id }) }
+  try { injectStandardsForProject(id); logger.debug('project-service', 'Standards injected', { id }) } catch { logger.debug('project-service', 'Standards injection failed', { projectId: id }) }
   try {
     const phase1 = workflow.phases[0]
     const phaseKey = phase1?.key || phase1?.labelEn?.toLowerCase()
@@ -138,6 +143,7 @@ Leave notes for other agents in the project directory.
         try { deptConfig = require('../repo/dept-config.cjs').deptConfigRepo.load(department) } catch { /* skip */ }
       }
       generatePhaseDeliverables(id, phaseKey, meta, deptConfig)
+      logger.debug('project-service', 'Phase deliverables generated', { id, phase: phaseKey })
     }
   } catch { logger.debug('project-service', 'Phase deliverables failed', { projectId: id }) }
 

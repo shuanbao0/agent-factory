@@ -9,6 +9,7 @@
 const { appendFileSync, existsSync, mkdirSync } = require('fs')
 const { dirname } = require('path')
 const { SIGNAL_FILE } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 /**
  * 追加事件行到信号文件
@@ -16,6 +17,7 @@ const { SIGNAL_FILE } = require('./paths.cjs')
  * @param {object} payload - 事件数据
  */
 function relayEvent(eventType, payload) {
+  logger.debug('event-relay', 'Event relayed', { type: eventType })
   try {
     const dir = dirname(SIGNAL_FILE)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })

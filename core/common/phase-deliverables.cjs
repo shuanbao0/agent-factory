@@ -17,6 +17,7 @@ const { readFileSync, existsSync, statSync } = require('fs')
 const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { PHASE_DELIVERABLES_FILE: DELIVERABLES_PATH, PROJECTS_DIR } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 // ── Parsing ───────────────────────────────────────────────────
 
@@ -172,6 +173,9 @@ function generatePhaseDeliverables(projectId, phaseKey, projectMeta, deptConfig)
     generated.push(filePath)
   }
 
+  if (generated.length > 0) {
+    logger.debug('phase-deliverables', 'Deliverables generated', { projectId, phaseKey, fileCount: generated.length })
+  }
   return generated
 }
 

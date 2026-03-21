@@ -98,6 +98,7 @@ function trackTokenUsage(deptId, usage) {
   const tokens = usage?.totalTokens || usage?.total_tokens || 0
   state.tokensUsedToday = (state.tokensUsedToday || 0) + tokens
   getDeptStateRepo().save(deptId, state)
+  logger.debug('budget', 'Tokens tracked', { deptId, tokens, total: state.tokensUsedToday })
 }
 
 /**

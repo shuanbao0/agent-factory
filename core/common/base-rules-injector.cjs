@@ -12,6 +12,7 @@
 const { readFileSync, existsSync } = require('fs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { BASE_RULES_FILE: BASE_RULES_PATH } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 // ── Marker constants ──────────────────────────────────────────
 
@@ -142,7 +143,10 @@ function injectIntoSoulMd(content, soulRules) {
  * @param {string} agentDir - Absolute path to agent directory (agents/{id}/)
  */
 function injectBaseRulesForAgent(agentDir) {
-  if (!existsSync(BASE_RULES_PATH)) return
+  if (!existsSync(BASE_RULES_PATH)) {
+    logger.debug('base-rules', 'No base-rules.md found, skipping')
+    return
+  }
 
   const raw = readFileSync(BASE_RULES_PATH, 'utf-8')
   const rules = parseBaseRules(raw)
@@ -164,6 +168,8 @@ function injectBaseRulesForAgent(agentDir) {
     const injected = injectIntoSoulMd(soulMd, rules.soulRules)
     agentMetaRepo.writeAgentFile(agentId, 'SOUL.md', injected)
   }
+
+  logger.debug('base-rules', 'Base-rules injected', { agentDir })
 }
 
 module.exports = {

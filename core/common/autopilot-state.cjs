@@ -7,6 +7,7 @@
 const { BaseRepository } = require('../repo/base.cjs')
 const { STATE_FILE } = require('./paths.cjs')
 const { DEFAULT_AUTOPILOT_STATE } = require('../../entity/autopilot/autopilot.cjs')
+const logger = require('./logger.cjs')
 const DEFAULT_STATE = { ...DEFAULT_AUTOPILOT_STATE }
 
 const _repo = new BaseRepository({ cacheTtlMs: 0 })
@@ -17,6 +18,7 @@ function loadState() {
 
 function saveState(state) {
   _repo.write(STATE_FILE, state)
+  logger.debug('autopilot-state', 'State saved', { status: state.status, cycleCount: state.cycleCount })
 }
 
 async function withStateLock(fn) {

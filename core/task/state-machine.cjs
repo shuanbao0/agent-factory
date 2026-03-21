@@ -13,6 +13,7 @@ const {
   canTransition, getValidTransitions,
   isTerminal, isValidStatus, normalizeStatus,
 } = require('../../entity/task/task.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * 执行状态转换
@@ -32,6 +33,7 @@ const {
 function transition(task, to, context = {}) {
   const from = task.status
   if (!canTransition(from, to)) {
+    logger.warn('state-machine', 'Invalid transition rejected', { taskId: task.id, from, to })
     return {
       ok: false,
       error: `Invalid transition: ${from} → ${to}`,
@@ -58,6 +60,7 @@ function transition(task, to, context = {}) {
     })
   }
 
+  logger.info('state-machine', 'Task transition', { taskId: task.id, from, to, actor: context?.actor, reason: context?.reason })
   return { ok: true, task }
 }
 

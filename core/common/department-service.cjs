@@ -9,6 +9,7 @@ const { deptRegistryRepo } = require('../repo/dept-registry.cjs')
 const { DeptConfigRepository } = require('../repo/dept-config.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
+const logger = require('./logger.cjs')
 
 // Lazy require to avoid circular dependencies
 let _deptStateRepo
@@ -37,6 +38,8 @@ function createDepartment(body) {
     return { ok: false, error: `Department "${id}" already exists`, status: 409 }
   }
 
+  logger.info('dept-service', 'Department creation started', { id, name, templateId })
+
   // Load template defaults if templateId provided
   let tmplDefaults = {}
   let missionContent = `# ${name}\n\n（待定义部门使命）\n`
@@ -50,6 +53,7 @@ function createDepartment(body) {
         const m = readDeptTemplateFile(tmplDir, 'mission.md')
         if (m) missionContent = m
       }
+      logger.debug('dept-service', 'Template defaults loaded', { templateId })
     }
   }
 
@@ -66,6 +70,7 @@ function createDepartment(body) {
 
   departments.sort((a, b) => a.order - b.order)
   deptRegistryRepo.writeAll(departments)
+  logger.debug('dept-service', 'Registry updated', { id })
 
   // Auto-create autopilot department config if not exists
   const deptConfigRepo = new DeptConfigRepository()
@@ -83,8 +88,11 @@ function createDepartment(body) {
       workflow: tmplDefaults.workflow || undefined,
     })
     missionRepo.writeDeptMission(id, missionContent)
+    logger.debug('dept-service', 'Config created', { id })
+    logger.debug('dept-service', 'Mission written', { id })
   }
 
+  logger.info('dept-service', 'Department created', { id })
   return { ok: true, id }
 }
 
@@ -111,6 +119,7 @@ function updateDepartment(id, updates) {
   departments.sort((a, b) => a.order - b.order)
   deptRegistryRepo.writeAll(departments)
 
+  logger.info('dept-service', 'Department updated', { id })
   return { ok: true }
 }
 
@@ -128,6 +137,7 @@ function deleteDepartment(id) {
 
   // Clear department from agents
   const clearedAgents = agentMetaRepo.clearDepartment(id)
+  logger.debug('dept-service', 'Agents cleared', { id, count: clearedAgents })
 
   // Remove from registry
   departments.splice(idx, 1)
@@ -141,11 +151,13 @@ function deleteDepartment(id) {
     const state = deptStateRepo.load(id)
     if (state && state.pid) {
       try { process.kill(state.pid, 'SIGTERM') } catch { /* already dead */ }
+      logger.info('dept-service', 'Department process killed', { id, pid: state.pid })
     }
     config.enabled = false
     deptConfigRepo.save(id, config)
   }
 
+  logger.info('dept-service', 'Department deleted', { id, clearedAgents })
   return { ok: true, clearedAgents }
 }
 

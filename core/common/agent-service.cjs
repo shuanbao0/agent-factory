@@ -83,6 +83,8 @@ class AgentService {
       return { ok: false, error: `Agent "${id}" already exists`, status: 409 }
     }
 
+    logger.info('agent-service', 'Agent creation started', { id, templateId: body.templateId })
+
     // Load template defaults
     const tmplRepo = this._getTemplateRepo()
     let tmplDefaults = { model: '', skills: [], peers: [] }
@@ -94,6 +96,7 @@ class AgentService {
         tmplDefaults = template.defaults
         tmplDir = tmplRepo.getTemplateDir(templateId)
         tmplGroup = template.group
+        logger.debug('agent-service', 'Template loaded', { templateId })
       } else {
         logger.warn('agent-service', 'Template load failed', { templateId })
       }
@@ -112,6 +115,7 @@ class AgentService {
 
     // 1. Create directory structure
     this._agentMetaRepo.ensureAgentDir(id, 'skills')
+    logger.debug('agent-service', 'Agent directory created', { id })
 
     // 2. Write agent.json
     const agentJson = {
@@ -128,6 +132,7 @@ class AgentService {
       updatedAt: new Date().toISOString(),
     }
     this._agentMetaRepo.writeMeta(id, agentJson)
+    logger.debug('agent-service', 'Agent metadata written', { id })
 
     // 3. Materialize AGENTS.md
     if (systemPrompt) {
@@ -143,6 +148,8 @@ class AgentService {
       this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', this._generateAgentsMd({ id, role: finalRole, name, description: finalDescription, peers: finalPeers }))
     }
 
+    logger.debug('agent-service', 'AGENTS.md materialized', { id, source: systemPrompt ? 'custom' : tmplDir ? 'template' : 'generated' })
+
     // 3.5. Append peers roles section (for template-based agents)
     if (finalPeers.length > 0) {
       const peersSection = this._buildPeersRolesSection(finalPeers)
@@ -156,6 +163,7 @@ class AgentService {
 
     // 4. Sync skill symlinks (must happen before TOOLS.md generation)
     if (hooks.onSkillsSync) await hooks.onSkillsSync(id, finalSkills)
+    logger.debug('agent-service', 'Skills synced', { id, count: finalSkills.length })
 
     // 5. Materialize TOOLS.md
     if (tmplDir) {
@@ -168,6 +176,8 @@ class AgentService {
     } else {
       this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', this._generateToolsMd(id, finalSkills, join(AGENTS_DIR, id)))
     }
+
+    logger.debug('agent-service', 'TOOLS.md generated', { id })
 
     // 6. Write identity files
     let hasIdentityFiles = false
@@ -192,15 +202,19 @@ class AgentService {
       this._writeIfMissing(id, 'SOUL.md', this._defaultSoulMd())
     }
 
+    logger.debug('agent-service', 'Identity files written', { id })
+
     this._writeIfMissing(id, 'USER.md', `# USER.md - About Your Human\n\n- **Name:**\n- **What to call them:**\n- **Timezone:**\n- **Notes:**\n`)
     this._writeIfMissing(id, 'HEARTBEAT.md', `# HEARTBEAT.md\n\n# Keep this file empty to skip heartbeat API calls.\n`)
 
     // 7. Create memory infrastructure
     this._createMemoryInfra(id, name, finalPeers)
+    logger.debug('agent-service', 'Memory infrastructure created', { id })
 
     // 8. Inject base rules
     const agentDir = join(AGENTS_DIR, id)
     if (hooks.onBaseRulesInject) await hooks.onBaseRulesInject(agentDir)
+    logger.debug('agent-service', 'Base-rules injected', { id })
 
     // 9. Create workspaces/{id}/
     getFileBrowser().ensureWorkspace(id)
@@ -208,11 +222,13 @@ class AgentService {
     // 10. Register in openclaw.json
     const resolvedModel = this._resolveModelRef(finalModel)
     this._configRepo.addAgent(id, agentDir, resolvedModel)
+    logger.debug('agent-service', 'Registered in openclaw.json', { id, model: resolvedModel || finalModel })
 
     // 11. Create project for department + sync dept agents
     if (finalDepartment) {
       this._ensureProjectForDepartment(finalDepartment, id)
       this._syncAutopilotDeptAgents(finalDepartment, id, 'add')
+      logger.debug('agent-service', 'Department synced', { id, department: finalDepartment })
     }
 
     // 12. Restart Gateway
@@ -239,6 +255,8 @@ class AgentService {
       return { ok: false, error: 'id is required', status: 400 }
     }
 
+    logger.info('agent-service', 'Agent update started', { id })
+
     const agentDir = join(AGENTS_DIR, id)
     if (!this._agentMetaRepo.exists(id)) {
       return { ok: false, error: `Agent "${id}" not found`, status: 404 }
@@ -258,10 +276,12 @@ class AgentService {
     agentJson.updatedAt = new Date().toISOString()
 
     this._agentMetaRepo.writeMeta(id, agentJson)
+    logger.debug('agent-service', 'Metadata updated', { id })
 
     // Update AGENTS.md if systemPrompt provided
     if (systemPrompt !== undefined) {
       this._agentMetaRepo.writeAgentFile(id, 'AGENTS.md', systemPrompt)
+      logger.debug('agent-service', 'AGENTS.md updated', { id })
     }
 
     // Re-inject base rules
@@ -279,10 +299,12 @@ class AgentService {
       const resolvedModel = this._resolveModelRef(agentJson.model || '')
       this._configRepo.addAgent(id, agentDir, resolvedModel)
       if (hooks.onGatewayRestart) await hooks.onGatewayRestart()
+      logger.info('agent-service', 'Model changed, Gateway restart triggered', { id, model: agentJson.model || '' })
     }
 
     // Department changes
     if (department !== undefined && department !== oldDepartment) {
+      logger.info('agent-service', 'Department changed', { id, oldDept: oldDepartment, newDept: department })
       if (oldDepartment) {
         this._syncAutopilotDeptAgents(oldDepartment, id, 'remove')
       }
@@ -297,6 +319,7 @@ class AgentService {
       }
     }
 
+    logger.info('agent-service', 'Agent updated', { id })
     return { ok: true }
   }
 
@@ -310,13 +333,17 @@ class AgentService {
    */
   async deleteAgent(id) {
     this._configRepo.removeAgent(id)
+    logger.debug('agent-service', 'Removed from openclaw.json', { id })
 
     this._agentMetaRepo.deleteAgentDir(id)
+    logger.debug('agent-service', 'Agent directory deleted', { id })
 
     const stateDir = join(SESSIONS_DIR, id)
     if (existsSync(stateDir)) rmSync(stateDir, { recursive: true, force: true })
+    logger.debug('agent-service', 'Sessions cleaned up', { id })
 
     const archivedTo = getFileBrowser().archiveWorkspace(id)
+    logger.debug('agent-service', 'Workspace archived', { id, archivedTo })
 
     logger.info('agent-service', 'Agent deleted', { id })
     return { ok: true, archivedTo }

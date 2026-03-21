@@ -9,6 +9,7 @@ const { readFileSync, existsSync } = require('fs')
 const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { PROJECT_STANDARDS_FILE: STANDARDS_PATH, PROJECTS_DIR } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 const MARKER_BEGIN = '<!-- PROJECT-STANDARDS:BEGIN -->'
 const MARKER_END = '<!-- PROJECT-STANDARDS:END -->'
@@ -121,7 +122,10 @@ function stripMarkerBlock(content) {
  * @param {string} projectId - Project ID (e.g. "novel/default")
  */
 function injectStandardsForProject(projectId) {
-  if (!existsSync(STANDARDS_PATH)) return
+  if (!existsSync(STANDARDS_PATH)) {
+    logger.debug('project-standards', 'No project-standards.md found, skipping')
+    return
+  }
 
   const raw = readFileSync(STANDARDS_PATH, 'utf-8')
   const parsed = parseProjectStandards(raw)
@@ -141,6 +145,8 @@ function injectStandardsForProject(projectId) {
   // Prepend standards block
   const result = content ? standardsMd + '\n' + content + '\n' : standardsMd
   projectMetaRepo.writeProjectFile(projectId, 'STANDARDS.md', result)
+
+  logger.debug('project-standards', 'Standards injected', { projectId })
 }
 
 // ── Cache ─────────────────────────────────────────────────────

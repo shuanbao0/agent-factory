@@ -71,6 +71,7 @@ async function resolveSkillDir(slug) {
  * @param {string[]} enabledSlugs
  */
 async function syncSkillSymlinks(agentId, enabledSlugs) {
+  logger.debug('skill-symlinks', 'Syncing skills', { agentId, count: enabledSlugs.length })
   agentMetaRepo.ensureAgentDir(agentId, 'skills')
   const agentSkillsDir = join(AGENTS_DIR, agentId, 'skills')
 
@@ -90,6 +91,7 @@ async function syncSkillSymlinks(agentId, enabledSlugs) {
       try { symlinkSync(sourcePath, linkPath, 'dir') } catch { logger.debug('skill-symlinks', 'Symlink creation failed', { slug }) }
     }
   }
+  logger.debug('skill-symlinks', 'Skills sync complete', { agentId })
 }
 
 /**
