@@ -10,6 +10,7 @@ const { existsSync, mkdirSync } = require('fs')
 const {
   DATA_DIR, CONFIG_DIR, AGENTS_DIR, WORKSPACES_DIR,
   PROJECTS_DIR, STATE_DIR, DEPARTMENTS_DIR, LOGS_DIR,
+  CUSTOM_AGENT_TEMPLATES_DIR, CUSTOM_DEPT_TEMPLATES_DIR,
 } = require('./paths.cjs')
 
 /**
@@ -17,7 +18,11 @@ const {
  * 幂等操作：已存在的目录不会被重建。
  */
 function ensureDataDir() {
-  for (const dir of [DATA_DIR, CONFIG_DIR, AGENTS_DIR, WORKSPACES_DIR, PROJECTS_DIR, STATE_DIR, DEPARTMENTS_DIR, LOGS_DIR]) {
+  for (const dir of [
+    DATA_DIR, CONFIG_DIR, AGENTS_DIR, WORKSPACES_DIR,
+    PROJECTS_DIR, STATE_DIR, DEPARTMENTS_DIR, LOGS_DIR,
+    CUSTOM_AGENT_TEMPLATES_DIR, CUSTOM_DEPT_TEMPLATES_DIR,
+  ]) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   }
 }

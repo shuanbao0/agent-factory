@@ -5,19 +5,18 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { existsSync, rmSync, readdirSync } = require('fs')
 
-const { PROJECT_ROOT } = require('../../core/common/paths.cjs')
+const { CUSTOM_AGENT_TEMPLATES_DIR } = require('../../core/common/paths.cjs')
 const { readTemplate, getTemplateDir, listTemplates, readTemplateFile, createCustomTemplate } = require('../../core/repo/template.cjs')
 
 describe('TemplateRepository', () => {
   afterEach(() => {
     // Clean up any test custom templates
-    const customDir = join(PROJECT_ROOT, 'templates', 'custom')
-    if (existsSync(customDir)) {
+    if (existsSync(CUSTOM_AGENT_TEMPLATES_DIR)) {
       try {
-        const entries = readdirSync(customDir, { withFileTypes: true })
+        const entries = readdirSync(CUSTOM_AGENT_TEMPLATES_DIR, { withFileTypes: true })
         for (const entry of entries) {
           if (entry.isDirectory() && entry.name.startsWith('zzz-test-')) {
-            rmSync(join(customDir, entry.name), { recursive: true, force: true })
+            rmSync(join(CUSTOM_AGENT_TEMPLATES_DIR, entry.name), { recursive: true, force: true })
           }
         }
       } catch { /* skip */ }
@@ -69,12 +68,12 @@ describe('TemplateRepository', () => {
     assert.ok(content.length > 0)
   })
 
-  it('createCustomTemplate creates template in templates/agents/custom/', () => {
+  it('createCustomTemplate creates template in data/templates/', () => {
     const testId = 'zzz-test-template-create'
     const data = { id: testId, name: 'Test Template', description: 'For testing' }
     createCustomTemplate(testId, data)
 
-    const templatePath = join(PROJECT_ROOT, 'templates', 'agents', 'custom', testId, 'template.json')
+    const templatePath = join(CUSTOM_AGENT_TEMPLATES_DIR, testId, 'template.json')
     assert.ok(existsSync(templatePath))
 
     const t = readTemplate(testId)

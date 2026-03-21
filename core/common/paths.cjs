@@ -28,9 +28,11 @@ const PROJECTS_DIR   = join(DATA_DIR, 'projects')
 const STATE_DIR      = join(DATA_DIR, 'openclaw-state')
 const SESSIONS_DIR   = join(STATE_DIR, 'agents')
 
-// ── 模板目录（源码）─────────────────────────────────────────────
-const BUILTIN_AGENT_TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')
-const BUILTIN_DEPT_TEMPLATES_DIR  = join(PROJECT_ROOT, 'templates', 'departments')
+// ── 模板目录 ────────────────────────────────────────────────────
+const BUILTIN_AGENT_TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')  // 源码
+const BUILTIN_DEPT_TEMPLATES_DIR  = join(PROJECT_ROOT, 'templates', 'departments')  // 源码
+const CUSTOM_AGENT_TEMPLATES_DIR  = join(DATA_DIR, 'templates', 'agents', 'custom')  // 运行时
+const CUSTOM_DEPT_TEMPLATES_DIR   = join(DATA_DIR, 'templates', 'departments', 'custom')  // 运行时
 const SKILLS_DIR = join(PROJECT_ROOT, 'skills')
 
 // ── 运行时数据目录（续）─────────────────────────────────────────
@@ -71,7 +73,8 @@ module.exports = {
   SOURCE_CONFIG_DIR, CONFIG_DIR,
   AGENTS_DIR, WORKSPACES_DIR, PROJECTS_DIR,
   STATE_DIR, SESSIONS_DIR,
-  BUILTIN_AGENT_TEMPLATES_DIR, BUILTIN_DEPT_TEMPLATES_DIR, SKILLS_DIR,
+  BUILTIN_AGENT_TEMPLATES_DIR, BUILTIN_DEPT_TEMPLATES_DIR,
+  CUSTOM_AGENT_TEMPLATES_DIR, CUSTOM_DEPT_TEMPLATES_DIR, SKILLS_DIR,
   GATEWAY_CONFIG_FILE, MODELS_FILE, TASKS_FILE, STATE_FILE,
   DEPARTMENTS_FILE, BUDGET_FILE, DEPARTMENTS_DIR,
   COSTS_FILE, EVENTS_FILE, LOGS_DIR, MISSION_FILE, SIGNAL_FILE,
