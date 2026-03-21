@@ -69,12 +69,12 @@ describe('TemplateRepository', () => {
     assert.ok(content.length > 0)
   })
 
-  it('createCustomTemplate creates template in templates/custom/', () => {
+  it('createCustomTemplate creates template in templates/agents/custom/', () => {
     const testId = 'zzz-test-template-create'
     const data = { id: testId, name: 'Test Template', description: 'For testing' }
     createCustomTemplate(testId, data)
 
-    const templatePath = join(PROJECT_ROOT, 'templates', 'custom', testId, 'template.json')
+    const templatePath = join(PROJECT_ROOT, 'templates', 'agents', 'custom', testId, 'template.json')
     assert.ok(existsSync(templatePath))
 
     const t = readTemplate(testId)

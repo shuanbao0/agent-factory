@@ -5,7 +5,7 @@ const { existsSync } = require('fs')
 const { join } = require('path')
 
 const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const TEMPLATES_DIR = join(PROJECT_ROOT, 'templates')
+const TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')
 
 describe('template repository', () => {
   const { readTemplate, getTemplateDir, readTemplateFile } = require('../../../core/repo/template.cjs')

@@ -24,8 +24,10 @@ config/tasks.json
 !/agents/.gitkeep
 
 # Custom templates (user-created, not tracked)
-templates/custom/
-!templates/custom/.gitkeep
+templates/agents/custom/
+!templates/agents/custom/.gitkeep
+templates/departments/custom/
+!templates/departments/custom/.gitkeep
 
 # Internal docs (not for open-source release)
 docs/商业化分析报告.md

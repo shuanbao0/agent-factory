@@ -1,5 +1,5 @@
 /**
- * Template Metadata — reads template.json from templates/builtin/ and templates/custom/
+ * Template Metadata — reads template.json from templates/agents/builtin/ and templates/agents/custom/
  *
  * 委托 core/repo/template.cjs 实现。
  */

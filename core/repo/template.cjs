@@ -2,13 +2,13 @@
 /**
  * TemplateRepository — Agent 模板读取
  *
- * 数据源：templates/builtin/{id}/ 和 templates/custom/{id}/
+ * 数据源：templates/agents/builtin/{id}/ 和 templates/agents/custom/{id}/
  */
 const { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } = require('fs')
 const { join, resolve } = require('path')
 
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const TEMPLATES_DIR = join(PROJECT_ROOT, 'templates')
+const TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')
 
 const CATEGORIES = ['builtin', 'custom']
 

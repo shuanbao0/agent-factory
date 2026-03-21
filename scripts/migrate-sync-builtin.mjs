@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const AGENTS_DIR = join(ROOT, 'agents');
-const TEMPLATES_DIR = join(ROOT, 'templates', 'builtin');
+const TEMPLATES_DIR = join(ROOT, 'templates', 'agents', 'builtin');
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
