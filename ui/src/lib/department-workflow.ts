@@ -31,7 +31,7 @@ export function getDepartmentWorkflow(deptId?: string | null): DepartmentWorkflo
     if (config.workflow && config.workflow.phases?.length > 0) {
       return config.workflow
     }
-  } catch { /* fallback */ }
+  } catch (e) { core.common.logger.debug('department-workflow', 'Config read failed, using default', { deptId, error: String(e) }) }
   return DEFAULT_WORKFLOW
 }
 

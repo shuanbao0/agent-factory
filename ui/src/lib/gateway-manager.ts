@@ -46,7 +46,10 @@ function hasAuthProfiles(): boolean {
   try {
     const data = core.repo.authProfilesRepo.readProfiles()
     return data !== null && Object.keys(data.profiles || {}).length > 0
-  } catch { return false }
+  } catch (e) {
+    core.common.logger.debug('gateway', 'Auth profiles check failed', { error: String(e) })
+    return false
+  }
 }
 
 function hasAnyApiKey(): boolean {
@@ -61,7 +64,9 @@ function hasAnyApiKey(): boolean {
       const resolved = p.apiKey.replace(/\$\{(\w+)\}/g, (_: string, name: string) => env[name] || '')
       if (resolved) return true
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    core.common.logger.debug('gateway', 'Models config read failed', { error: String(e) })
+  }
 
   return hasAuthProfiles()
 }
@@ -113,9 +118,13 @@ function ensureAgentsPeerStatus() {
           data.updatedAt = new Date().toISOString()
           core.repo.agentMetaRepo.writeMeta(id, data)
         }
-      } catch { /* skip */ }
+      } catch (e) {
+        core.common.logger.debug('gateway', `Failed to update peer-status for agent ${id}`, { error: String(e) })
+      }
     }
-  } catch { /* skip if agents dir unreadable */ }
+  } catch (e) {
+    core.common.logger.debug('gateway', 'Failed to ensure agents peer-status', { error: String(e) })
+  }
 }
 
 export async function startGateway(): Promise<{ ok: boolean; error?: string }> {
@@ -197,6 +206,7 @@ export async function startGateway(): Promise<{ ok: boolean; error?: string }> {
 
   if (result.ready) {
     currentStatus = 'running'
+    core.common.logger.info('gateway', 'Gateway started', { port: GW_PORT, pid: gatewayProc?.pid })
     return { ok: true }
   }
 
@@ -206,6 +216,7 @@ export async function startGateway(): Promise<{ ok: boolean; error?: string }> {
   } else {
     lastError = stderrBuf.slice(-500) || 'Gateway failed to start within timeout'
   }
+  core.common.logger.error('gateway', 'Gateway start failed', { error: lastError, exitCode: result.exitCode })
   return { ok: false, error: lastError }
 }
 
@@ -214,8 +225,8 @@ export async function stopGateway(): Promise<{ ok: boolean; error?: string }> {
   if (gatewayProc && !gatewayProc.killed) {
     try {
       gatewayProc.kill('SIGTERM')
-    } catch {
-      // Process might have already exited between the check and kill call
+    } catch (e) {
+      core.common.logger.debug('gateway', 'Gateway process already exited during stop', { error: String(e) })
     }
     await new Promise(r => setTimeout(r, 1000))
     gatewayProc = null
@@ -231,19 +242,20 @@ export async function stopGateway(): Promise<{ ok: boolean; error?: string }> {
       const pids = stdout.toString().trim()
       if (pids) {
         for (const pid of pids.split('\n')) {
-          try { process.kill(parseInt(pid), 'SIGTERM') } catch { /* already gone */ }
+          try { process.kill(parseInt(pid), 'SIGTERM') } catch (e) { core.common.logger.debug('gateway', `Kill PID ${pid} failed`, { error: String(e) }) }
         }
         // Wait for process to release the port
         await new Promise(r => setTimeout(r, 1500))
       }
-    } catch {
-      // lsof not available or no process found
+    } catch (e) {
+      core.common.logger.debug('gateway', 'Port cleanup via lsof failed', { port: GW_PORT, error: String(e) })
     }
   }
 
   // 3) Verify port is actually closed
   if (await isPortOpen(GW_PORT)) {
     currentStatus = 'running'
+    core.common.logger.warn('gateway', 'Gateway stop failed — port still in use', { port: GW_PORT })
     return { ok: false, error: 'Failed to stop gateway — port still in use' }
   }
 

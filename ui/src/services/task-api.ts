@@ -103,7 +103,9 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
     try {
       const agentMeta = core.repo.agentMetaRepo.readMeta(assignees[0])
       resolvedType = core.task.inferTaskType(name, agentMeta)
-    } catch { /* fallback: no type */ }
+    } catch (e) {
+      core.common.logger.warn('task-api', 'Task type inference failed', { taskId: id, assignee: assignees[0], error: String(e) })
+    }
   }
 
   // Enrich description with standards if not provided
@@ -138,7 +140,9 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
         }
       }
       if (parts.length > 0) description = parts.join('\n')
-    } catch { /* non-blocking */ }
+    } catch (e) {
+      core.common.logger.debug('task-api', 'Standards enrichment failed', { taskId: id, error: String(e) })
+    }
   }
 
   const task: Task = {
@@ -176,6 +180,7 @@ export function createTask(body: Record<string, unknown>): CreateTaskResult {
     writeStandaloneTasks(tasks)
   }
 
+  core.common.logger.info('task-api', 'Task created', { taskId: id, name, projectId, type: resolvedType })
   return { task, ok: true }
 }
 
@@ -284,6 +289,7 @@ export function deleteTask(id: string): DeleteTaskResult {
   if (sIdx !== -1) {
     standalone.splice(sIdx, 1)
     writeStandaloneTasks(standalone)
+    core.common.logger.info('task-api', 'Task deleted', { taskId: id })
     return { ok: true }
   }
 
@@ -292,7 +298,10 @@ export function deleteTask(id: string): DeleteTaskResult {
   const pt = projectTasks.find(t => t.id === id)
   if (pt && pt.projectId) {
     const success = deleteProjectTask(pt.projectId, id)
-    if (success) return { ok: true }
+    if (success) {
+      core.common.logger.info('task-api', 'Task deleted', { taskId: id, projectId: pt.projectId })
+      return { ok: true }
+    }
   }
 
   return { error: 'Task not found', status: 404 }

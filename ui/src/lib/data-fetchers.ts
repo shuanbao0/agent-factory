@@ -68,13 +68,13 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
         }
       }
     }
-  } catch { /* sessions.list not available */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'sessions.list fetch failed (agents)', { error: String(e) }) }
 
   // Check autopilot state
   try {
     const ap = core.common.loadState()
     if (ap.status === 'cycling') busyAgentIds.add('ceo')
-  } catch { /* ignore */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Autopilot state read failed', { error: String(e) }) }
 
   // Read agent instance metadata via repo
   const agentInstances = new Map<string, AgentMeta>()
@@ -84,7 +84,7 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
       const meta = core.repo.agentMetaRepo.readMeta(id)
       if (meta) agentInstances.set(id, meta as AgentMeta)
     }
-  } catch { /* ignore */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Agent metadata read failed', { error: String(e) }) }
 
   const agents: AgentItem[] = result.agents.map(a => {
     const instance = agentInstances.get(a.id)
@@ -186,7 +186,7 @@ export async function fetchLogsData(): Promise<LogsResult> {
         })
       } catch { /* skip unparseable lines */ }
     }
-  } catch { /* logs.tail not available */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'logs.tail fetch failed', { error: String(e) }) }
 
   // 2. Agent activity from sessions.list
   try {
@@ -309,7 +309,7 @@ function loadAllowAgentsMap(): Record<string, string[]> {
         map[agent.id] = allowed
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'AllowAgents map read failed', { error: String(e) }) }
   return map
 }
 
@@ -398,8 +398,8 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
           }
         } catch { /* skip */ }
       }
-    } catch { /* logs not available */ }
-  } catch { /* gateway not available */ }
+    } catch (e) { core.common.logger.debug('data-fetchers', 'logs.tail fetch failed (messages)', { error: String(e) }) }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'sessions.list fetch failed (messages)', { error: String(e) }) }
 
   return { messages, activePairs, agentErrors, lastActivity, source: 'gateway' }
 }
@@ -419,7 +419,7 @@ export async function fetchCostsData(): Promise<CostsResult> {
     const entries = result.entries.slice(-200)
     const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0)
     return { entries, totalCost, source: 'filesystem' }
-  } catch { /* skip */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Costs data read failed', { error: String(e) }) }
   return { entries: [], totalCost: 0, source: 'filesystem' }
 }
 
@@ -449,7 +449,7 @@ export async function fetchAlertsData(): Promise<AlertsResult> {
       timestamp: a.ts,
       severity: a.severity as 'info' | 'warn' | 'error',
     }))
-  } catch { /* skip */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Alerts data read failed', { error: String(e) }) }
   return { alerts, source: 'filesystem' }
 }
 
@@ -471,7 +471,7 @@ export async function fetchAutopilotStatusData(): Promise<AutopilotResult> {
       lastCycle: data.lastCycleAt || undefined,
       source: 'filesystem',
     }
-  } catch { /* skip */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Autopilot status read failed', { error: String(e) }) }
   return { status: 'stopped', source: 'filesystem' }
 }
 
@@ -486,7 +486,7 @@ export async function fetchAutopilotDeptsData(): Promise<AutopilotDeptsResult> {
   let departments: Record<string, unknown>[] = []
   try {
     departments = core.repo.deptRegistryRepo.readAll()
-  } catch { /* skip */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Department registry read failed', { error: String(e) }) }
   return { departments, source: 'filesystem' }
 }
 
@@ -501,6 +501,6 @@ export async function fetchBudgetStatusData(): Promise<BudgetResult> {
   let budget: CompanyBudget = {}
   try {
     budget = core.observe.loadCompanyBudget()
-  } catch { /* skip */ }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Budget data read failed', { error: String(e) }) }
   return { budget, source: 'filesystem' }
 }

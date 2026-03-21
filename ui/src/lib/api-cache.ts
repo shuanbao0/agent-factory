@@ -8,6 +8,8 @@
  *  - skills:explore   → 5min  (remote registry)
  */
 
+import core from '@/lib/core-bridge'
+
 interface CacheEntry<T> {
   data: T
   expiry: number
@@ -34,7 +36,7 @@ export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>
     store.set(key, { data, expiry: Date.now() + ttlMs })
     return data
   }).catch(err => {
-    // Remove failed entry so next call retries
+    core.common.logger.debug('api-cache', 'Cache fetch failed, removing entry', { key, error: String(err) })
     store.delete(key)
     throw err
   })

@@ -90,8 +90,8 @@ export async function exploreJson(limit = 20): Promise<ExploreResult[]> {
         stars: stats?.stars,
       }
     })
-  } catch {
-    // Fallback to text-based explore if --json is not supported
+  } catch (e) {
+    core.common.logger.debug('clawhub', 'JSON explore failed, falling back to text', { error: String(e) })
     return explore(limit)
   }
 }
@@ -136,7 +136,8 @@ export async function inspect(slug: string): Promise<SkillDetail | null> {
     }
 
     return detail
-  } catch {
+  } catch (e) {
+    core.common.logger.debug('clawhub', 'Skill inspect failed', { slug, error: String(e) })
     return null
   }
 }
@@ -159,7 +160,8 @@ export async function listInstalled(): Promise<InstalledSkill[]> {
       if (!match) return null
       return { slug: match[1], version: match[2], status: match[3]?.trim() || 'installed' }
     }).filter(Boolean) as InstalledSkill[]
-  } catch {
+  } catch (e) {
+    core.common.logger.debug('clawhub', 'List installed skills failed', { error: String(e) })
     return []
   }
 }
@@ -173,6 +175,7 @@ export async function install(slug: string, version?: string): Promise<{ ok: boo
     const output = await run(args, 60000)
     return { ok: true, output }
   } catch (e: unknown) {
+    core.common.logger.debug('clawhub', 'Skill install failed', { slug, error: String(e) })
     return { ok: false, output: e instanceof Error ? e.message : 'Install failed' }
   }
 }
@@ -184,6 +187,7 @@ export async function update(slug?: string): Promise<{ ok: boolean; output: stri
     const output = await run(args, 60000)
     return { ok: true, output }
   } catch (e: unknown) {
+    core.common.logger.debug('clawhub', 'Skill update failed', { slug, error: String(e) })
     return { ok: false, output: e instanceof Error ? e.message : 'Update failed' }
   }
 }
@@ -195,7 +199,8 @@ export function uninstall(slug: string): { ok: boolean } {
     if (!skillDir.startsWith(SKILLS_DIR)) return { ok: false } // path traversal guard
     core.common.fileBrowser.deleteDir(skillDir)
     return { ok: true }
-  } catch {
+  } catch (e) {
+    core.common.logger.debug('clawhub', 'Skill uninstall failed', { slug, error: String(e) })
     return { ok: false }
   }
 }

@@ -61,8 +61,14 @@ export function gwCallAsync(method: string, params?: Record<string, unknown>, ti
       timeout: timeoutMs + 5000, encoding: 'utf-8',
       env: { ...process.env, NO_COLOR: '1' },
     }, (error, stdout) => {
-      if (error) return reject(error)
-      try { resolve(parseGwOutput(stdout)) } catch (e) { reject(e) }
+      if (error) {
+        core.common.logger.warn('gateway-client', 'CLI call failed', { command: method, error: String(error) })
+        return reject(error)
+      }
+      try { resolve(parseGwOutput(stdout)) } catch (e) {
+        core.common.logger.warn('gateway-client', 'CLI output parse failed', { command: method, error: String(e) })
+        reject(e)
+      }
     })
   })
 }
