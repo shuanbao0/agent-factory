@@ -93,23 +93,70 @@ export function listTasks(filters: TaskFilters): ListTasksResult {
 export function createTask(body: Record<string, unknown>): CreateTaskResult {
   const now = new Date().toISOString()
   const id = (body.id as string) || `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+  const name = (body.name as string) || DEFAULT_TASK_NAME
+  const projectId = (body.projectId as string) || null
+  const assignees = (body.assignees as string[]) || []
+
+  // Infer task type if not provided
+  let resolvedType = body.type as string | undefined
+  if (!resolvedType && assignees.length > 0) {
+    try {
+      const agentMeta = core.repo.agentMetaRepo.readMeta(assignees[0])
+      resolvedType = core.task.inferTaskType(name, agentMeta)
+    } catch { /* fallback: no type */ }
+  }
+
+  // Enrich description with standards if not provided
+  let description = body.description as string | undefined
+  if (!description) {
+    try {
+      const parts: string[] = []
+      if (resolvedType) {
+        const standards = core.task.getStandardsForType(resolvedType)
+        if (standards.typeStandards) {
+          const completionMatch = standards.typeStandards.match(/\*\*完成定义[：:]\*\*\s*(.+)/)
+          const doMatch = standards.typeStandards.match(/\*\*DO[：:]\*\*\s*(.+)/)
+          const dontMatch = standards.typeStandards.match(/\*\*DON'T[：:]\*\*\s*(.+)/)
+          if (completionMatch) parts.push(`完成定义: ${completionMatch[1]}`)
+          if (doMatch) parts.push(`要求: ${doMatch[1]}`)
+          if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
+        }
+      }
+      if (projectId) {
+        const projMeta = core.repo.projectMetaRepo.readMeta(projectId)
+        const projStandards = core.common.projectStandards?.loadProjectStandards?.()
+        if (projMeta && projStandards?.lifecycle && projMeta.currentPhase && projMeta.phases) {
+          const phase = (projMeta.phases as Array<{ labelEn?: string; labelZh?: string }>)[projMeta.currentPhase - 1]
+          const phaseKey = phase?.labelEn?.toLowerCase()
+          if (phaseKey) {
+            const phaseStd = core.common.projectStandards.getPhaseStandards(projStandards.lifecycle, phaseKey)
+            if (phaseStd) {
+              const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
+              if (exitMatch) parts.push(`项目阶段: ${phase.labelZh || phase.labelEn} | 出口条件: ${exitMatch[1]}`)
+            }
+          }
+        }
+      }
+      if (parts.length > 0) description = parts.join('\n')
+    } catch { /* non-blocking */ }
+  }
 
   const task: Task = {
     id,
-    name: (body.name as string) || DEFAULT_TASK_NAME,
-    description: (body.description as string) || undefined,
-    projectId: (body.projectId as string) || null,
+    name,
+    description,
+    projectId,
     phase: (body.phase as number) || undefined,
     status: (body.status as Task['status']) || 'pending',
     priority: (body.priority as Task['priority']) || 'P1',
-    assignees: (body.assignees as string[]) || [],
-    assignedAgent: ((body.assignees as string[]) || [])[0] || undefined,
+    assignees,
+    assignedAgent: assignees[0] || undefined,
     creator: (body.creator as string) || 'user',
     progress: (body.progress as number) || 0,
     dependencies: (body.dependencies as string[]) || [],
     output: (body.output as string) || undefined,
     tags: (body.tags as string[]) || undefined,
-    type: (body.type as string) || undefined,
+    type: resolvedType || undefined,
     parentTaskId: (body.parentTaskId as string) || undefined,
     createdAt: now,
     updatedAt: now,
