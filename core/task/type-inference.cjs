@@ -10,6 +10,7 @@
  * 推断结果必须是 strategy.cjs 中有对应策略的类型名。
  */
 const { BUILTIN_STRATEGIES } = require('./strategy.cjs')
+const logger = require('../common/logger.cjs')
 
 // ── Agent templateId → taskType 映射 ────────────────────────
 
@@ -143,15 +144,22 @@ function inferFromTemplate(templateId) {
 function inferTaskType(summary, agentMeta) {
   // 1. 摘要关键词（Chief 意图最明确）
   const fromSummary = inferFromSummary(summary)
-  if (fromSummary) return fromSummary
+  if (fromSummary) {
+    logger.debug('type-inference', 'Type inferred', { summary: summary?.slice(0, 50), type: fromSummary, source: 'keyword' })
+    return fromSummary
+  }
 
   // 2. Agent templateId
   if (agentMeta) {
     const fromTemplate = inferFromTemplate(agentMeta.templateId || agentMeta.role)
-    if (fromTemplate) return fromTemplate
+    if (fromTemplate) {
+      logger.debug('type-inference', 'Type inferred', { summary: summary?.slice(0, 50), type: fromTemplate, source: 'role' })
+      return fromTemplate
+    }
   }
 
   // 3. 兜底
+  logger.debug('type-inference', 'Type inferred', { summary: summary?.slice(0, 50), type: 'dept-work', source: 'fallback' })
   return 'dept-work'
 }
 

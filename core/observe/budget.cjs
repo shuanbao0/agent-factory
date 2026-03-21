@@ -7,6 +7,8 @@
 const { readFileSync, writeFileSync, renameSync, existsSync, readdirSync } = require('fs')
 const { BUDGET_FILE, DEPARTMENTS_DIR, CONFIG_DIR } = require('../common/paths.cjs')
 
+const logger = require('../common/logger.cjs')
+
 // Lazy require to avoid circular dependencies
 let _deptConfigRepo, _deptStateRepo
 function getDeptConfigRepo() {
@@ -56,6 +58,7 @@ function checkBudget(deptId) {
   const state = getDeptStateRepo().load(deptId)
 
   if (shouldResetDaily(state.budgetResetAt)) {
+    logger.info('budget', 'Budget daily reset', { deptId })
     state.tokensUsedToday = 0
     state.budgetResetAt = new Date().toISOString()
     getDeptStateRepo().save(deptId, state)
@@ -65,6 +68,7 @@ function checkBudget(deptId) {
   const threshold = config.budget.alertThreshold || 0.8
 
   if (ratio >= 1.0) {
+    logger.warn('budget', 'Budget exceeded', { deptId, used: state.tokensUsedToday, limit: config.budget.dailyTokenLimit })
     // Emit budget blocked event (fire-and-forget)
     try {
       const { eventBus } = require('./event-bus.cjs')
@@ -73,6 +77,7 @@ function checkBudget(deptId) {
     return { allowed: false, reason: 'daily budget exceeded', ratio }
   }
   if (ratio >= threshold) {
+    logger.warn('budget', 'Budget threshold reached', { deptId, ratio })
     // Emit budget warning event (fire-and-forget)
     try {
       const { eventBus } = require('./event-bus.cjs')

@@ -14,6 +14,7 @@
  */
 
 const { withRetry, isRetryableError, CircuitBreaker } = require('./retry.cjs')
+const logger = require('../common/logger.cjs')
 
 /** 默认模型 */
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
@@ -114,6 +115,7 @@ async function sendWithTools({ system, user, tools, model, maxTokens, temperatur
       model: response.model,
     }
   } catch (err) {
+    logger.error('anthropic', 'API call failed', { error: err.message || String(err) })
     return {
       ok: false,
       toolCalls: [],

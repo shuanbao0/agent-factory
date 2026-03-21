@@ -18,6 +18,7 @@
 const { existsSync, appendFileSync, readFileSync, mkdirSync } = require('fs')
 const { dirname } = require('path')
 const { COSTS_FILE } = require('../common/paths.cjs')
+const logger = require('../common/logger.cjs')
 
 /** 模型定价表（来自 entity/observe — 单一来源） */
 const { PRICING } = require('../../entity/observe/cost.cjs')
@@ -76,14 +77,16 @@ function trackCost({ model, usage, source, agentId }) {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     appendFileSync(COSTS_FILE, JSON.stringify(entry) + '\n')
   } catch (err) {
-    console.error(`[cost-tracker] Failed to write cost entry: ${err.message}`)
+    logger.error('cost-tracker', 'Cost log append failed', { error: err.message })
   }
 
   // 发射成本事件（懒加载 event-bus，避免循环依赖）
   try {
     const { eventBus } = require('./event-bus.cjs')
     eventBus.fire('cost.tracked', { model: entry.model, cost: entry.cost, source: entry.source })
-  } catch {}
+  } catch {
+    logger.debug('cost-tracker', 'Event bus unavailable for cost event')
+  }
 }
 
 /**

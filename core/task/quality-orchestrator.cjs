@@ -12,6 +12,7 @@
 const { getStrategy } = require('./strategy.cjs')
 const { getStandardsForType } = require('../common/task-standards.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
+const logger = require('../common/logger.cjs')
 
 // Lazy require to avoid circular dependencies
 let _taskRepo
@@ -66,6 +67,8 @@ class QualityOrchestrator {
     const sessionKeys = []
     let result
 
+    logger.info('quality-gate', 'Quality gate started', { taskId: task.id, stage: task.quality?.gate?.stage })
+
     try {
       // Clear stale quality data
       task.quality = {}
@@ -77,11 +80,13 @@ class QualityOrchestrator {
         task.quality.selfCheck = selfCheck
         if (!selfCheck.passed) {
           this._log.info('quality-orchestrator', `Self-check failed for task ${task.id}`)
+          logger.warn('quality-gate', 'Stage failed', { taskId: task.id, stage: 'self_check', score: selfCheck.score })
           result = { passed: false, reason: `Self-check failed: score ${selfCheck.score}/100` }
           return result
         }
       } catch (err) {
         this._log.warn('quality-orchestrator', `Self-check error for task ${task.id}`, err)
+        logger.error('quality-gate', 'Quality gate error', { taskId: task.id, error: err.message })
         result = { passed: false, reason: `Self-check exception: ${err.message}` }
         return result
       }
@@ -95,11 +100,13 @@ class QualityOrchestrator {
           task.quality.peerReview = peerReview
           if (!peerReview.passed) {
             this._log.info('quality-orchestrator', `Peer review failed for task ${task.id} by ${reviewer}`)
+            logger.warn('quality-gate', 'Stage failed', { taskId: task.id, stage: 'peer_review', score: peerReview.score })
             result = { passed: false, reason: peerReview.comments || 'Peer review rejected' }
             return result
           }
         } catch (err) {
           this._log.warn('quality-orchestrator', `Peer review error for task ${task.id}`, err)
+          logger.error('quality-gate', 'Quality gate error', { taskId: task.id, error: err.message })
           result = { passed: false, reason: `Peer review exception: ${err.message}` }
           return result
         }
@@ -112,16 +119,19 @@ class QualityOrchestrator {
         task.quality.headApproval = headApproval
         if (!headApproval.passed) {
           this._log.info('quality-orchestrator', `Head rejected task ${task.id}`)
+          logger.warn('quality-gate', 'Stage failed', { taskId: task.id, stage: 'head_approval', score: 0 })
           result = { passed: false, reason: 'Head rejected' }
           return result
         }
       } catch (err) {
         this._log.warn('quality-orchestrator', `Head approval error for task ${task.id}`, err)
+        logger.error('quality-gate', 'Quality gate error', { taskId: task.id, error: err.message })
         result = { passed: false, reason: `Head approval exception: ${err.message}` }
         return result
       }
 
       this._log.info('quality-orchestrator', `Task ${task.id} passed all quality gates`)
+      logger.info('quality-gate', 'Quality gate passed', { taskId: task.id })
       result = { passed: true }
       return result
     } finally {
@@ -149,12 +159,13 @@ class QualityOrchestrator {
       const exitMatch = phaseStd.match(/\*\*出口条件[：:]\*\*\s*(.+)/)
       const exitCriteria = exitMatch ? ` | 出口条件: ${exitMatch[1]}` : ''
       return `\n项目: ${task.projectId} | 阶段: ${phaseLabel}${exitCriteria}`
-    } catch { return '' }
+    } catch { logger.debug('quality-gate', 'Project context load failed', { taskId: task?.projectId }); return '' }
   }
 
   /** @private */
   _cleanupSessions(sessionKeys) {
     if (sessionKeys.length === 0 || !this._killSessionFn) return
+    logger.debug('quality-gate', 'Cleaning up sessions', { count: sessionKeys.length })
     for (const key of sessionKeys) {
       this._killSessionFn(key).catch(() => {})
     }

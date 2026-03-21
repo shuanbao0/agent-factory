@@ -20,6 +20,12 @@ const { appendFileSync, existsSync, mkdirSync } = require('fs')
 const { dirname } = require('path')
 const { EVENTS_FILE } = require('../common/paths.cjs')
 
+let _logger
+function getLogger() {
+  if (!_logger) _logger = require('../common/logger.cjs')
+  return _logger
+}
+
 class EventBus extends EventEmitter {
   /**
    * @param {Object} [opts]
@@ -52,8 +58,8 @@ class EventBus extends EventEmitter {
     // 触发监听器（吞掉错误）
     try {
       super.emit(eventType, event)
-    } catch {
-      // 监听器错误 — 吞掉以保护主流程
+    } catch (err) {
+      getLogger().debug('event-bus', 'Listener error', { eventType, error: err.message })
     }
 
     // 可选：持久化到 JSONL（吞掉错误）
@@ -62,8 +68,8 @@ class EventBus extends EventEmitter {
         const dir = dirname(this._filePath)
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
         appendFileSync(this._filePath, JSON.stringify(event) + '\n')
-      } catch {
-        // 持久化错误 — 吞掉
+      } catch (err) {
+        getLogger().debug('event-bus', 'Event persist failed', { eventType, error: err.message })
       }
     }
   }

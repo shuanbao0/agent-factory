@@ -36,6 +36,7 @@ function getFileBrowser() {
 }
 
 const { AGENTS_DIR, SESSIONS_DIR, PROJECTS_DIR } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 class AgentService {
   /**
@@ -93,6 +94,8 @@ class AgentService {
         tmplDefaults = template.defaults
         tmplDir = tmplRepo.getTemplateDir(templateId)
         tmplGroup = template.group
+      } else {
+        logger.warn('agent-service', 'Template load failed', { templateId })
       }
     }
 
@@ -216,6 +219,7 @@ class AgentService {
     let restarted = false
     if (hooks.onGatewayRestart) restarted = !!(await hooks.onGatewayRestart())
 
+    logger.info('agent-service', 'Agent created', { id, templateId: body.templateId })
     return { ok: true, id, deployed: true, restarted, hasIdentityFiles }
   }
 
@@ -314,6 +318,7 @@ class AgentService {
 
     const archivedTo = getFileBrowser().archiveWorkspace(id)
 
+    logger.info('agent-service', 'Agent deleted', { id })
     return { ok: true, archivedTo }
   }
 
@@ -329,6 +334,7 @@ class AgentService {
       const modelId = models.providers?.[provider]?.models?.[alias]
       return modelId ? `${provider}/${modelId}` : ref
     } catch {
+      logger.warn('agent-service', 'Model resolution failed, using raw ref', { ref })
       return ref
     }
   }
@@ -350,7 +356,7 @@ class AgentService {
         if (data && data.description) {
           lines.push(`- **${peerId}**: ${data.description}`)
         }
-      } catch { /* skip */ }
+      } catch { logger.debug('agent-service', 'Peer meta read failed', { peerId }) }
     }
     if (lines.length === 0) return ''
     return `\n### Peers 职责\n\n以下是你可以通信的同事及其职责，请将超出你职责范围的工作交给对应的同事：\n\n${lines.join('\n')}\n`
@@ -384,7 +390,13 @@ class AgentService {
     // Ensure the department directory exists; projects are created by Chief via project-api skill
     const { existsSync, mkdirSync } = require('fs')
     const deptDir = join(PROJECTS_DIR, department)
-    if (!existsSync(deptDir)) mkdirSync(deptDir, { recursive: true })
+    if (!existsSync(deptDir)) {
+      try {
+        mkdirSync(deptDir, { recursive: true })
+      } catch (err) {
+        logger.warn('agent-service', 'Failed to ensure project dir', { department })
+      }
+    }
 
     // If any sub-projects exist under this department, add agent to their assignedAgents
     const allProjects = this._projectMetaRepo.readAll()

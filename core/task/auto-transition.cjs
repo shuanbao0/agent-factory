@@ -8,6 +8,7 @@
  */
 
 const { IDLE_COMPLETE_MINS, STALE_TASK_MINS } = require('../autopilot/constants.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * Parse task assignments from chief's response.
@@ -157,6 +158,10 @@ function computeTransitions(opts) {
         }
       }
     }
+  }
+
+  for (const t of transitions) {
+    logger.info('auto-transition', 'Task auto-transitioned', { taskId: t.taskId, from: t.from, to: t.to, reason: t.reason })
   }
 
   return transitions

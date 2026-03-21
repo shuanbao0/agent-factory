@@ -11,6 +11,7 @@ const { injectStandardsForProject } = require('./project-standards.cjs')
 const { generatePhaseDeliverables } = require('./phase-deliverables.cjs')
 
 const { PROJECTS_DIR } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 /**
  * 列出所有项目（含 token 用量）
@@ -127,7 +128,7 @@ Leave notes for other agents in the project directory.
   projectMetaRepo.writeProjectFile(id, 'BRIEF.md', brief)
 
   // Fire-and-forget: inject project standards + phase 1 deliverable templates
-  try { injectStandardsForProject(id) } catch { /* non-blocking */ }
+  try { injectStandardsForProject(id) } catch { logger.debug('project-service', 'Standards injection failed', { projectId: id }) }
   try {
     const phase1 = workflow.phases[0]
     const phaseKey = phase1?.key || phase1?.labelEn?.toLowerCase()
@@ -138,8 +139,9 @@ Leave notes for other agents in the project directory.
       }
       generatePhaseDeliverables(id, phaseKey, meta, deptConfig)
     }
-  } catch { /* non-blocking */ }
+  } catch { logger.debug('project-service', 'Phase deliverables failed', { projectId: id }) }
 
+  logger.info('project-service', 'Project created', { id })
   return { ok: true, project: { id, ...meta } }
 }
 

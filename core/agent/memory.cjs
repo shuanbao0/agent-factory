@@ -12,6 +12,7 @@
  * - domains/knowledge.md — 领域知识（member 专用）
  */
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
+const logger = require('../common/logger.cjs')
 
 const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000
 
@@ -130,12 +131,12 @@ function compressMemory(agentId, fullResponse) {
   try {
     const entry = extractDecisionEntry(fullResponse, timestamp)
     if (entry) agentMetaRepo.appendAgentFile(agentId, `memory/decisions/${today}.md`, entry + '\n\n')
-  } catch { /* skip */ }
+  } catch { logger.warn('memory', 'Memory compression failed', { agentId }) }
 
   try {
     const summary = buildSummaryFromResponse(fullResponse, today)
     if (summary) agentMetaRepo.writeAgentFile(agentId, 'memory/SUMMARY.md', summary)
-  } catch { /* skip */ }
+  } catch { logger.warn('memory', 'Memory compression failed', { agentId }) }
 }
 
 /** Extract work output summary from member response */
@@ -235,28 +236,28 @@ function compressMemoryByRole(agentId, fullResponse, role) {
   try {
     const summary = buildSummaryFromResponse(fullResponse, today)
     if (summary) agentMetaRepo.writeAgentFile(agentId, 'memory/SUMMARY.md', summary)
-  } catch { /* skip */ }
+  } catch { logger.warn('memory', 'Memory compression failed', { agentId }) }
 
   if (role === 'ceo' || role === 'leader') {
     agentMetaRepo.ensureAgentDir(agentId, 'memory/decisions')
     try {
       const entry = extractDecisionEntry(fullResponse, timestamp)
       if (entry) agentMetaRepo.appendAgentFile(agentId, `memory/decisions/${today}.md`, entry + '\n\n')
-    } catch { /* skip */ }
+    } catch { logger.debug('memory', 'Memory file write failed', { agentId, file: `memory/decisions/${today}.md` }) }
 
     if (role === 'ceo') {
       agentMetaRepo.ensureAgentDir(agentId, 'memory/lessons')
-      try { updateLessons(agentId, fullResponse) } catch { /* skip */ }
+      try { updateLessons(agentId, fullResponse) } catch { logger.warn('memory', 'Lessons update failed', { agentId }) }
     }
   } else {
     agentMetaRepo.ensureAgentDir(agentId, 'memory/work-output')
     try {
       const entry = extractWorkOutput(fullResponse, timestamp)
       if (entry) agentMetaRepo.appendAgentFile(agentId, `memory/work-output/${today}.md`, entry + '\n\n')
-    } catch { /* skip */ }
+    } catch { logger.debug('memory', 'Memory file write failed', { agentId, file: `memory/work-output/${today}.md` }) }
 
     agentMetaRepo.ensureAgentDir(agentId, 'memory/domains')
-    try { updateDomainKnowledge(agentId, fullResponse) } catch { /* skip */ }
+    try { updateDomainKnowledge(agentId, fullResponse) } catch { logger.debug('memory', 'Domain knowledge update failed', { agentId }) }
   }
 }
 
@@ -301,7 +302,7 @@ function extractTaskMemory(agentId, task, workerOutput, options = {}) {
 
   try {
     agentMetaRepo.writeAgentFile(agentId, `memory/tasks/${task.id}.md`, content.slice(0, maxChars))
-  } catch { /* skip */ }
+  } catch { logger.debug('memory', 'Task memory extraction failed', { agentId }) }
 }
 
 /**

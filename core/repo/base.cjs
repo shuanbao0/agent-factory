@@ -18,6 +18,7 @@
  */
 const { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } = require('fs')
 const { dirname } = require('path')
+const logger = require('../common/logger.cjs')
 
 class BaseRepository {
   /**
@@ -53,6 +54,7 @@ class BaseRepository {
       }
       return data
     } catch {
+      logger.error('repo', 'JSON parse failed', { file: filePath })
       return null
     }
   }
@@ -75,7 +77,13 @@ class BaseRepository {
       writeFileSync(tmp, json)
       renameSync(tmp, filePath)  // 原子替换
     } catch {
-      writeFileSync(filePath, json)  // 回退：直接写入
+      logger.warn('repo', 'Atomic write fallback to direct write', { file: filePath })
+      try {
+        writeFileSync(filePath, json)  // 回退：直接写入
+      } catch (err) {
+        logger.error('repo', 'File write failed', { file: filePath, error: err.message })
+        throw err
+      }
     }
     // 写入后同步更新缓存
     if (this._cacheTtlMs > 0) {

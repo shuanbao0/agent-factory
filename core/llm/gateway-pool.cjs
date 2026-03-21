@@ -20,6 +20,7 @@
  */
 const WebSocket = require('ws')
 const { randomUUID } = require('crypto')
+const logger = require('../common/logger.cjs')
 
 class GatewayConnectionPool {
   /**
@@ -86,7 +87,7 @@ class GatewayConnectionPool {
 
       ws.on('message', (data) => {
         let f
-        try { f = JSON.parse(data.toString()) } catch { return }
+        try { f = JSON.parse(data.toString()) } catch { logger.warn('gateway-pool', 'Invalid WebSocket frame (JSON parse failed)'); return }
 
         // 握手挑战 → 发送连接帧
         if (f.type === 'event' && f.event === 'connect.challenge') {
@@ -116,6 +117,7 @@ class GatewayConnectionPool {
       ws.on('error', (err) => {
         this._connected = false
         this._connecting = null
+        logger.error('gateway-pool', 'Gateway connection failed', { error: err.message })
         reject(err)
       })
 
@@ -173,6 +175,7 @@ class GatewayConnectionPool {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._pendingRequests.delete(id)
+        logger.warn('gateway-pool', 'Request timeout', { sessionKey: method, timeoutMs })
         reject(new Error(`Timeout ${timeoutMs}ms for ${method}`))
       }, timeoutMs)
       this._pendingRequests.set(id, { resolve, reject, timer })
@@ -243,6 +246,7 @@ class GatewayConnectionPool {
             if (!text.trim() && !retried) {
               retried = true
               this._log('info', `Empty response from ${agentId} on ${sessionKey}, resetting and retrying`)
+              logger.warn('gateway-pool', 'Empty response, retrying', { sessionKey })
 
               // 重置会话后注入记忆上下文重新发送
               const resetId = randomUUID()
@@ -368,6 +372,8 @@ class GatewayConnectionPool {
 
   /** 指数退避自动重连 */
   _scheduleReconnect() {
+    const attempt = Math.round(Math.log2(this._reconnectDelay / 1000)) + 1
+    logger.info('gateway-pool', 'Reconnecting to Gateway', { attempt, delay: this._reconnectDelay })
     setTimeout(() => {
       this._ensureConnected().catch(() => {
         this._reconnectDelay = Math.min(this._reconnectDelay * 2, 30000)  // 最大 30 秒
@@ -380,7 +386,7 @@ class GatewayConnectionPool {
   close() {
     this._stopHeartbeat()
     clearTimeout(this._idleTimer)
-    if (this._ws) { try { this._ws.close() } catch {} }
+    if (this._ws) { try { this._ws.close() } catch { logger.debug('gateway-pool', 'WebSocket close cleanup failed') } }
     this._connected = false
     this._ws = null
   }

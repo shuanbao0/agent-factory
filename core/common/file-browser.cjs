@@ -7,6 +7,7 @@
 const { readdirSync, readFileSync, existsSync, statSync, mkdirSync, renameSync, rmSync, writeFileSync, realpathSync, copyFileSync } = require('fs')
 const { join, resolve } = require('path')
 const { WORKSPACES_DIR } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 const ARCHIVED_DIR = join(WORKSPACES_DIR, '.archived')
 
@@ -49,7 +50,7 @@ function listDirectory(baseDir, subDir) {
       let childCount = 0
       try {
         childCount = readdirSync(fullPath).filter(n => !n.startsWith('.') && !SKIP_DIRS.has(n)).length
-      } catch { /* permission denied */ }
+      } catch { logger.debug('file-browser', 'Permission denied', { path: fullPath }) }
       return { name: entry.name, type: 'directory', path: relativePath, childCount }
     }
     let size
@@ -83,6 +84,7 @@ function getFileContent(baseDir, filePath, maxSize = 1_000_000) {
     const content = readFileSync(fullPath, 'utf-8')
     return { content, size: stat.size }
   } catch {
+    logger.warn('file-browser', 'File read failed', { path: fullPath })
     return { content: '(Binary file, cannot preview)' }
   }
 }
@@ -130,7 +132,7 @@ function countDirStats(dir, maxDepth = 6, depth = 0) {
         try { size += statSync(fullPath).size } catch { /* ignore */ }
       }
     }
-  } catch { /* permission denied */ }
+  } catch { logger.debug('file-browser', 'Permission denied', { path: dir }) }
   return { count, size }
 }
 

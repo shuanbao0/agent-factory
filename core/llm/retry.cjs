@@ -11,6 +11,7 @@
  *
  * 被 anthropic-client.cjs 使用，为 LLM API 调用提供弹性保护
  */
+const logger = require('../common/logger.cjs')
 
 /**
  * 为异步函数添加指数退避重试逻辑
@@ -56,10 +57,12 @@ async function withRetry(fn, opts = {}) {
       const delay = Math.min(baseDelayMs * Math.pow(2, attempt), deadline - Date.now())
       if (delay <= 0) throw err
 
+      logger.debug('retry', 'Retry attempt', { attempt: attempt + 1, max: maxRetries, delay })
       await new Promise(r => setTimeout(r, delay))
     }
   }
 
+  logger.error('retry', 'All retries exhausted', { maxRetries, error: lastError?.message })
   throw lastError
 }
 
@@ -135,6 +138,7 @@ class CircuitBreaker {
       // 检查是否到了恢复时间
       if (Date.now() - this._lastFailureTime >= this._resetTimeoutMs) {
         this._state = 'HALF_OPEN'  // 进入试探状态
+        logger.warn('retry', 'Circuit breaker state change', { newState: 'HALF_OPEN' })
       } else {
         throw new Error('Circuit breaker is OPEN — request rejected')
       }
@@ -152,6 +156,9 @@ class CircuitBreaker {
 
   /** 成功回调：重置计数，恢复 CLOSED */
   _onSuccess() {
+    if (this._state !== 'CLOSED') {
+      logger.warn('retry', 'Circuit breaker state change', { newState: 'CLOSED' })
+    }
     this._failureCount = 0
     this._state = 'CLOSED'
   }
@@ -160,8 +167,11 @@ class CircuitBreaker {
   _onFailure() {
     this._failureCount++
     this._lastFailureTime = Date.now()
-    if (this._failureCount >= this._failureThreshold) {
+    if (this._failureCount >= this._failureThreshold && this._state !== 'OPEN') {
       this._state = 'OPEN'
+      logger.warn('retry', 'Circuit breaker state change', { newState: 'OPEN' })
+    } else if (this._failureCount >= this._failureThreshold) {
+      // already OPEN, no state change
     }
   }
 

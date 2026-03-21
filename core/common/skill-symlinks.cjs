@@ -13,6 +13,7 @@ const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const execFileAsync = promisify(execFileCb)
 
 const { PROJECT_ROOT, SKILLS_DIR: PROJECT_SKILLS_DIR, AGENTS_DIR } = require('./paths.cjs')
+const logger = require('./logger.cjs')
 
 /** Cached result for builtin skills directory */
 let cachedBuiltinDir = undefined
@@ -86,7 +87,7 @@ async function syncSkillSymlinks(agentId, enabledSlugs) {
     const sourcePath = await resolveSkillDir(slug)
     const linkPath = join(agentSkillsDir, slug)
     if (sourcePath && !existsSync(linkPath)) {
-      try { symlinkSync(sourcePath, linkPath, 'dir') } catch { /* skip */ }
+      try { symlinkSync(sourcePath, linkPath, 'dir') } catch { logger.debug('skill-symlinks', 'Symlink creation failed', { slug }) }
     }
   }
 }
