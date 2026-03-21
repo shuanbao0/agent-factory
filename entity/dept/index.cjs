@@ -3,4 +3,5 @@
 
 module.exports = {
   ...require('./dept.cjs'),
+  ...require('./dept-template.cjs'),
 }

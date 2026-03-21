@@ -19,11 +19,11 @@ function getDeptStateRepo() {
 
 /**
  * 创建部门
- * @param {object} body - { id, name, nameEn, emoji, order, floorColor, furniture }
+ * @param {object} body - { id, name, nameEn, emoji, order, floorColor, furniture, templateId? }
  * @returns {{ ok: boolean, id?: string, error?: string, status?: number }}
  */
 function createDepartment(body) {
-  const { id, name, nameEn, emoji, order, floorColor, furniture } = body
+  const { id, name, nameEn, emoji, order, floorColor, furniture, templateId } = body
 
   if (!id || !name || !nameEn) {
     return { ok: false, error: 'id, name, and nameEn are required', status: 400 }
@@ -37,14 +37,31 @@ function createDepartment(body) {
     return { ok: false, error: `Department "${id}" already exists`, status: 409 }
   }
 
+  // Load template defaults if templateId provided
+  let tmplDefaults = {}
+  let missionContent = `# ${name}\n\n（待定义部门使命）\n`
+  if (templateId) {
+    const { readDeptTemplate, getDeptTemplateDir, readDeptTemplateFile } = require('../repo/dept-template.cjs')
+    const tmpl = readDeptTemplate(templateId)
+    if (tmpl) {
+      tmplDefaults = tmpl.defaults || {}
+      const tmplDir = getDeptTemplateDir(templateId)
+      if (tmplDir) {
+        const m = readDeptTemplateFile(tmplDir, 'mission.md')
+        if (m) missionContent = m
+      }
+    }
+  }
+
+  // Registry entry: user values > template defaults > hardcoded defaults
   departments.push({
     id,
     name,
     nameEn,
-    emoji: emoji || '🏢',
-    order: order ?? departments.length,
-    floorColor: floorColor || { h: 35, s: 30, b: 15, c: 0 },
-    furniture: furniture || [],
+    emoji: emoji || tmplDefaults.emoji || '🏢',
+    order: order ?? tmplDefaults.order ?? departments.length,
+    floorColor: floorColor || tmplDefaults.floorColor || { h: 35, s: 30, b: 15, c: 0 },
+    furniture: furniture || tmplDefaults.furniture || [],
   })
 
   departments.sort((a, b) => a.order - b.order)
@@ -57,14 +74,15 @@ function createDepartment(body) {
     deptConfigRepo.save(id, {
       id,
       name,
-      head: '',
-      interval: 600,
+      head: tmplDefaults.head || '',
+      interval: tmplDefaults.interval ?? 600,
       enabled: false,
       agents: [],
-      budget: { dailyTokenLimit: 500000, alertThreshold: 0.8 },
-      kpis: {},
+      budget: tmplDefaults.budget || { dailyTokenLimit: 500000, alertThreshold: 0.8 },
+      kpis: tmplDefaults.kpis || {},
+      workflow: tmplDefaults.workflow || undefined,
     })
-    missionRepo.writeDeptMission(id, `# ${name}\n\n（待定义部门使命）\n`)
+    missionRepo.writeDeptMission(id, missionContent)
   }
 
   return { ok: true, id }

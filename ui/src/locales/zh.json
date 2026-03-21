@@ -400,6 +400,11 @@
     "systemPrompt": "系统提示词 (AGENTS.md)",
     "systemPromptPlaceholder": "自定义系统提示词，留空使用模板默认..."
   },
+  "deptTemplates": {
+    "title": "选择部门模板",
+    "blankDept": "空白部门",
+    "blankDeptDesc": "从零创建，手动配置所有选项"
+  },
   "autopilot": {
     "title": "自动驾驶",
     "subtitle": "自动循环运行与部门管理",

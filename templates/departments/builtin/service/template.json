@@ -1,0 +1,44 @@
+{
+  "id": "service",
+  "name": "客户服务部",
+  "nameEn": "Customer Service",
+  "description": "维护客户满意度，降低流失率，推动续费和复购",
+  "descriptionEn": "Maintain customer satisfaction, reduce churn, drive renewals",
+  "emoji": "🎧",
+  "category": "builtin",
+  "recommendedAgents": ["service-manager", "csm", "support-agent"],
+  "defaults": {
+    "head": "service-manager",
+    "interval": 600,
+    "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
+    "kpis": {},
+    "workflow": {
+      "phases": [
+        { "key": "intake", "labelZh": "受理", "labelEn": "Intake" },
+        { "key": "analysis", "labelZh": "分析", "labelEn": "Analysis" },
+        { "key": "resolution", "labelZh": "处理", "labelEn": "Resolution" },
+        { "key": "followup", "labelZh": "跟进", "labelEn": "Follow-up" },
+        { "key": "reporting", "labelZh": "总结", "labelEn": "Reporting" }
+      ],
+      "taskTypes": [
+        { "value": "intake", "labelZh": "受理", "labelEn": "Intake", "color": "blue" },
+        { "value": "analysis", "labelZh": "分析", "labelEn": "Analysis", "color": "purple" },
+        { "value": "resolution", "labelZh": "处理", "labelEn": "Resolution", "color": "green" },
+        { "value": "followup", "labelZh": "跟进", "labelEn": "Follow-up", "color": "amber" },
+        { "value": "reporting", "labelZh": "总结", "labelEn": "Reporting", "color": "cyan" }
+      ],
+      "directories": ["tickets", "analysis", "solutions", "reports"],
+      "pipeline": [
+        { "from": "resolution", "to": "followup", "qualityGate": { "minScore": 75, "requireSelfCheck": true, "maxReworks": 3, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } },
+        { "from": "followup", "to": "reporting", "qualityGate": { "minScore": 75, "requireSelfCheck": true, "maxReworks": 3, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } }
+      ]
+    },
+    "floorColor": { "h": 170, "s": 25, "b": 12, "c": 0 },
+    "furniture": [
+      { "type": "desk", "count": 3 },
+      { "type": "plant", "count": 2 },
+      { "type": "cooler", "count": 1 }
+    ],
+    "order": 4
+  }
+}

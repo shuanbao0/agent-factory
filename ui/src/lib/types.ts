@@ -16,7 +16,8 @@ export type { QualityGateConfig, PipelineStep } from '@entity/task'
 
 // dept
 export type { Department, DepartmentConfig, DepartmentWorkflow, DepartmentLoopState,
-             DepartmentFurnitureItem, PhaseDefinition, TaskTypeDefinition } from '@entity/dept'
+             DepartmentFurnitureItem, PhaseDefinition, TaskTypeDefinition,
+             DepartmentTemplate } from '@entity/dept'
 export { DEFAULT_DEPT_STATE } from '@entity/dept'
 
 // config

@@ -1,0 +1,46 @@
+{
+  "id": "dev",
+  "name": "软件开发部",
+  "nameEn": "Software Development",
+  "description": "开发能产生收入的 AI 产品，按时交付可用的 MVP",
+  "descriptionEn": "Build revenue-generating AI products and deliver working MVPs on time",
+  "emoji": "💻",
+  "category": "builtin",
+  "recommendedAgents": ["pm", "backend", "frontend", "designer", "tester", "analyst", "researcher", "writer", "marketing", "product", "main"],
+  "defaults": {
+    "head": "pm",
+    "interval": 600,
+    "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
+    "kpis": {},
+    "workflow": {
+      "phases": [
+        { "key": "research", "labelZh": "调研", "labelEn": "Research" },
+        { "key": "design", "labelZh": "设计", "labelEn": "Design" },
+        { "key": "develop", "labelZh": "开发", "labelEn": "Develop" },
+        { "key": "test", "labelZh": "测试", "labelEn": "Test" },
+        { "key": "deploy", "labelZh": "部署", "labelEn": "Deploy" }
+      ],
+      "taskTypes": [
+        { "value": "research", "labelZh": "调研", "labelEn": "Research", "color": "blue" },
+        { "value": "design", "labelZh": "设计", "labelEn": "Design", "color": "purple" },
+        { "value": "coding", "labelZh": "开发", "labelEn": "Coding", "color": "green" },
+        { "value": "testing", "labelZh": "测试", "labelEn": "Testing", "color": "amber" },
+        { "value": "review", "labelZh": "评审", "labelEn": "Review", "color": "pink" }
+      ],
+      "directories": ["docs", "design", "src", "tests"],
+      "pipeline": [
+        { "from": "coding", "to": "review", "qualityGate": { "minScore": 75, "requireSelfCheck": true, "maxReworks": 3, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } },
+        { "from": "review", "to": "testing", "qualityGate": { "minScore": 75, "requireSelfCheck": true, "requirePeerReview": true, "maxReworks": 2, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } }
+      ]
+    },
+    "floorColor": { "h": 35, "s": 30, "b": 15, "c": 0 },
+    "furniture": [
+      { "type": "desk", "count": 4 },
+      { "type": "bookshelf", "count": 1 },
+      { "type": "plant", "count": 2 },
+      { "type": "whiteboard", "count": 1 },
+      { "type": "cooler", "count": 1 }
+    ],
+    "order": 0
+  }
+}

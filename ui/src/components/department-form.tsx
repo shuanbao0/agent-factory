@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useTranslation } from '@/lib/i18n'
-import { Department, DepartmentFurnitureItem } from '@/lib/types'
+import { Department, DepartmentFurnitureItem, DepartmentTemplate } from '@/lib/types'
 import { X, Loader2, Plus, Minus } from 'lucide-react'
 
 const FURNITURE_TYPES = [
@@ -16,24 +16,26 @@ const FURNITURE_TYPES = [
 
 interface DepartmentFormProps {
   editDept?: Department
+  template?: DepartmentTemplate | null
   onClose: () => void
   onSaved: () => void
 }
 
-export function DepartmentForm({ editDept, onClose, onSaved }: DepartmentFormProps) {
+export function DepartmentForm({ editDept, template, onClose, onSaved }: DepartmentFormProps) {
   const { t, locale } = useTranslation()
   const isEdit = !!editDept
+  const tmplDefaults = template?.defaults
 
-  const [id, setId] = useState(editDept?.id || '')
-  const [name, setName] = useState(editDept?.name || '')
-  const [nameEn, setNameEn] = useState(editDept?.nameEn || '')
-  const [emoji, setEmoji] = useState(editDept?.emoji || '')
-  const [order, setOrder] = useState(editDept?.order ?? 0)
-  const [floorH, setFloorH] = useState(editDept?.floorColor?.h ?? 35)
-  const [floorS, setFloorS] = useState(editDept?.floorColor?.s ?? 30)
-  const [floorB, setFloorB] = useState(editDept?.floorColor?.b ?? 15)
+  const [id, setId] = useState(editDept?.id || template?.id || '')
+  const [name, setName] = useState(editDept?.name || template?.name || '')
+  const [nameEn, setNameEn] = useState(editDept?.nameEn || template?.nameEn || '')
+  const [emoji, setEmoji] = useState(editDept?.emoji || template?.emoji || '')
+  const [order, setOrder] = useState(editDept?.order ?? tmplDefaults?.order ?? 0)
+  const [floorH, setFloorH] = useState(editDept?.floorColor?.h ?? tmplDefaults?.floorColor?.h ?? 35)
+  const [floorS, setFloorS] = useState(editDept?.floorColor?.s ?? tmplDefaults?.floorColor?.s ?? 30)
+  const [floorB, setFloorB] = useState(editDept?.floorColor?.b ?? tmplDefaults?.floorColor?.b ?? 15)
   const [furniture, setFurniture] = useState<DepartmentFurnitureItem[]>(
-    editDept?.furniture || [{ type: 'desk', count: 4 }]
+    editDept?.furniture || tmplDefaults?.furniture || [{ type: 'desk', count: 4 }]
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -62,7 +64,7 @@ export function DepartmentForm({ editDept, onClose, onSaved }: DepartmentFormPro
 
     try {
       const method = isEdit ? 'PUT' : 'POST'
-      const payload = {
+      const payload: Record<string, unknown> = {
         id: id.trim(),
         name: name.trim(),
         nameEn: nameEn.trim(),
@@ -70,6 +72,9 @@ export function DepartmentForm({ editDept, onClose, onSaved }: DepartmentFormPro
         order,
         floorColor: { h: floorH, s: floorS, b: floorB, c: 0 },
         furniture: furniture.filter(f => f.count > 0),
+      }
+      if (!isEdit && template?.id) {
+        payload.templateId = template.id
       }
 
       const res = await fetch('/api/departments', {

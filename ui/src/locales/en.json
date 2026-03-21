@@ -400,6 +400,11 @@
     "systemPrompt": "System Prompt (AGENTS.md)",
     "systemPromptPlaceholder": "Custom system prompt, leave empty to use template default..."
   },
+  "deptTemplates": {
+    "title": "Select Department Template",
+    "blankDept": "Blank Department",
+    "blankDeptDesc": "Start from scratch, configure everything manually"
+  },
   "autopilot": {
     "title": "Autopilot",
     "subtitle": "Automated cycle loops and department management",

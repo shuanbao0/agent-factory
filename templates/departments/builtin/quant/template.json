@@ -1,0 +1,46 @@
+{
+  "id": "quant",
+  "name": "量化交易部",
+  "nameEn": "Crypto Quant Trading",
+  "description": "开发和运行量化交易策略，实现稳定的投资收益",
+  "descriptionEn": "Develop and run quantitative trading strategies for stable returns",
+  "emoji": "📈",
+  "category": "builtin",
+  "recommendedAgents": ["quant-chief", "quant-developer", "quant-researcher", "data-engineer-quant", "execution-engineer", "risk-manager", "market-analyst-crypto", "strategy-optimizer"],
+  "defaults": {
+    "head": "quant-chief",
+    "interval": 600,
+    "budget": { "dailyTokenLimit": 500000, "alertThreshold": 0.8 },
+    "kpis": {},
+    "workflow": {
+      "phases": [
+        { "key": "research", "labelZh": "调研", "labelEn": "Research" },
+        { "key": "modeling", "labelZh": "建模", "labelEn": "Modeling" },
+        { "key": "backtesting", "labelZh": "回测", "labelEn": "Backtesting" },
+        { "key": "deployment", "labelZh": "部署", "labelEn": "Deployment" },
+        { "key": "monitoring", "labelZh": "监控", "labelEn": "Monitoring" }
+      ],
+      "taskTypes": [
+        { "value": "research", "labelZh": "调研", "labelEn": "Research", "color": "blue" },
+        { "value": "modeling", "labelZh": "建模", "labelEn": "Modeling", "color": "purple" },
+        { "value": "backtesting", "labelZh": "回测", "labelEn": "Backtesting", "color": "amber" },
+        { "value": "deployment", "labelZh": "部署", "labelEn": "Deployment", "color": "green" },
+        { "value": "monitoring", "labelZh": "监控", "labelEn": "Monitoring", "color": "cyan" }
+      ],
+      "directories": ["research", "models", "backtest", "deploy", "logs"],
+      "pipeline": [
+        { "from": "modeling", "to": "backtesting", "qualityGate": { "minScore": 80, "requireSelfCheck": true, "maxReworks": 3, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } },
+        { "from": "backtesting", "to": "deployment", "qualityGate": { "minScore": 90, "requireSelfCheck": true, "requirePeerReview": true, "maxReworks": 2, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } }
+      ]
+    },
+    "floorColor": { "h": 140, "s": 35, "b": 12, "c": 0 },
+    "furniture": [
+      { "type": "desk", "count": 4 },
+      { "type": "whiteboard", "count": 2 },
+      { "type": "bookshelf", "count": 1 },
+      { "type": "lamp", "count": 3 },
+      { "type": "plant", "count": 1 }
+    ],
+    "order": 10
+  }
+}

@@ -6,7 +6,7 @@
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import type { Task, PipelineStep } from '@entity/task'
-import type { DepartmentConfig, DepartmentLoopState, TaskTypeDefinition } from '@entity/dept'
+import type { DepartmentConfig, DepartmentLoopState, DepartmentTemplate, TaskTypeDefinition } from '@entity/dept'
 import type { OpenClawConfig, GatewayConfig } from '@entity/config'
 import type { AutopilotState } from '@entity/autopilot'
 import type { CompanyBudget, CostEntry, DailyCostSummary } from '@entity/observe'
@@ -112,6 +112,11 @@ export default _core as {
       writeProfiles(data: Record<string, unknown>): void
       updateProfiles(mutator: (data: Record<string, unknown>) => Record<string, unknown>): Record<string, unknown>
     }
+    readDeptTemplate(id: string): DepartmentTemplate | null
+    getDeptTemplateDir(id: string): string | null
+    readDeptTemplateFile(tmplDir: string, filename: string): string | null
+    listDeptTemplates(): DepartmentTemplate[]
+    createCustomDeptTemplate(id: string, data: Record<string, unknown>): void
     readTemplate(id: string): { id: string; name: string; description: string; emoji: string; category: string; group?: string; hidden?: boolean; hasIdentityFiles: boolean; defaults: { model: string; skills: string[]; peers: string[] } } | null
     getTemplateDir(id: string): string | null
     readTemplateFile(tmplDir: string, filename: string): string | null

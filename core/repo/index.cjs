@@ -11,6 +11,7 @@ module.exports = {
   ...require('./mission.cjs'),
   ...require('./task.cjs'),
   ...require('./template.cjs'),
+  ...require('./dept-template.cjs'),
   ...require('./models-repo.cjs'),
   ...require('./auth-profiles-repo.cjs'),
 }

@@ -6,8 +6,9 @@ import { useTranslation } from '@/lib/i18n'
 import { AgentCard } from '@/components/agent-card'
 import { AgentForm } from '@/components/agent-form'
 import { DepartmentForm } from '@/components/department-form'
+import { DeptTemplatePicker } from '@/components/dept-template-picker'
 import { Badge } from '@/components/ui/badge'
-import { Agent, AgentTemplate, Department } from '@/lib/types'
+import { Agent, AgentTemplate, Department, DepartmentTemplate } from '@/lib/types'
 import dynamic from 'next/dynamic'
 import {
   Users, Cpu, Plus, RefreshCw, FolderOpen, Archive,
@@ -177,6 +178,8 @@ export default function AgentsPage() {
   const [editDept, setEditDept] = useState<Department | undefined>(undefined)
   const [showDeptManager, setShowDeptManager] = useState(false)
   const [deletingDept, setDeletingDept] = useState<string | null>(null)
+  const [showDeptTemplatePicker, setShowDeptTemplatePicker] = useState(false)
+  const [selectedDeptTemplate, setSelectedDeptTemplate] = useState<DepartmentTemplate | null | undefined>(undefined)
 
   // ── Workspace tab state ───────────────────────────────────────
   const [workspaces, setWorkspaces] = useState<WorkspaceEntry[]>([])
@@ -599,7 +602,7 @@ export default function AgentsPage() {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">{t('agents.manageDepartments')}</h3>
             <button
-              onClick={() => { setShowDeptForm(true); setEditDept(undefined) }}
+              onClick={() => { setShowDeptTemplatePicker(true) }}
               className="flex items-center gap-1 px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
             >
               <Plus className="w-3.5 h-3.5" /> {t('agents.createDepartment')}
@@ -766,11 +769,25 @@ export default function AgentsPage() {
         <AgentForm editAgent={editAgent} onClose={() => setEditAgent(null)} onSaved={handleSaved} />
       )}
 
+      {/* Department Template Picker */}
+      {showDeptTemplatePicker && (
+        <DeptTemplatePicker
+          onSelect={(tmpl) => {
+            setSelectedDeptTemplate(tmpl)
+            setShowDeptTemplatePicker(false)
+            setEditDept(undefined)
+            setShowDeptForm(true)
+          }}
+          onClose={() => setShowDeptTemplatePicker(false)}
+        />
+      )}
+
       {/* Create/Edit Department Dialog */}
       {showDeptForm && (
         <DepartmentForm
           editDept={editDept}
-          onClose={() => { setShowDeptForm(false); setEditDept(undefined) }}
+          template={editDept ? undefined : selectedDeptTemplate}
+          onClose={() => { setShowDeptForm(false); setEditDept(undefined); setSelectedDeptTemplate(undefined) }}
           onSaved={() => { fetchDepartments() }}
         />
       )}
