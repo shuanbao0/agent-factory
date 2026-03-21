@@ -422,10 +422,11 @@ qualityGate.process(deptId, task)
   │   │   ├─ 内容 ≥ 500 字符
   │   │   └─ 无未渲染模板 ${...}
   │   │
-  │   ├─ LLM 自检（使用类型专属检查清单）:
-  │   │   从 config/task-standards.md 提取任务类型的检查清单
-  │   │   （如 writing: 情节连贯？文笔达标？字数达标？）
-  │   │   未知类型回退通用 4 条清单
+  │   ├─ LLM 自检（注入类型专属检查清单 + 项目上下文）:
+  │   │   ├─ 从 config/task-standards.md 提取任务类型的检查清单
+  │   │   │   （如 coding: 编译通过？有测试？无安全漏洞？）
+  │   │   │   未知类型回退通用 4 条清单
+  │   │   └─ 从 config/project-standards.md 注入项目阶段 + 出口条件
   │   │   sendFn(assignee, 'agent:{id}:quality-check:{taskId}',
   │   │     "请按以下清单自检... SCORE: <n>, PASSED: <bool>, ISSUES: ...",
   │   │     60s timeout)
@@ -437,12 +438,16 @@ qualityGate.process(deptId, task)
   │   │
   │   ├─ 选择评审人:
   │   │   selectReviewer(deptId, task, config)
-  │   │   优先级: preferredReviewers → tag 匹配 → 最空闲的 Agent
+  │   │   优先级: preferredReviewers（部门配置覆盖）→ tag 匹配 → 最空闲的 Agent
   │   │   排除: 任务负责人 + Chief
+  │   │
+  │   ├─ 注入标准上下文:
+  │   │   ├─ 任务类型标准全文（← config/task-standards.md）
+  │   │   └─ 项目阶段 + 出口条件（← config/project-standards.md）
   │   │
   │   ├─ LLM 评审:
   │   │   sendFn(reviewer, 'agent:{id}:peer-review:{taskId}',
-  │   │     "Review this task output. SCORE: <n>, PASSED: <bool>, COMMENTS: ...",
+  │   │     "含: 产出内容 + 类型标准 + 项目上下文. SCORE/PASSED/COMMENTS",
   │   │     60s timeout)
   │   │
   │   └─ 判定: score ≥ threshold → 通过
@@ -450,9 +455,13 @@ qualityGate.process(deptId, task)
   │
   └─ 阶段 3: 主管审批 (Head Approval) ─── 由 Chief 执行
       │
+      ├─ 注入标准上下文:
+      │   ├─ 完成定义（← config/task-standards.md）
+      │   └─ 项目阶段 + 出口条件（← config/project-standards.md）
+      │
       ├─ LLM 审批:
       │   sendFn(head, 'agent:{id}:approval:{taskId}',
-      │     "包含: 自检分数={selfScore}, 评审分数={peerScore}, 评审意见={comments}
+      │     "含: 完成定义 + 项目上下文 + 自检分={selfScore} + 评审分={peerScore} + 评审意见
       │      作为主管，请回复 APPROVED 或 REJECTED",
       │     60s timeout)
       │
@@ -560,7 +569,8 @@ queryAgentStatus(agentId, `agent:${agentId}:main`, 30s)
 ```
 department-loop.cjs createWorkTask 时:
   Chief 响应 → parseTaskAssignments → 提取 { agentId, summary }
-  → buildTaskContext(agentId, summary, { deptId, deptConfig, taskType })
+  → inferTaskType(summary, agentMeta) — 自动推断任务类型
+  → buildTaskContext(agentId, summary, { deptId, deptConfig, taskType, projectId })
   → 生成 enriched description:
      ├─ Chief 原始 summary
      ├─ 质量标准（strategy.minPassingScore + reviewCriteria）
@@ -568,19 +578,26 @@ department-loop.cjs createWorkTask 时:
      │   ├─ 完成定义（如 coding: "代码可运行，有基本测试"）
      │   ├─ DO（如 "遵循项目编码规范"）
      │   └─ DON'T（如 "不引入未审批的第三方依赖"）
+     ├─ 项目阶段标准（← config/project-standards.md）:
+     │   └─ 项目阶段 + 出口条件（如 "开发 | 核心功能已实现，基本自测通过"）
      ├─ 项目背景（部门使命摘要，≤500 字符）
      ├─ 返工反馈（如有：评审意见 + 上次自检分数）
      └─ 相关任务记忆（最近 5 个类似任务经验）
-  → createWorkTask(agentId, summary, deptId, { description })
+  → createWorkTask(agentId, summary, deptId, { type: taskType, description, projectId })
+
+POST /api/agent-tasks 也同样接入:
+  → inferTaskType(name, agentMeta) — 未提供 type 时自动推断
+  → 注入 task-standards + project-standards 到 description
 ```
 
 Agent 查询任务 API（base-rules 要求）时自动获得完整 description，传给 worker 子会话执行。
 
 **设计要点：**
-- `buildTaskContext` 只输出**补充上下文**（质量标准、任务标准、记忆、返工反馈），不含 Agent 身份和执行要求（已在 AGENTS.md / base-rules 中）
-- 任务标准来自 `config/task-standards.md`，按 `task.type` 提取完成定义 + DO/DON'T 边界（mtime 缓存，未知类型静默跳过）
+- 任务类型由 `inferTaskType()` 自动推断（摘要关键词 → Agent 角色 → 兜底 dept-work），替代硬编码
+- `buildTaskContext` 输出**补充上下文**（质量标准、任务标准、项目阶段标准、记忆、返工反馈），不含 Agent 身份和执行要求
+- 任务标准来自 `config/task-standards.md`，项目标准来自 `config/project-standards.md`（均 mtime 缓存）
 - 容错设计：`buildTaskContext` 任何环节失败都 catch 静默跳过，降级为仅使用 Chief 原始 summary
-- 完整版 `buildTaskPrompt()` 包含完整的类型专属任务标准段落（"## 任务标准"），作为直接发送给 worker session 的自包含 prompt
+- 完整版 `buildTaskPrompt()` 包含完整的类型专属任务标准段落（"## 任务标准" + "## 项目阶段标准" + "## 项目边界"）
 
 ### 5.6 双目录隔离
 

@@ -97,7 +97,9 @@ Marker 幂等机制：`<!-- PROJECT-STANDARDS:BEGIN -->` / `<!-- PROJECT-STANDAR
 department-loop.cjs parseTaskAssignments()
   ├─ 提取 { agentId, summary, projectId }
   ├─ 跳过 🔵工作中 的 Agent（不分配）
-  └─ createWorkTask(agentId, summary, deptId, { description })
+  ├─ inferTaskType(summary, agentMeta) — 自动推断任务类型
+  │     优先级: 摘要关键词 > Agent templateId/role > 兜底 dept-work
+  └─ createWorkTask(agentId, summary, deptId, { type, description, projectId })
        │
        ├─ buildTaskContext(agentId, summary, options)
        │     生成 enriched description:
@@ -117,6 +119,8 @@ department-loop.cjs parseTaskAssignments()
        │     │   ├─ 完成定义: "研究报告完整，数据来源可靠，结论有据可依"
        │     │   ├─ 要求: "标注数据来源，区分事实与推断，提供多角度分析"
        │     │   └─ 禁止: "不编造数据，不遗漏关键信息源"
+       │     ├─ 项目阶段标准（← config/project-standards.md）:
+       │     │   └─ 项目阶段: 开发 | 出口条件: 核心功能已实现，代码可运行，基本自测通过
        │     ├─ 项目背景（部门使命摘要 ≤500字符）
        │     ├─ 返工反馈（如有: 评审意见 + 上次自检分数）
        │     └─ 相关任务记忆（最近 5 个类似任务经验）
@@ -239,10 +243,14 @@ qualityOrchestrator.process(deptId, task)
   │   │
   │   ├─ 选择评审人:
   │   │   selectReviewer(deptId, task, config)
-  │   │   优先级: preferredReviewers → tag 匹配 → 最空闲的 Agent
+  │   │   优先级: preferredReviewers（部门配置）→ tag 匹配 → 最空闲的 Agent
   │   │   排除: 任务负责人 + Chief
   │   │
-  │   ├─ LLM 评审: sendFn(reviewer, 产出内容 + 评审标准, 60s)
+  │   ├─ 注入上下文（← task-standards.md + project-standards.md）:
+  │   │   ├─ 任务类型标准全文（完成定义 + 检查清单 + DO/DON'T）
+  │   │   └─ 项目阶段 + 出口条件
+  │   │
+  │   ├─ LLM 评审: sendFn(reviewer, 产出内容 + 类型标准 + 项目上下文, 60s)
   │   │   → 回复: SCORE: <0-100>, PASSED: <bool>, COMMENTS: <text>
   │   │
   │   └─ 判定: score ≥ threshold → 通过
@@ -250,7 +258,11 @@ qualityOrchestrator.process(deptId, task)
   │
   └─ 阶段 3: 主管审批 (Head Approval) ─── 由 Chief 执行
       │
-      ├─ LLM 审批: sendFn(chief, 自检分+评审分+评审意见, 60s)
+      ├─ 注入上下文:
+      │   ├─ 完成定义（← task-standards.md）
+      │   └─ 项目阶段 + 出口条件（← project-standards.md）
+      │
+      ├─ LLM 审批: sendFn(chief, 完成定义+项目上下文+自检分+评审分+评审意见, 60s)
       │
       └─ 判定:
          ├─ APPROVED → review → completed ✅
@@ -281,28 +293,46 @@ qualityOrchestrator.process(deptId, task)
 
 **`config/task-standards.md`**（两段：`## GENERAL` + `## TYPES`）
 
-| 注入时机 | 目标 | 内容 |
-|----------|------|------|
-| 任务创建 | `buildTaskContext()` → 任务 description | 完成定义 + DO/DON'T（精简版） |
-| Worker 执行 | `buildTaskPrompt()` → 完整 prompt | "## 任务标准" 完整段落 |
-| 质量门自检 | `_requestSelfCheck()` → 自检 prompt | 类型专属检查清单（替代通用 4 条） |
+**标准注入覆盖表（所有 Agent 触点）：**
 
-**8 种内置类型标准与适用场景：**
+| 触点 | 谁 | task-standards.md | project-standards.md |
+|------|-----|-------------------|---------------------|
+| Chief 部门指令 | Chief | ✅ 任务类型完成定义摘要 | ✅ 项目阶段+出口条件 |
+| 任务创建 (dept-loop) | 系统 | ✅ 完成定义+DO/DON'T | ✅ 项目阶段出口条件 |
+| 任务创建 (API) | 系统 | ✅ 完成定义+DO/DON'T | ✅ 项目阶段出口条件 |
+| Worker 执行 (prompt) | Agent | ✅ 完整类型标准段落 | ✅ 阶段标准+边界 |
+| Worker 执行 (context) | Agent | ✅ 完成定义+DO/DON'T | ✅ 阶段出口条件 |
+| 质量门自检 | Agent | ✅ 类型专属检查清单 | ✅ 项目阶段+出口条件 |
+| 质量门同行评审 | Reviewer | ✅ 类型标准全文 | ✅ 项目阶段+出口条件 |
+| 质量门主管审批 | Chief | ✅ 完成定义 | ✅ 项目阶段+出口条件 |
+
+**任务类型自动推断（`type-inference.cjs`）：**
+- 优先级: 摘要关键词（中英文）→ Agent templateId/role（65 模板映射）→ 兜底 `dept-work`
+- 两条创建路径均已接入: department-loop + POST /api/agent-tasks
+
+**14 种内置类型标准与适用场景：**
 
 | 类型 | 适用场景 | minPassingScore |
 |------|----------|-----------------|
 | `coding` | 技术部门：后端/前端/数据工程/AI 研发 | 80 |
-| `writing` | 创作部门：小说写作、教程撰写、内容创作 | 70 |
-| `editing` | 创作部门：文稿修订、风格校对 | 75 |
 | `research` | 研究部门：市场调研、竞品分析、文献研究 | 65 |
 | `analysis` | 研究/金融部门：数据分析、风险评估、策略评估 | 65 |
+| `design` | 技术/产品部门：系统设计、架构、方案 | 70 |
+| `marketing` | 营销/品牌部门：营销策划、文案、推广 | 65 |
+| `tutorial` | 教程部门：教程撰写、课程设计 | 70 |
+| `operations` | 运营部门：流程设计、合规、执行方案 | 70 |
+| `finance` | 财务部门：财务分析、预算、报表 | 75 |
+| `review` | 所有部门：评审、审查、复核 | 70 |
+| `writing` | 创作部门：小说写作、教程撰写、内容创作 | 70 |
+| `editing` | 创作部门：文稿修订、风格校对 | 75 |
 | `worldbuilding` | 创作部门：世界观设定、背景构建 | 65 |
 | `character` | 创作部门：角色设计、人物关系 | 65 |
 | `plotting` | 创作部门：情节设计、大纲规划 | 65 |
 
 部门可通过 `deptConfig.workflow.strategies[taskType]` 覆盖任何策略字段（浅合并，部门值优先）。
+`preferredReviewers` 全部留空，由部门配置覆盖。
 
-未知类型（如部门自定义的 `dept-work`）自动回退 `## GENERAL` 通用标准 + `_fallback` 策略（minPassingScore=60）。mtime 缓存，修改后自动生效。
+未知类型自动回退 `## GENERAL` 通用标准 + `_fallback` 策略（minPassingScore=60）。mtime 缓存，修改后自动生效。
 
 ---
 
@@ -311,18 +341,26 @@ qualityOrchestrator.process(deptId, task)
 ```
 config/project-standards.md                config/task-standards.md
   │                                           │
-  ├─[项目创建]                                ├─[任务创建]
-  │  → STANDARDS.md                           │  → buildTaskContext()
-  │    (项目目录，Agent 可读)                    │    enriched description 中的
-  │                                           │    "完成定义 + DO/DON'T"
+  ├─[项目创建]                                ├─[Chief 指令]
+  │  → STANDARDS.md                           │  → buildTaskStandardsSummary()
+  │    (项目目录，Agent 可读)                    │    任务类型完成定义摘要
   │                                           │
-  ├─[部门循环]                                ├─[Worker 执行]
-  │  → buildDeptProjects()                    │  → buildTaskPrompt()
-  │    Chief 看到阶段+出口条件                   │    完整 "## 任务标准" 段落
+  ├─[部门循环]                                ├─[任务创建] ← inferTaskType() 自动推断
+  │  → buildDeptProjects()                    │  → buildTaskContext() + API enrichment
+  │    Chief 看到阶段+出口条件                   │    完成定义 + DO/DON'T + 项目阶段
   │                                           │
-  ├─[手动]                                    └─[质量门自检]
-  │  → inject-project-standards.mjs              → _requestSelfCheck()
-  │                                                类型专属检查清单
+  ├─[任务创建/执行/评审]                       ├─[Worker 执行]
+  │  → buildTaskContext/Prompt               │  → buildTaskPrompt()
+  │    项目阶段标准 + 边界                      │    完整 "## 任务标准" + "## 项目阶段标准"
+  │                                           │
+  ├─[质量门三阶段]                             ├─[质量门自检]
+  │  → _getProjectContext()                   │  → 类型专属检查清单 + 项目上下文
+  │    自检/评审/审批均含                        │
+  │    项目阶段+出口条件                        ├─[质量门同行评审]
+  │                                           │  → 类型标准全文 + 项目上下文
+  └─[手动]                                    │
+     → inject-project-standards.mjs           └─[质量门主管审批]
+                                                 → 完成定义 + 项目上下文
   ▼
 projects/{dept}/{slug}/
   ├── .project-meta.json    ← 阶段、任务、状态
@@ -356,11 +394,14 @@ projects/{dept}/{slug}/
 |------|------|
 | **双 Base 文件分离**（project-standards / task-standards） | 项目标准面向阶段管理，任务标准面向执行质量，职责不同 |
 | **标准补充 strategy 不替代** | strategy.cjs 的 minPassingScore 是硬阈值（机器判定），标准是软指引（LLM 参考） |
+| **全触点覆盖** | 每个 Agent 交互点（Chief 指令/创建/执行/自检/评审/审批）均注入双标准，确保信息对称 |
+| **类型自动推断** | 摘要关键词 + Agent 角色推断，替代硬编码 dept-work，使类型专属标准真正生效 |
+| **preferredReviewers 留空** | 硬编码 Agent ID 只适用于特定部门，改为由部门 deptConfig 覆盖，真正通用 |
 | **Fire-and-forget** | base 文件不存在时一切正常，零回归 |
 | **mtime 缓存** | task-standards 每次任务都读一次文件太重，缓存后修改即生效 |
-| **未知类型回退 GENERAL** | 8 种内置类型之外的任务不会丢失标准，通用清单兜底 |
+| **未知类型回退 GENERAL** | 14 种内置类型之外的任务不会丢失标准，通用清单兜底 |
 | **marker 幂等注入** | STANDARDS.md 可反复重新注入不重复，与 base-rules 注入机制一致 |
-| **buildTaskContext vs buildTaskPrompt** | context 精简（完成定义+边界），prompt 完整（含检查清单）；前者注入 description，后者直接发 worker |
+| **buildTaskContext vs buildTaskPrompt** | context 精简（完成定义+边界+阶段），prompt 完整（含检查清单+项目边界）；前者注入 description，后者直接发 worker |
 
 ---
 
@@ -370,13 +411,16 @@ projects/{dept}/{slug}/
 |------|------|------|
 | 项目标准解析 | `core/common/project-standards.cjs` | 解析 + 注入 STANDARDS.md + mtime 缓存 |
 | 任务标准解析 | `core/common/task-standards.cjs` | 解析 + 按类型提取 + 检查清单提取 + mtime 缓存 |
+| 任务类型推断 | `core/task/type-inference.cjs` | 摘要关键词 + Agent 角色 → 任务类型（替代硬编码 dept-work） |
 | 项目创建 | `core/common/project-service.cjs` | 创建时调用 `injectStandardsForProject()` |
-| 任务上下文 | `core/autopilot/task-prompt.cjs` | `buildTaskContext()` / `buildTaskPrompt()` 注入标准 |
-| 质量门自检 | `core/task/quality-orchestrator.cjs` | `_requestSelfCheck()` 使用类型专属检查清单 |
-| 部门指令 | `core/autopilot/dept-directive.cjs` | `buildDeptProjects()` 展示阶段 + 出口条件 |
+| 任务上下文 | `core/autopilot/task-prompt.cjs` | `buildTaskContext()` / `buildTaskPrompt()` 注入双标准 |
+| 质量门编排 | `core/task/quality-orchestrator.cjs` | 三阶段均注入任务标准 + 项目标准（`_getProjectContext()`） |
+| 部门指令 | `core/autopilot/dept-directive.cjs` | 项目阶段+出口条件 + 任务类型完成定义摘要 |
+| API 路由 | `ui/src/app/api/agent-tasks/route.ts` | POST 创建时自动推断类型 + 注入双标准 |
 | 手动注入脚本 | `scripts/inject-project-standards.mjs` | CLI 重新注入所有项目 STANDARDS.md |
+| 任务策略 | `core/task/strategy.cjs` | 14 种内置策略（通用 9 + 创作 5），preferredReviewers 留空由部门覆盖 |
 | 项目标准 base | `config/project-standards.md` | LIFECYCLE + BOUNDARIES |
-| 任务标准 base | `config/task-standards.md` | GENERAL + TYPES (8 种) |
+| 任务标准 base | `config/task-standards.md` | GENERAL + TYPES (14 种) |
 
 ---
 

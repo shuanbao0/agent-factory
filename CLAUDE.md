@@ -175,10 +175,11 @@ agent-factory/
 | 模块 | 职责 |
 |------|------|
 | `state-machine.cjs` | 状态转换验证（引用 entity/task 常量），记录转换历史（actor, reason, timestamp） |
-| `strategy.cjs` | 8 种内置策略（writing/editing/worldbuilding/character/plotting/coding/analysis/research），定义 idleThresholdMins、staleThresholdMins、minPassingScore、preferredReviewers |
+| `strategy.cjs` | 14 种内置策略（通用：coding/research/analysis/design/marketing/tutorial/operations/finance/review；创作：writing/editing/worldbuilding/character/plotting），preferredReviewers 留空由部门覆盖 |
+| `type-inference.cjs` | 任务类型自动推断：摘要关键词（中英文 14 类）→ Agent templateId/role 映射（65 模板）→ 兜底 dept-work |
 | `quality-gate.cjs` | 三阶段质量门 FSM：self_checking → peer_reviewing → head_approving → done，每阶段在独立 Autopilot 周期运行 |
 | `quality-validator.cjs` | 质量校验规则（格式、必填字段） |
-| `quality-orchestrator.cjs` | 质量门编排器（DI：注入 sendFn、readAgentActivity、loadDeptConfig）。自检使用 `config/task-standards.md` 中类型专属检查清单 |
+| `quality-orchestrator.cjs` | 质量门编排器（DI：注入 sendFn、readAgentActivity、loadDeptConfig）。三阶段均注入 `config/task-standards.md` + `config/project-standards.md` |
 | `auto-transition.cjs` | 基于 idle 时间的自动状态转换（idle > 18min → auto-complete，idle > 30min → auto-fail） |
 
 **任务状态机：**
@@ -239,16 +240,18 @@ CEO 协调周期 (30min)
 
 部门执行周期 (10min/部门)
   ├─ buildDepartmentDirective() + memory
-  │   └─ buildDeptProjects() — 展示项目阶段 + 出口条件（← config/project-standards.md）
+  │   ├─ buildDeptProjects() — 展示项目阶段 + 出口条件（← config/project-standards.md）
+  │   └─ buildTaskStandardsSummary() — 展示任务类型完成定义（← config/task-standards.md）
   ├─ sendToAgent(chief) → WebSocket
   ├─ parseTaskAssignments（含 [project: xxx] 解析）+ parseTaskCompletions
-  │   └─ buildTaskContext() — 注入类型专属任务标准（← config/task-standards.md）
+  │   ├─ inferTaskType() — 从摘要关键词 + Agent 角色推断任务类型
+  │   └─ buildTaskContext() — 注入任务标准 + 项目阶段标准
   ├─ autoTransitionTasks()
   │   ├─ checkBudget()
   │   ├─ queryAgentStatus() → 双 Session 模式（查 :main）
   │   ├─ idle > 18min → auto-complete
   │   ├─ idle > 30min → auto-fail
-  │   └─ processQualityGate() — 三阶段评审（自检用类型专属检查清单）
+  │   └─ processQualityGate() — 三阶段评审（每阶段均注入任务标准 + 项目标准）
   ├─ trackTokenUsage() → cost-tracker
   └─ eventBus.fire() → Reactors
 
@@ -692,9 +695,15 @@ Agent 的核心定义与工作产出严格分离：
 - 修改后执行 `node scripts/inject-project-standards.mjs` 使已有项目更新
 
 **`config/task-standards.md`**（两段：`## GENERAL` + `## TYPES`）：
-- 按任务类型（writing/coding/research 等）定义完成定义、检查清单、DO/DON'T
-- `buildTaskPrompt()` / `buildTaskContext()` 自动注入类型专属标准到任务上下文
-- 质量门自检（`_requestSelfCheck()`）使用类型专属检查清单替代通用 4 条
+- 14 种任务类型（通用 9 + 创作 5）定义完成定义、检查清单、DO/DON'T
+- 任务类型由 `type-inference.cjs` 从摘要关键词 + Agent 角色自动推断（替代硬编码 `dept-work`）
+- 所有 Agent 触点均注入标准：
+  - Chief 部门指令：任务类型完成定义摘要（`buildTaskStandardsSummary()`）
+  - 任务创建（department-loop + API）：完成定义 + DO/DON'T + 项目阶段出口条件
+  - Worker 执行：完整类型标准段落 + 项目阶段标准 + 项目边界
+  - 质量门自检：类型专属检查清单 + 项目阶段上下文
+  - 质量门同行评审：类型标准全文 + 项目阶段上下文
+  - 质量门主管审批：完成定义 + 项目阶段上下文
 - 无需手动注入，修改后下次任务创建/自检时自动生效（mtime 缓存）
 - 未知类型自动回退到 GENERAL 通用标准
 
