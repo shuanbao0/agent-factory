@@ -1,1 +1,0 @@
-../ui/scripts/gateway-chat.js

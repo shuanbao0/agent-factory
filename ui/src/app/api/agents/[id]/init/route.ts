@@ -16,7 +16,7 @@ import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
-const SCRIPT_PATH = resolve(process.cwd(), 'scripts/runtime/gateway-chat.js')
+const SCRIPT_PATH = resolve(process.cwd(), 'scripts/gateway-chat.js')
 
 const INIT_PROMPT = `你好！请按以下步骤完成初始化，**不需要征求确认，直接执行**：
 
