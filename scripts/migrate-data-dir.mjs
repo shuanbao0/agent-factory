@@ -10,7 +10,7 @@
  *   node scripts/migrate-data-dir.mjs --dry-run    # 预览
  */
 
-import { existsSync, readdirSync, renameSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, statSync } from 'fs'
+import { existsSync, readdirSync, renameSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, statSync, rmSync } from 'fs'
 import { join, resolve } from 'path'
 import paths from '../core/common/paths.mjs'
 
@@ -148,12 +148,35 @@ if (existsSync(ocConfigPath)) {
   }
 }
 
-// ── autopilot-logs 目录 ──────────────────────────────────────────
+// ── 日志文件迁移到 data/logs/ ────────────────────────────────────
+const logsDir = join(PROJECT_ROOT, 'data', 'logs')
+if (!DRY_RUN) mkdirSync(logsDir, { recursive: true })
+
+const logFiles = ['autopilot-costs.jsonl', 'autopilot-events.jsonl', '.autopilot-signal']
+for (const file of logFiles) {
+  // 旧位置: config/ 或 data/config/
+  for (const srcBase of [join(PROJECT_ROOT, 'config'), configDir]) {
+    const srcPath = join(srcBase, file)
+    const destPath = join(logsDir, file)
+    if (!existsSync(srcPath) || existsSync(destPath)) continue
+    console.log(`  move: ${srcPath.replace(PROJECT_ROOT + '/', '')} → data/logs/${file}`)
+    if (!DRY_RUN) renameSync(srcPath, destPath)
+    break
+  }
+}
+
+// 旧版 autopilot-logs 目录
 const srcLogs = join(PROJECT_ROOT, 'config', 'autopilot-logs')
-const destLogs = join(configDir, 'autopilot-logs')
-if (existsSync(srcLogs) && !existsSync(destLogs)) {
-  console.log('  move: config/autopilot-logs/ → data/config/autopilot-logs/')
-  if (!DRY_RUN) renameSync(srcLogs, destLogs)
+if (existsSync(srcLogs)) {
+  console.log('  move: config/autopilot-logs/ contents → data/logs/')
+  if (!DRY_RUN) {
+    for (const f of readdirSync(srcLogs)) {
+      const s = join(srcLogs, f)
+      const d = join(logsDir, f)
+      if (!existsSync(d) && statSync(s).isFile()) renameSync(s, d)
+    }
+    try { readdirSync(srcLogs).length === 0 && rmSync(srcLogs, { recursive: true }) } catch { /* skip */ }
+  }
 }
 
 console.log(`\n${DRY_RUN ? '[DRY-RUN] ' : ''}Migration complete.`)

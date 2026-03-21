@@ -36,6 +36,12 @@ const SKILLS_DIR = join(PROJECT_ROOT, 'skills')
 // ── 运行时数据目录（续）─────────────────────────────────────────
 const DEPARTMENTS_DIR = join(DATA_DIR, 'departments')
 
+// ── 日志目录 ────────────────────────────────────────────────────
+const LOGS_DIR   = join(DATA_DIR, 'logs')
+const COSTS_FILE  = join(LOGS_DIR, 'autopilot-costs.jsonl')
+const EVENTS_FILE = join(LOGS_DIR, 'autopilot-events.jsonl')
+const SIGNAL_FILE = join(LOGS_DIR, '.autopilot-signal')
+
 // ── 运行时配置文件 ──────────────────────────────────────────────
 const GATEWAY_CONFIG_FILE = join(CONFIG_DIR, 'openclaw.json')
 const MODELS_FILE         = join(CONFIG_DIR, 'models.json')
@@ -43,11 +49,7 @@ const TASKS_FILE          = join(CONFIG_DIR, 'tasks.json')
 const STATE_FILE          = join(CONFIG_DIR, 'autopilot-state.json')
 const DEPARTMENTS_FILE    = join(CONFIG_DIR, 'departments.json')
 const BUDGET_FILE         = join(CONFIG_DIR, 'budget.json')
-const COSTS_FILE          = join(CONFIG_DIR, 'autopilot-costs.jsonl')
-const EVENTS_FILE         = join(CONFIG_DIR, 'autopilot-events.jsonl')
-const LOGS_DIR            = join(CONFIG_DIR, 'autopilot-logs')
 const MISSION_FILE        = join(CONFIG_DIR, 'mission.md')
-const SIGNAL_FILE         = join(CONFIG_DIR, '.autopilot-signal')
 
 // ── 源码配置文件（种子/模板，git 跟踪）──────────────────────────
 const BASE_RULES_FILE         = join(SOURCE_CONFIG_DIR, 'base-rules.md')
