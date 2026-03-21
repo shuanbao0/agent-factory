@@ -88,7 +88,7 @@ for (const file of configFiles) {
 
 // ── 部门运行时配置迁移 ───────────────────────────────────────────
 const srcDeptDir = join(PROJECT_ROOT, 'config', 'departments')
-const destDeptDir = join(configDir, 'departments')
+const destDeptDir = join(PROJECT_ROOT, 'data', 'departments')
 if (existsSync(srcDeptDir)) {
   if (!DRY_RUN) mkdirSync(destDeptDir, { recursive: true })
   for (const entry of readdirSync(srcDeptDir, { withFileTypes: true })) {
@@ -101,7 +101,7 @@ if (existsSync(srcDeptDir)) {
       const fileDest = join(deptDest, file)
       if (!statSync(fileSrc).isFile()) continue
       if (existsSync(fileDest)) continue
-      console.log(`  copy: config/departments/${entry.name}/${file} → data/config/departments/${entry.name}/${file}`)
+      console.log(`  copy: config/departments/${entry.name}/${file} → data/departments/${entry.name}/${file}`)
       if (!DRY_RUN) copyFileSync(fileSrc, fileDest)
     }
   }

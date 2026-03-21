@@ -33,6 +33,9 @@ const BUILTIN_AGENT_TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')
 const BUILTIN_DEPT_TEMPLATES_DIR  = join(PROJECT_ROOT, 'templates', 'departments')
 const SKILLS_DIR = join(PROJECT_ROOT, 'skills')
 
+// ── 运行时数据目录（续）─────────────────────────────────────────
+const DEPARTMENTS_DIR = join(DATA_DIR, 'departments')
+
 // ── 运行时配置文件 ──────────────────────────────────────────────
 const GATEWAY_CONFIG_FILE = join(CONFIG_DIR, 'openclaw.json')
 const MODELS_FILE         = join(CONFIG_DIR, 'models.json')
@@ -40,7 +43,6 @@ const TASKS_FILE          = join(CONFIG_DIR, 'tasks.json')
 const STATE_FILE          = join(CONFIG_DIR, 'autopilot-state.json')
 const DEPARTMENTS_FILE    = join(CONFIG_DIR, 'departments.json')
 const BUDGET_FILE         = join(CONFIG_DIR, 'budget.json')
-const DEPARTMENTS_DIR     = join(CONFIG_DIR, 'departments')
 const COSTS_FILE          = join(CONFIG_DIR, 'autopilot-costs.jsonl')
 const EVENTS_FILE         = join(CONFIG_DIR, 'autopilot-events.jsonl')
 const LOGS_DIR            = join(CONFIG_DIR, 'autopilot-logs')

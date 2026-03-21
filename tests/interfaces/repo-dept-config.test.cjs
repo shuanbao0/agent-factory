@@ -65,7 +65,7 @@ describe('DeptConfigRepository', () => {
   it('configPath returns correct path string', () => {
     repo = new DeptConfigRepository()
     const p = repo.configPath(testDeptId)
-    assert.ok(p.endsWith(join('config', 'departments', testDeptId, 'config.json')))
+    assert.ok(p.endsWith(join('departments', testDeptId, 'config.json')))
   })
 
   it('listDeptIds returns array of strings', () => {
