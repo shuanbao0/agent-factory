@@ -189,6 +189,7 @@ export default _core as {
       ENV_FILE: string
       CEO_WORKSPACE: string
     }
+    ensureDataDir(): void
     loadState(): AutopilotState
     saveState(state: AutopilotState): void
     validateBudgetConfig(config: unknown): { valid: boolean; errors: string[] }

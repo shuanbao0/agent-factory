@@ -13,8 +13,7 @@ const { resolve, join } = require('path')
 const PROJECT_ROOT = resolve(__dirname, '..', '..')
 
 // DATA_DIR: 所有运行时数据的根。
-// 当前阶段 = PROJECT_ROOT（向后兼容），后续切换为 join(PROJECT_ROOT, 'data')
-const DATA_DIR = process.env.AGENT_FACTORY_DATA_DIR || PROJECT_ROOT
+const DATA_DIR = process.env.AGENT_FACTORY_DATA_DIR || join(PROJECT_ROOT, 'data')
 
 // ── 源码配置目录（git 跟踪，永不移动）───────────────────────────
 const SOURCE_CONFIG_DIR = join(PROJECT_ROOT, 'config')
@@ -26,7 +25,7 @@ const CONFIG_DIR = join(DATA_DIR, 'config')
 const AGENTS_DIR     = join(DATA_DIR, 'agents')
 const WORKSPACES_DIR = join(DATA_DIR, 'workspaces')
 const PROJECTS_DIR   = join(DATA_DIR, 'projects')
-const STATE_DIR      = join(DATA_DIR, '.openclaw-state')
+const STATE_DIR      = join(DATA_DIR, 'openclaw-state')
 const SESSIONS_DIR   = join(STATE_DIR, 'agents')
 
 // ── 模板目录（源码）─────────────────────────────────────────────

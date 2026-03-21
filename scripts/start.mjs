@@ -10,6 +10,9 @@ import { existsSync, readFileSync, copyFileSync, writeFileSync, unlinkSync, mkdi
 import { spawn, execSync } from 'node:child_process';
 import net from 'node:net';
 import paths from '../core/common/paths.mjs';
+import { createRequire } from 'node:module';
+const _require = createRequire(import.meta.url);
+const { ensureDataDir } = _require('../core/common/data-init.cjs');
 
 const {
   PROJECT_ROOT: ROOT,
@@ -268,6 +271,7 @@ async function startGateway() {
 async function main() {
   console.log('🏭 Agent Factory starting...\n');
   loadEnvFile();
+  ensureDataDir();
   ensureConfigFiles();
   killOldStartProcess();
   writePidFile();

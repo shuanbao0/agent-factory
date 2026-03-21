@@ -335,8 +335,8 @@ async function cmdUpdate() {
   }
 
   // Preserve user data directories and config files (smart-merged later by migrate scripts)
-  const preserveDirs = ['agents', 'workspaces', 'projects', 'templates/agents/custom', 'templates/departments/custom', '.openclaw-state', 'config/departments'];
-  const preserveFiles = ['.env', 'config/openclaw.json', 'config/models.json', 'config/autopilot-state.json', 'config/departments.json'];
+  const preserveDirs = ['data'];
+  const preserveFiles = ['.env'];
   // Note: config/base-rules.md is intentionally NOT preserved — always updated from new version
 
   // Copy new files over, skipping preserved dirs/files
@@ -502,7 +502,7 @@ async function cmdDoctor() {
   }
 
   // 8. Required directories
-  const dirs = ['agents', 'workspaces', 'projects', 'templates/agents/builtin'];
+  const dirs = ['data', 'data/agents', 'data/workspaces', 'data/projects', 'data/config', 'templates/agents/builtin'];
   for (const dir of dirs) {
     if (existsSync(resolve(ROOT, dir))) {
       console.log(c.green('  [OK]') + `   Directory: ${dir}/`);

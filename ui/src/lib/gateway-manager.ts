@@ -135,6 +135,7 @@ export async function startGateway(): Promise<{ ok: boolean; error?: string }> {
 
   currentStatus = 'starting'
   lastError = null
+  core.common.ensureDataDir()
   ensureConfig()
   ensureAgentsPeerStatus()
 

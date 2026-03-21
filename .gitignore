@@ -1,33 +1,14 @@
 .DS_Store
 node_modules/
-.openclaw-state/
 .env
 *.log
 dist/
-/workspace/
-/workspaces/
-/projects/
 
-# Runtime config (generated from *.default.json on first startup)
-config/models.json
-config/openclaw.json
-config/autopilot-state.json
-config/autopilot-costs.jsonl
-config/autopilot-events.jsonl
-config/tasks.json
+# Runtime data directory (all runtime-generated data lives here)
+/data/
 
 # Claude Code local memory (session-specific)
 .claude/
-
-# Agent instances (live, created at runtime via UI)
-/agents/
-!/agents/.gitkeep
-
-# Custom templates (user-created, not tracked)
-templates/agents/custom/
-!templates/agents/custom/.gitkeep
-templates/departments/custom/
-!templates/departments/custom/.gitkeep
 
 # Internal docs (not for open-source release)
 docs/商业化分析报告.md
