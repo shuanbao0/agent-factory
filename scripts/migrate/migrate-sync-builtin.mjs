@@ -368,7 +368,7 @@ console.log(`  Unchanged: ${totalUnchanged}`);
 console.log(`  Skipped:   ${totalSkipped}`);
 
 if (totalUpdated > 0 && !dryRun) {
-  console.log(`\nBackups saved as *.bak. Run "node scripts/inject-base-rules.mjs" to re-inject base-rules.`);
+  console.log(`\nBackups saved as *.bak. Run "node scripts/tools/inject-base-rules.mjs" to re-inject base-rules.`);
 }
 
 if (dryRun) {

@@ -457,7 +457,7 @@ async function cmdUpdate() {
       const env = { ...process.env, AF_UPDATE_DIR: tmpDir };
       for (const script of migrationScripts) {
         console.log(c.dim(`  Running ${script}...`));
-        execSync(`node "scripts/${script}"`, { cwd: ROOT, stdio: 'inherit', env });
+        execSync(`node "scripts/migrate/${script}"`, { cwd: ROOT, stdio: 'inherit', env });
       }
     }
   } catch (e) {

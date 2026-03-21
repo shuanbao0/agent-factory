@@ -7,8 +7,8 @@
     "agent-factory": "bin/agent-factory.mjs"
   },
   "scripts": {
-    "start": "node scripts/start.mjs",
-    "gateway": "node scripts/start.mjs --gateway-only",
+    "start": "node scripts/runtime/start.mjs",
+    "gateway": "node scripts/runtime/start.mjs --gateway-only",
     "ui": "cd ui && npm run dev",
     "postinstall": "node scripts/patch-openclaw.mjs",
     "test": "node --test 'tests/core/**/*.test.cjs' 'tests/flows/**/*.test.cjs' 'tests/interfaces/**/*.test.cjs'",
