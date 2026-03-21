@@ -10,9 +10,9 @@
  */
 const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
+const { STATE_DIR } = require('../common/paths.cjs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const AUTH_PROFILES_PATH = join(PROJECT_ROOT, '.openclaw-state', 'agents', 'main', 'agent', 'auth-profiles.json')
+const AUTH_PROFILES_PATH = join(STATE_DIR, 'agents', 'main', 'agent', 'auth-profiles.json')
 
 class AuthProfilesRepository extends BaseRepository {
   /**

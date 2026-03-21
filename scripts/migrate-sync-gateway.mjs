@@ -24,15 +24,15 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
+import paths from '../core/common/paths.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
-const OPENCLAW_JSON = join(ROOT, 'config', 'openclaw.json');
-const OPENCLAW_DEFAULT = join(ROOT, 'config', 'openclaw.default.json');
-const MODELS_JSON = join(ROOT, 'config', 'models.json');
-const MODELS_DEFAULT = join(ROOT, 'config', 'models.default.json');
+const {
+  GATEWAY_CONFIG_FILE: OPENCLAW_JSON,
+  GATEWAY_DEFAULT_FILE: OPENCLAW_DEFAULT,
+  MODELS_FILE: MODELS_JSON,
+  MODELS_DEFAULT_FILE: MODELS_DEFAULT,
+} = paths;
 const UPDATE_DIR = process.env.AF_UPDATE_DIR || null;
 
 const args = process.argv.slice(2);

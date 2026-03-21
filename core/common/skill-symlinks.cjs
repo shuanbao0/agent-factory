@@ -5,15 +5,14 @@
  * 管理 agents/{id}/skills/ 下的符号链接，指向 skills/ 或 openclaw builtin skills
  */
 const { existsSync, readdirSync, readFileSync, lstatSync, unlinkSync, symlinkSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
 const { execFile: execFileCb } = require('child_process')
 const { promisify } = require('util')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 
 const execFileAsync = promisify(execFileCb)
 
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const PROJECT_SKILLS_DIR = join(PROJECT_ROOT, 'skills')
+const { PROJECT_ROOT, SKILLS_DIR: PROJECT_SKILLS_DIR, AGENTS_DIR } = require('./paths.cjs')
 
 /** Cached result for builtin skills directory */
 let cachedBuiltinDir = undefined
@@ -72,7 +71,7 @@ async function resolveSkillDir(slug) {
  */
 async function syncSkillSymlinks(agentId, enabledSlugs) {
   agentMetaRepo.ensureAgentDir(agentId, 'skills')
-  const agentSkillsDir = join(PROJECT_ROOT, 'agents', agentId, 'skills')
+  const agentSkillsDir = join(AGENTS_DIR, agentId, 'skills')
 
   // Remove existing symlinks
   for (const entry of readdirSync(agentSkillsDir, { withFileTypes: true })) {

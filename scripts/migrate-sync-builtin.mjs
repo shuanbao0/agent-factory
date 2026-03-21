@@ -19,13 +19,11 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, copyFileSync, symlinkSync, lstatSync, unlinkSync, mkdirSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import paths from '../core/common/paths.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
-const AGENTS_DIR = join(ROOT, 'agents');
-const TEMPLATES_DIR = join(ROOT, 'templates', 'agents', 'builtin');
+const { PROJECT_ROOT: ROOT, AGENTS_DIR, BUILTIN_AGENT_TEMPLATES_DIR, SKILLS_DIR } = paths;
+const TEMPLATES_DIR = join(BUILTIN_AGENT_TEMPLATES_DIR, 'builtin');
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -129,7 +127,7 @@ function findBuiltinSkillsDir() {
 }
 
 function resolveSkillDir(slug, builtinDir) {
-  const projectPath = join(ROOT, 'skills', slug);
+  const projectPath = join(SKILLS_DIR, slug);
   if (existsSync(projectPath)) return projectPath;
   if (builtinDir) {
     const builtinPath = join(builtinDir, slug);
@@ -139,7 +137,7 @@ function resolveSkillDir(slug, builtinDir) {
 }
 
 function syncSkillSymlinks(agentId, enabledSlugs, builtinDir) {
-  const skillsDir = join(ROOT, 'agents', agentId, 'skills');
+  const skillsDir = join(AGENTS_DIR, agentId, 'skills');
   mkdirSync(skillsDir, { recursive: true });
 
   // Remove existing symlinks

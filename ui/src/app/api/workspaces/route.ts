@@ -13,8 +13,7 @@ import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
+const WORKSPACES_DIR = core.common.paths.WORKSPACES_DIR
 const ARCHIVED_DIR = join(WORKSPACES_DIR, '.archived')
 
 /** Ensure resolved path is inside base dir (prevent path traversal) */

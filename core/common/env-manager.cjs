@@ -5,10 +5,7 @@
  * 从 ui/src/app/api/env/route.ts 提取的核心逻辑
  */
 const { readFileSync, writeFileSync, existsSync } = require('fs')
-const { join } = require('path')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const ENV_PATH = join(PROJECT_ROOT, '.env')
+const { ENV_FILE: ENV_PATH } = require('./paths.cjs')
 
 /**
  * 读取 .env 文件，返回 key-value 对象

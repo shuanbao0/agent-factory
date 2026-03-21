@@ -4,11 +4,8 @@
  *
  * 设计模式：Repository（原子写入，委托 BaseRepository）
  */
-const { join, resolve } = require('path')
 const { BaseRepository } = require('../repo/base.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const STATE_FILE = join(PROJECT_ROOT, 'config', 'autopilot-state.json')
+const { STATE_FILE } = require('./paths.cjs')
 const { DEFAULT_AUTOPILOT_STATE } = require('../../entity/autopilot/autopilot.cjs')
 const DEFAULT_STATE = { ...DEFAULT_AUTOPILOT_STATE }
 

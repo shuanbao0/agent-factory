@@ -154,6 +154,41 @@ export default _core as {
     }
   }
   common: {
+    paths: {
+      PROJECT_ROOT: string
+      DATA_DIR: string
+      SOURCE_CONFIG_DIR: string
+      CONFIG_DIR: string
+      AGENTS_DIR: string
+      WORKSPACES_DIR: string
+      PROJECTS_DIR: string
+      STATE_DIR: string
+      SESSIONS_DIR: string
+      BUILTIN_AGENT_TEMPLATES_DIR: string
+      BUILTIN_DEPT_TEMPLATES_DIR: string
+      SKILLS_DIR: string
+      GATEWAY_CONFIG_FILE: string
+      MODELS_FILE: string
+      TASKS_FILE: string
+      STATE_FILE: string
+      DEPARTMENTS_FILE: string
+      BUDGET_FILE: string
+      DEPARTMENTS_DIR: string
+      COSTS_FILE: string
+      EVENTS_FILE: string
+      LOGS_DIR: string
+      MISSION_FILE: string
+      SIGNAL_FILE: string
+      BASE_RULES_FILE: string
+      PROJECT_STANDARDS_FILE: string
+      TASK_STANDARDS_FILE: string
+      PHASE_DELIVERABLES_FILE: string
+      BASE_MISSION_FILE: string
+      GATEWAY_DEFAULT_FILE: string
+      MODELS_DEFAULT_FILE: string
+      ENV_FILE: string
+      CEO_WORKSPACE: string
+    }
     loadState(): AutopilotState
     saveState(state: AutopilotState): void
     validateBudgetConfig(config: unknown): { valid: boolean; errors: string[] }

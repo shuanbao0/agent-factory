@@ -35,8 +35,7 @@ function getFileBrowser() {
   return _fileBrowser
 }
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
+const { AGENTS_DIR, SESSIONS_DIR, PROJECTS_DIR } = require('./paths.cjs')
 
 class AgentService {
   /**
@@ -310,7 +309,7 @@ class AgentService {
 
     this._agentMetaRepo.deleteAgentDir(id)
 
-    const stateDir = join(PROJECT_ROOT, '.openclaw-state', 'agents', id)
+    const stateDir = join(SESSIONS_DIR, id)
     if (existsSync(stateDir)) rmSync(stateDir, { recursive: true, force: true })
 
     const archivedTo = getFileBrowser().archiveWorkspace(id)
@@ -384,7 +383,7 @@ class AgentService {
   _ensureProjectForDepartment(department, agentId) {
     // Ensure the department directory exists; projects are created by Chief via project-api skill
     const { existsSync, mkdirSync } = require('fs')
-    const deptDir = join(PROJECT_ROOT, 'projects', department)
+    const deptDir = join(PROJECTS_DIR, department)
     if (!existsSync(deptDir)) mkdirSync(deptDir, { recursive: true })
 
     // If any sub-projects exist under this department, add agent to their assignedAgents

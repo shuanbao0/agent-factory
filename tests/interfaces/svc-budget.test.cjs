@@ -2,13 +2,10 @@
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
 const fs = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { BUDGET_FILE } = require('../../core/common/paths.cjs')
 const { checkBudget, trackTokenUsage, loadCompanyBudget, saveCompanyBudget, shouldResetDaily, getBudgetSummary } = require('../../core/observe/budget.cjs')
-
-const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
 
 describe('Budget', () => {
   it('shouldResetDaily(null) returns true', () => {

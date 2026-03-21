@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { existsSync, rmSync, readdirSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { PROJECT_ROOT } = require('../../core/common/paths.cjs')
 const { readTemplate, getTemplateDir, listTemplates, readTemplateFile, createCustomTemplate } = require('../../core/repo/template.cjs')
 
 describe('TemplateRepository', () => {

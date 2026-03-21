@@ -4,13 +4,14 @@ import { promisify } from 'util'
 import { resolve } from 'path'
 import { existsSync } from 'fs'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
 const execFileAsync = promisify(execFileCb)
 const execAsync = promisify(execCb)
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
+const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 
 async function getInstalledVersion(): Promise<string | null> {
   try {

@@ -2,15 +2,7 @@
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, readFileSync, rmSync } = require('fs')
-const { join } = require('path')
-
-// We test saveCompanyBudget by directly requiring the module
-// and temporarily overriding the BUDGET_FILE path via a temp directory approach.
-// Since budget.cjs uses a hardcoded path, we test via the module's exported function
-// against the real config directory (using a backup/restore pattern).
-
-const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
+const { BUDGET_FILE, CONFIG_DIR } = require('../../../core/common/paths.cjs')
 
 describe('saveCompanyBudget', () => {
   let backup = null
@@ -61,7 +53,7 @@ describe('saveCompanyBudget', () => {
     saveCompanyBudget({ test: true })
 
     const { readdirSync } = require('fs')
-    const configDir = join(PROJECT_ROOT, 'config')
+    const configDir = CONFIG_DIR
     const tmpFiles = readdirSync(configDir).filter(f => f.startsWith('budget.json.tmp.'))
     assert.equal(tmpFiles.length, 0)
   })

@@ -10,8 +10,7 @@ const { sessionRepo } = require('../repo/session.cjs')
 const { injectStandardsForProject } = require('./project-standards.cjs')
 const { generatePhaseDeliverables } = require('./phase-deliverables.cjs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const { PROJECTS_DIR } = require('./paths.cjs')
 
 /**
  * 列出所有项目（含 token 用量）

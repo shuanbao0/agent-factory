@@ -1,5 +1,6 @@
 'use strict'
 module.exports = {
+  paths: require('./paths.cjs'),
   ...require('./validators.cjs'),
   ...require('./config-validator.cjs'),
   ...require('./agent-service.cjs'),

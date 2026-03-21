@@ -4,8 +4,7 @@ const assert = require('node:assert/strict')
 const { existsSync } = require('fs')
 const { join } = require('path')
 
-const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')
+const { BUILTIN_AGENT_TEMPLATES_DIR: TEMPLATES_DIR } = require('../../../core/common/paths.cjs')
 
 describe('template repository', () => {
   const { readTemplate, getTemplateDir, readTemplateFile } = require('../../../core/repo/template.cjs')

@@ -11,18 +11,13 @@
  *
  * 导出单例 configRepo（30 秒缓存），供 Autopilot 循环使用
  */
-const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
-
-/** 项目根目录（core/repo/ 往上两级） */
-const PROJECT_ROOT = join(__dirname, '..', '..')
-/** openclaw.json 配置文件路径 */
-const OPENCLAW_CONFIG = join(PROJECT_ROOT, 'config', 'openclaw.json')
+const { GATEWAY_CONFIG_FILE } = require('../common/paths.cjs')
 
 class ConfigRepository extends BaseRepository {
   constructor(opts) {
     super(opts)
-    this._configPath = OPENCLAW_CONFIG
+    this._configPath = GATEWAY_CONFIG_FILE
   }
 
   /** 读取完整配置对象 */

@@ -4,12 +4,9 @@ const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } = require('fs')
 const { join } = require('path')
 const os = require('os')
+const { AGENTS_DIR, WORKSPACES_DIR } = require('../../core/common/paths.cjs')
 const { AgentService } = require('../../core/common/agent-service.cjs')
 const { AgentMetaRepository } = require('../../core/repo/agent-meta.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
 
 const TEST_ID = 'zzz-test-lifecycle-' + process.pid
 

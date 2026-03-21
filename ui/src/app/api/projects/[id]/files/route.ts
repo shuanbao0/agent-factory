@@ -6,9 +6,8 @@ import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const PROJECTS_DIR = resolve(PROJECT_ROOT, 'projects')
-const WORKSPACES_DIR = resolve(PROJECT_ROOT, 'workspaces')
+const PROJECTS_DIR = core.common.paths.PROJECTS_DIR
+const WORKSPACES_DIR = core.common.paths.WORKSPACES_DIR
 
 /**
  * GET /api/projects/[id]/files

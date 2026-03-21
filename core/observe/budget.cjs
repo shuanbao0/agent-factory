@@ -5,11 +5,7 @@
  * 设计模式：Repository + Observer
  */
 const { readFileSync, writeFileSync, renameSync, existsSync, readdirSync } = require('fs')
-const { join, resolve } = require('path')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
+const { BUDGET_FILE, DEPARTMENTS_DIR, CONFIG_DIR } = require('../common/paths.cjs')
 
 // Lazy require to avoid circular dependencies
 let _deptConfigRepo, _deptStateRepo
@@ -139,8 +135,7 @@ function getBudgetSummary() {
  * @param {object} config - Budget config object
  */
 function saveCompanyBudget(config) {
-  const dir = join(PROJECT_ROOT, 'config')
-  if (!existsSync(dir)) { const { mkdirSync } = require('fs'); mkdirSync(dir, { recursive: true }) }
+  if (!existsSync(CONFIG_DIR)) { const { mkdirSync } = require('fs'); mkdirSync(CONFIG_DIR, { recursive: true }) }
   const json = JSON.stringify(config, null, 2) + '\n'
   const tmp = BUDGET_FILE + '.tmp.' + process.pid
   writeFileSync(tmp, json)

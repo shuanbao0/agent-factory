@@ -5,8 +5,9 @@
 import { execFileSync, execFile } from 'child_process'
 import { resolve } from 'path'
 import { existsSync } from 'fs'
+import core from '@/lib/core-bridge'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
+const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 const GW_PORT = process.env.AGENT_FACTORY_PORT || '19100'
 const GW_URL = `ws://127.0.0.1:${GW_PORT}`
 const GW_TOKEN = process.env.AGENT_FACTORY_TOKEN || 'agent-factory-internal-token-2026'

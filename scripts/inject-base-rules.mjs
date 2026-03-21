@@ -12,13 +12,10 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs'
-import { join, resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
+import { join } from 'path'
+import paths from '../core/common/paths.mjs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(__dirname, '..')
-const AGENTS_DIR = join(ROOT, 'agents')
-const BASE_RULES = join(ROOT, 'config', 'base-rules.md')
+const { PROJECT_ROOT: ROOT, AGENTS_DIR, BASE_RULES_FILE: BASE_RULES } = paths
 
 const DRY_RUN = process.argv.includes('--dry-run')
 const targetId = process.argv.slice(2).find(a => !a.startsWith('--'))

@@ -12,6 +12,8 @@
  */
 const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync } = require('fs')
 const { join, resolve, dirname } = require('path')
+const { BaseRepository } = require('./base.cjs')
+const { PROJECT_ROOT, PROJECTS_DIR, TASKS_FILE } = require('../common/paths.cjs')
 
 /** Atomic write: tmp + rename to avoid partial writes */
 function atomicWrite(filePath, content) {
@@ -25,11 +27,6 @@ function atomicWrite(filePath, content) {
     writeFileSync(filePath, content)
   }
 }
-const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
-const TASKS_FILE = join(PROJECT_ROOT, 'config', 'tasks.json')
 
 class TaskRepository extends BaseRepository {
   /** Normalize legacy task fields (e.g. 'running' → 'in_progress') */

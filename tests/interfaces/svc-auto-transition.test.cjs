@@ -2,9 +2,6 @@
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
 const { parseTaskAssignments, parseTaskCompletions, computeTransitions, IDLE_COMPLETE_MINS, STALE_TASK_MINS } = require('../../core/task/auto-transition.cjs')
 
 describe('AutoTransition', () => {

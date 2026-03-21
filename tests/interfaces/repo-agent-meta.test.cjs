@@ -5,12 +5,11 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { rmSync, existsSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { AGENTS_DIR } = require('../../core/common/paths.cjs')
 const { AgentMetaRepository } = require('../../core/repo/agent-meta.cjs')
 
 const ts = Date.now()
 const testAgentId = `zzz-test-agentmeta-${ts}`
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 describe('AgentMetaRepository', () => {
   let repo

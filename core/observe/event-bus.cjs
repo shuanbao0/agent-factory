@@ -17,11 +17,8 @@
  */
 const { EventEmitter } = require('events')
 const { appendFileSync, existsSync, mkdirSync } = require('fs')
-const { join, dirname } = require('path')
-
-const CONFIG_DIR = join(require('path').resolve(__dirname, '..', '..'), 'config')
-/** 事件持久化文件路径 */
-const EVENTS_FILE = join(CONFIG_DIR, 'autopilot-events.jsonl')
+const { dirname } = require('path')
+const { EVENTS_FILE } = require('../common/paths.cjs')
 
 class EventBus extends EventEmitter {
   /**

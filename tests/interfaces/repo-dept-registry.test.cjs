@@ -2,11 +2,9 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
 const { existsSync, readFileSync, writeFileSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const DEPTS_FILE = join(PROJECT_ROOT, 'config', 'departments.json')
+const { DEPARTMENTS_FILE: DEPTS_FILE } = require('../../core/common/paths.cjs')
 const { DeptRegistryRepository, deptRegistryRepo, DEFAULT_DEPARTMENTS } = require('../../core/repo/dept-registry.cjs')
 
 describe('DeptRegistryRepository', () => {

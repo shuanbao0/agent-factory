@@ -9,10 +9,8 @@
  * 信号文件格式：每行一个 JSON 对象 { type, ...payload }
  */
 const { existsSync, readFileSync, writeFileSync, watchFile, unwatchFile, mkdirSync } = require('fs')
-const { join, dirname } = require('path')
-
-const CONFIG_DIR = join(require('path').resolve(__dirname, '..', '..'), 'config')
-const SIGNAL_FILE = join(CONFIG_DIR, '.autopilot-signal')
+const { dirname } = require('path')
+const { SIGNAL_FILE } = require('../common/paths.cjs')
 
 class SignalWatcher {
   /**

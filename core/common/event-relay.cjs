@@ -7,10 +7,8 @@
  * Autopilot 的 SignalWatcher 通过 fs.watch 检测并中继到 EventBus。
  */
 const { appendFileSync, existsSync, mkdirSync } = require('fs')
-const { join, dirname, resolve } = require('path')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const SIGNAL_FILE = join(PROJECT_ROOT, 'config', '.autopilot-signal')
+const { dirname } = require('path')
+const { SIGNAL_FILE } = require('./paths.cjs')
 
 /**
  * 追加事件行到信号文件

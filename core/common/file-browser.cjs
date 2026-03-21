@@ -6,9 +6,8 @@
  */
 const { readdirSync, readFileSync, existsSync, statSync, mkdirSync, renameSync, rmSync, writeFileSync, realpathSync, copyFileSync } = require('fs')
 const { join, resolve } = require('path')
+const { WORKSPACES_DIR } = require('./paths.cjs')
 
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
 const ARCHIVED_DIR = join(WORKSPACES_DIR, '.archived')
 
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', '__pycache__', '.turbo', '.vercel'])

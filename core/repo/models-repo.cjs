@@ -8,21 +8,17 @@
  * - 管理 config/models.json（模型别名映射）
  * - 确保默认配置存在（从 .default.json 复制）
  */
-const { join } = require('path')
 const { existsSync, copyFileSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const MODELS_PATH = join(PROJECT_ROOT, 'config', 'models.json')
-const MODELS_DEFAULT_PATH = join(PROJECT_ROOT, 'config', 'models.default.json')
+const { MODELS_FILE, MODELS_DEFAULT_FILE } = require('../common/paths.cjs')
 
 class ModelsRepository extends BaseRepository {
   /**
    * 确保 models.json 存在（从 .default.json 复制）
    */
   ensureDefaults() {
-    if (!existsSync(MODELS_PATH) && existsSync(MODELS_DEFAULT_PATH)) {
-      copyFileSync(MODELS_DEFAULT_PATH, MODELS_PATH)
+    if (!existsSync(MODELS_FILE) && existsSync(MODELS_DEFAULT_FILE)) {
+      copyFileSync(MODELS_DEFAULT_FILE, MODELS_FILE)
     }
   }
 
@@ -32,7 +28,7 @@ class ModelsRepository extends BaseRepository {
    */
   readModels() {
     this.ensureDefaults()
-    return this.read(MODELS_PATH) || { providers: {}, default: '' }
+    return this.read(MODELS_FILE) || { providers: {}, default: '' }
   }
 
   /**
@@ -40,7 +36,7 @@ class ModelsRepository extends BaseRepository {
    * @param {object} config
    */
   writeModels(config) {
-    this.write(MODELS_PATH, config)
+    this.write(MODELS_FILE, config)
   }
 
   /**
@@ -50,7 +46,7 @@ class ModelsRepository extends BaseRepository {
    */
   updateModels(mutator) {
     this.ensureDefaults()
-    return this.update(MODELS_PATH, mutator, { providers: {}, default: '' })
+    return this.update(MODELS_FILE, mutator, { providers: {}, default: '' })
   }
 }
 

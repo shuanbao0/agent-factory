@@ -10,14 +10,10 @@
  * 3. Update tasks.json: projectId "dept" → "dept/default"
  */
 import { existsSync, readdirSync, mkdirSync, renameSync, readFileSync, writeFileSync, statSync } from 'fs'
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
+import { join } from 'path'
+import paths from '../core/common/paths.mjs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const PROJECT_ROOT = join(__dirname, '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
-const TASKS_FILE = join(PROJECT_ROOT, 'config', 'tasks.json')
+const { PROJECTS_DIR, DEPARTMENTS_DIR, TASKS_FILE } = paths
 
 const dryRun = process.argv.includes('--dry-run')
 const log = (msg) => console.log(`${dryRun ? '[DRY-RUN] ' : ''}${msg}`)

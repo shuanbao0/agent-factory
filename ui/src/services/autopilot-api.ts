@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { resolve, join } from 'path'
+import { join } from 'path'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
 import type { AutopilotState, DeptInfo } from '@entity/autopilot'
@@ -7,7 +7,7 @@ import type { DepartmentConfig } from '@/lib/types'
 
 // --- Constants ---
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
+const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 const AUTOPILOT_SCRIPT = join(PROJECT_ROOT, 'scripts/autopilot/index.cjs')
 const DEPT_LOOP_SCRIPT = join(PROJECT_ROOT, 'scripts/autopilot/department-loop.cjs')
 

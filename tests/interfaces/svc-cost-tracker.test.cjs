@@ -2,13 +2,10 @@
 
 const { describe, it, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
 const fs = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { EVENTS_FILE } = require('../../core/common/paths.cjs')
 const { calculateCost, trackCost, queryCosts, getDailySummary, PRICING, COSTS_FILE } = require('../../core/observe/cost-tracker.cjs')
-
-const EVENTS_FILE = join(PROJECT_ROOT, 'config', 'autopilot-events.jsonl')
 let originalSize = null
 let originalEventsSize = null
 

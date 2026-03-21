@@ -2,11 +2,9 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
 const { existsSync, readFileSync, writeFileSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const TASKS_FILE = join(PROJECT_ROOT, 'config', 'tasks.json')
+const { TASKS_FILE } = require('../../core/common/paths.cjs')
 const { TaskRepository, taskRepo } = require('../../core/repo/task.cjs')
 
 describe('TaskRepository', () => {

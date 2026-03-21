@@ -3,11 +3,9 @@ const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } = require('fs')
 const { join } = require('path')
+const { AGENTS_DIR } = require('../../../core/common/paths.cjs')
 const { AgentService } = require('../../../core/common/agent-service.cjs')
 const { AgentMetaRepository } = require('../../../core/repo/agent-meta.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
 
 const TEST_AGENT_ID = 'zzz-test-update-agent'
 

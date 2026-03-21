@@ -10,11 +10,8 @@
  * 注入使用 HTML 注释 marker 包裹，支持幂等更新。
  */
 const { readFileSync, existsSync } = require('fs')
-const { join, resolve } = require('path')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const BASE_RULES_PATH = join(PROJECT_ROOT, 'config', 'base-rules.md')
+const { BASE_RULES_FILE: BASE_RULES_PATH } = require('./paths.cjs')
 
 // ── Marker constants ──────────────────────────────────────────
 

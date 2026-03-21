@@ -3,12 +3,9 @@ const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } = require('fs')
 const { join } = require('path')
+const { DEPARTMENTS_FILE: DEPTS_FILE, DEPARTMENTS_DIR: DEPTS_DIR } = require('../../core/common/paths.cjs')
 const { createDepartment, updateDepartment, deleteDepartment } = require('../../core/common/department-service.cjs')
 const { deptRegistryRepo } = require('../../core/repo/dept-registry.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const DEPTS_FILE = join(PROJECT_ROOT, 'config', 'departments.json')
-const DEPTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
 
 const TEST_ID = 'zzz-test-dept-' + process.pid
 

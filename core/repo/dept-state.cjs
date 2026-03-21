@@ -13,9 +13,7 @@
  */
 const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
+const { DEPARTMENTS_DIR } = require('../common/paths.cjs')
 
 const { DEFAULT_DEPT_STATE } = require('../../entity/dept/dept.cjs')
 /** 部门状态默认值（来自 entity/dept） */

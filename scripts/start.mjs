@@ -5,24 +5,30 @@
  * Gateway missing keys = graceful degradation, not fatal.
  */
 
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { existsSync, readFileSync, copyFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { spawn, execSync } from 'node:child_process';
 import net from 'node:net';
+import paths from '../core/common/paths.mjs';
 
-const ROOT = resolve(import.meta.dirname, '..');
+const {
+  PROJECT_ROOT: ROOT,
+  STATE_DIR,
+  GATEWAY_CONFIG_FILE: CONFIG_PATH,
+  MODELS_FILE: MODELS_PATH,
+  GATEWAY_DEFAULT_FILE,
+  MODELS_DEFAULT_FILE,
+  ENV_FILE,
+} = paths;
 const GW_PORT = parseInt(process.env.OPENCLAW_GATEWAY_PORT || '19100');
 const UI_PORT = 3100;
-const STATE_DIR = resolve(ROOT, '.openclaw-state');
-const CONFIG_PATH = resolve(ROOT, 'config/openclaw.json');
-const MODELS_PATH = resolve(ROOT, 'config/models.json');
-const PID_FILE = resolve(STATE_DIR, 'start.pid');
+const PID_FILE = join(STATE_DIR, 'start.pid');
 
 /** Copy from .default.json templates if runtime configs don't exist */
 function ensureConfigFiles() {
   const pairs = [
-    [MODELS_PATH, resolve(ROOT, 'config/models.default.json')],
-    [CONFIG_PATH, resolve(ROOT, 'config/openclaw.default.json')],
+    [MODELS_PATH, MODELS_DEFAULT_FILE],
+    [CONFIG_PATH, GATEWAY_DEFAULT_FILE],
   ];
   for (const [runtime, template] of pairs) {
     if (!existsSync(runtime) && existsSync(template)) {
@@ -34,7 +40,7 @@ function ensureConfigFiles() {
 
 // Load .env without failing
 function loadEnvFile() {
-  const envPath = resolve(ROOT, '.env');
+  const envPath = ENV_FILE;
   if (!existsSync(envPath)) return;
   const lines = readFileSync(envPath, 'utf-8').split('\n');
   for (const line of lines) {

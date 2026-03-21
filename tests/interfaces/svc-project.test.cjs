@@ -5,10 +5,8 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const fs = require('fs')
 
+const { PROJECTS_DIR } = require('../../core/common/paths.cjs')
 const { createProject, listProjects } = require('../../core/common/project-service.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 const testIds = []
 

@@ -3,14 +3,14 @@
  * Singleton: only one gateway process at a time.
  */
 import { spawn, ChildProcess } from 'child_process'
-import { resolve, join } from 'path'
+import { resolve } from 'path'
 import net from 'net'
 import core from '@/lib/core-bridge'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
+const paths = core.common.paths
 
 function findOpenClawBin(): string | null {
-  let dir = PROJECT_ROOT
+  let dir = paths.PROJECT_ROOT
   while (dir) {
     const bin = resolve(dir, 'node_modules/.bin/openclaw')
     if (core.common.fileBrowser.pathExists(bin)) return bin
@@ -21,9 +21,9 @@ function findOpenClawBin(): string | null {
   return null
 }
 const GW_PORT = parseInt(process.env.AGENT_FACTORY_PORT || '19100')
-const STATE_DIR = resolve(PROJECT_ROOT, '.openclaw-state')
-const CONFIG_PATH = resolve(PROJECT_ROOT, 'config/openclaw.json')
-const CONFIG_DEFAULT_PATH = resolve(PROJECT_ROOT, 'config/openclaw.default.json')
+const STATE_DIR = paths.STATE_DIR
+const CONFIG_PATH = paths.GATEWAY_CONFIG_FILE
+const CONFIG_DEFAULT_PATH = paths.GATEWAY_DEFAULT_FILE
 
 /** Copy from .default.json template if runtime config doesn't exist */
 function ensureConfig() {

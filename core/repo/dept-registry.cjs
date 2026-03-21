@@ -4,11 +4,8 @@
  *
  * 管理 UI 部门列表：名称、emoji、楼层颜色、家具
  */
-const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const DEPARTMENTS_FILE = join(PROJECT_ROOT, 'config', 'departments.json')
+const { DEPARTMENTS_FILE } = require('../common/paths.cjs')
 
 const DEFAULT_DEPARTMENTS = [
   {

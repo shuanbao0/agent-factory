@@ -2,9 +2,6 @@
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
 const { validateAgentId, validateTaskStatus, sanitizePath } = require('../../core/common/validators.cjs')
 
 describe('Validators', () => {

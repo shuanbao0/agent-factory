@@ -3,12 +3,13 @@ import { execFile as execFileCb } from 'child_process'
 import { promisify } from 'util'
 import { resolve } from 'path'
 import { cached } from '@/lib/api-cache'
+import core from '@/lib/core-bridge'
 
 const execFile = promisify(execFileCb)
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
+const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 
 export async function GET() {
   try {

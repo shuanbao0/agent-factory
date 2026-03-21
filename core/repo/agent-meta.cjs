@@ -14,9 +14,7 @@
 const { join } = require('path')
 const { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync, rmSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
+const { AGENTS_DIR } = require('../common/paths.cjs')
 
 class AgentMetaRepository extends BaseRepository {
   /**

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { existsSync, rmSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { AGENTS_DIR, WORKSPACES_DIR } = require('../../core/common/paths.cjs')
 const { AgentService } = require('../../core/common/agent-service.cjs')
 const { AgentMetaRepository } = require('../../core/repo/agent-meta.cjs')
 
@@ -31,9 +31,9 @@ describe('AgentService', () => {
     removedAgents = []
     // Clean up test agents and workspaces
     for (const id of createdAgentIds) {
-      const agentDir = join(PROJECT_ROOT, 'agents', id)
+      const agentDir = join(AGENTS_DIR, id)
       if (existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true })
-      const wsDir = join(PROJECT_ROOT, 'workspaces', id)
+      const wsDir = join(WORKSPACES_DIR, id)
       if (existsSync(wsDir)) rmSync(wsDir, { recursive: true, force: true })
     }
     createdAgentIds.length = 0

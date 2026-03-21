@@ -3,10 +3,8 @@ const { describe, it, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { existsSync, readFileSync, rmSync, readdirSync } = require('fs')
 const { join } = require('path')
+const { PROJECTS_DIR } = require('../../core/common/paths.cjs')
 const { createProject, listProjects } = require('../../core/common/project-service.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 const TEST_SLUG = 'zzz-test-proj-' + process.pid
 const TEST_DEPT = 'zzz-test-dept'

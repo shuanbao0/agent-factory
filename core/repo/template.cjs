@@ -5,10 +5,10 @@
  * 数据源：templates/agents/builtin/{id}/ 和 templates/agents/custom/{id}/
  */
 const { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
+const { BUILTIN_AGENT_TEMPLATES_DIR } = require('../common/paths.cjs')
 
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'agents')
+const TEMPLATES_DIR = BUILTIN_AGENT_TEMPLATES_DIR
 
 const CATEGORIES = ['builtin', 'custom']
 

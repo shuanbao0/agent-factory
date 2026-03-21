@@ -2,11 +2,7 @@
 const { mkdirSync, rmSync, existsSync, readdirSync } = require('fs')
 const { join } = require('path')
 
-const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const { PROJECT_ROOT, AGENTS_DIR, WORKSPACES_DIR, DEPARTMENTS_DIR, PROJECTS_DIR } = require('../../../core/common/paths.cjs')
 
 function createTestContext(name) {
   const ts = Date.now().toString(36)

@@ -14,9 +14,7 @@
 const { join, resolve } = require('path')
 const { existsSync, readdirSync, rmSync, mkdirSync, writeFileSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const { PROJECTS_DIR } = require('../common/paths.cjs')
 
 class ProjectMetaRepository extends BaseRepository {
   /**

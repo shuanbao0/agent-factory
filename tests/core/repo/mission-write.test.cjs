@@ -4,11 +4,7 @@ const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, readFileSync, rmSync, writeFileSync } = require('fs')
 const { join } = require('path')
 
-const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const CONFIG_DIR = join(PROJECT_ROOT, 'config')
-const MISSION_FILE = join(CONFIG_DIR, 'mission.md')
-const BASE_MISSION_FILE = join(CONFIG_DIR, 'base-mission.md')
-const DEPARTMENTS_DIR = join(CONFIG_DIR, 'departments')
+const { MISSION_FILE, BASE_MISSION_FILE, DEPARTMENTS_DIR } = require('../../../core/common/paths.cjs')
 
 describe('MissionRepository write methods', () => {
   let missionBackup = null

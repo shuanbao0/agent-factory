@@ -6,10 +6,7 @@
  * 内部缓存解析结果（基于文件 mtime）。
  */
 const { readFileSync, existsSync, statSync } = require('fs')
-const { join, resolve } = require('path')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const STANDARDS_PATH = join(PROJECT_ROOT, 'config', 'task-standards.md')
+const { TASK_STANDARDS_FILE: STANDARDS_PATH } = require('./paths.cjs')
 
 // ── Parsing ───────────────────────────────────────────────────
 

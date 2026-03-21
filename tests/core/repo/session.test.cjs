@@ -2,10 +2,8 @@
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const { mkdirSync, writeFileSync, rmSync } = require('fs')
-const { join, resolve } = require('path')
 
-const PROJECT_ROOT = resolve(__dirname, '..', '..', '..')
-const TEST_SESSIONS_DIR = join(PROJECT_ROOT, '.openclaw-state', 'agents')
+const { SESSIONS_DIR: TEST_SESSIONS_DIR } = require('../../../core/common/paths.cjs')
 
 describe('SessionRepository', () => {
   // We test the module but can't easily mock the SESSIONS_DIR path

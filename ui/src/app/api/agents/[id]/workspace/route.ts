@@ -35,8 +35,7 @@ function stripBaseRulesFromContent(fileName: string, content: string): string {
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
+const AGENTS_DIR = core.common.paths.AGENTS_DIR
 
 function getWorkspaceDir(id: string) {
   return join(AGENTS_DIR, id)

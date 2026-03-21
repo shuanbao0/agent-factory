@@ -14,12 +14,9 @@
  *   ```
  */
 const { readFileSync, existsSync, statSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const DELIVERABLES_PATH = join(PROJECT_ROOT, 'config', 'phase-deliverables.md')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const { PHASE_DELIVERABLES_FILE: DELIVERABLES_PATH, PROJECTS_DIR } = require('./paths.cjs')
 
 // ── Parsing ───────────────────────────────────────────────────
 

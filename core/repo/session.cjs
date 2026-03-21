@@ -5,11 +5,9 @@
  * 数据源：.openclaw-state/agents/{agentId}/sessions/sessions.json
  */
 const { readFileSync, existsSync, readdirSync, statSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const SESSIONS_DIR = join(PROJECT_ROOT, '.openclaw-state', 'agents')
+const { SESSIONS_DIR } = require('../common/paths.cjs')
 
 class SessionRepository extends BaseRepository {
   /**

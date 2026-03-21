@@ -10,15 +10,9 @@
  * - agents/{agentId}/memory/SUMMARY.md
  */
 const { readFileSync, writeFileSync, renameSync, existsSync, readdirSync, mkdirSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const CONFIG_DIR = join(PROJECT_ROOT, 'config')
-const AGENTS_DIR = join(PROJECT_ROOT, 'agents')
-const DEPARTMENTS_DIR = join(CONFIG_DIR, 'departments')
-const MISSION_FILE = join(CONFIG_DIR, 'mission.md')
-const BASE_MISSION_FILE = join(CONFIG_DIR, 'base-mission.md')
+const { AGENTS_DIR, DEPARTMENTS_DIR, MISSION_FILE, BASE_MISSION_FILE } = require('../common/paths.cjs')
 
 class MissionRepository extends BaseRepository {
   /** Read company mission (config/mission.md) */

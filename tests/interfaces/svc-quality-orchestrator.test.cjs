@@ -2,9 +2,6 @@
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
 const { QualityOrchestrator } = require('../../core/task/quality-orchestrator.cjs')
 
 const mockSendFn = async (agentId, sessionKey, msg, timeout) => ({

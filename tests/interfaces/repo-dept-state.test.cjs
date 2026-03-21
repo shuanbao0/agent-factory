@@ -5,12 +5,11 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { mkdirSync, rmSync, existsSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { DEPARTMENTS_DIR } = require('../../core/common/paths.cjs')
 const { DeptStateRepository } = require('../../core/repo/dept-state.cjs')
 
 const ts = Date.now()
 const testDeptId = `zzz-test-deptst-${ts}`
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
 
 describe('DeptStateRepository', () => {
   let repo

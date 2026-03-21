@@ -5,11 +5,9 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { existsSync, rmSync, readdirSync, readFileSync, writeFileSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { DEPARTMENTS_FILE: DEPTS_FILE, DEPARTMENTS_DIR } = require('../../core/common/paths.cjs')
 const { createDepartment, updateDepartment, deleteDepartment } = require('../../core/common/department-service.cjs')
 const { deptRegistryRepo } = require('../../core/repo/dept-registry.cjs')
-
-const DEPTS_FILE = join(PROJECT_ROOT, 'config', 'departments.json')
 
 describe('DepartmentService', () => {
   let backupRaw
@@ -26,7 +24,7 @@ describe('DepartmentService', () => {
 
     // Clean up test department config dirs
     for (const id of testDeptIds) {
-      const deptDir = join(PROJECT_ROOT, 'config', 'departments', id)
+      const deptDir = join(DEPARTMENTS_DIR, id)
       if (existsSync(deptDir)) rmSync(deptDir, { recursive: true, force: true })
     }
     testDeptIds.length = 0

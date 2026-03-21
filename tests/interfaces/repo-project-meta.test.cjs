@@ -5,12 +5,11 @@ const assert = require('node:assert/strict')
 const { join } = require('path')
 const { rmSync, existsSync, readFileSync } = require('fs')
 
-const PROJECT_ROOT = join(__dirname, '..', '..')
+const { PROJECTS_DIR } = require('../../core/common/paths.cjs')
 const { ProjectMetaRepository } = require('../../core/repo/project-meta.cjs')
 
 const ts = Date.now()
 const testProjectId = `zzz-test-projmeta-${ts}`
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
 
 describe('ProjectMetaRepository', () => {
   let repo

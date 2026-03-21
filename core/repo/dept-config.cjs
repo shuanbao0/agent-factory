@@ -15,9 +15,7 @@
 const { join } = require('path')
 const { existsSync, readdirSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
+const { DEPARTMENTS_DIR } = require('../common/paths.cjs')
 
 class DeptConfigRepository extends BaseRepository {
   /**

@@ -20,15 +20,11 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, cpSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
+import paths from '../core/common/paths.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
-const DEPARTMENTS_DIR = join(ROOT, 'config', 'departments');
-const DEPARTMENTS_JSON = join(ROOT, 'config', 'departments.json');
-const BUDGET_JSON = join(ROOT, 'config', 'budget.json');
+const { DEPARTMENTS_DIR, DEPARTMENTS_FILE: DEPARTMENTS_JSON, BUDGET_FILE: BUDGET_JSON } = paths;
 const UPDATE_DIR = process.env.AF_UPDATE_DIR || null;  // tmpDir from agent-factory update
 
 const args = process.argv.slice(2);

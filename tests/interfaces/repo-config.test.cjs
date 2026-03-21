@@ -2,9 +2,6 @@
 
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
 const { ConfigRepository, configRepo } = require('../../core/repo/config.cjs')
 
 describe('ConfigRepository', () => {

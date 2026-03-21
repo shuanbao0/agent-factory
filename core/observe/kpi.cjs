@@ -5,10 +5,8 @@
  * 设计模式：Calculation Engine + JSONL 持久化
  */
 const { readFileSync, appendFileSync, existsSync, mkdirSync } = require('fs')
-const { join, resolve } = require('path')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const DEPARTMENTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
+const { join } = require('path')
+const { DEPARTMENTS_DIR } = require('../common/paths.cjs')
 
 // Lazy require to avoid circular deps
 let _deptConfigRepo, _taskRepo

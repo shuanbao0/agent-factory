@@ -5,10 +5,10 @@
  * 数据源：templates/departments/builtin/{id}/ 和 templates/departments/custom/{id}/
  */
 const { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
+const { BUILTIN_DEPT_TEMPLATES_DIR } = require('../common/paths.cjs')
 
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const DEPT_TEMPLATES_DIR = join(PROJECT_ROOT, 'templates', 'departments')
+const DEPT_TEMPLATES_DIR = BUILTIN_DEPT_TEMPLATES_DIR
 
 const CATEGORIES = ['builtin', 'custom']
 

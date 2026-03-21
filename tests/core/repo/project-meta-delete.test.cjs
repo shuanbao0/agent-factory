@@ -4,8 +4,7 @@ const assert = require('node:assert/strict')
 const { mkdirSync, existsSync, writeFileSync, rmSync } = require('fs')
 const { join } = require('path')
 
-const PROJECT_ROOT = join(__dirname, '..', '..', '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const { PROJECTS_DIR } = require('../../../core/common/paths.cjs')
 
 describe('ProjectMetaRepository.deleteProject', () => {
   const TEST_PROJECT = '__test_delete_project__'

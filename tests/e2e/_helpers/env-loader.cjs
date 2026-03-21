@@ -1,9 +1,8 @@
 'use strict'
 const { readFileSync } = require('fs')
-const { join } = require('path')
 const http = require('http')
 
-const ROOT = join(__dirname, '..', '..', '..')
+const { PROJECT_ROOT: ROOT, ENV_FILE, GATEWAY_CONFIG_FILE } = require('../../../core/common/paths.cjs')
 const DEFAULT_MODEL = 'minimax/MiniMax-M2.5-Lightning'
 
 /**
@@ -12,7 +11,7 @@ const DEFAULT_MODEL = 'minimax/MiniMax-M2.5-Lightning'
  */
 function parseEnv() {
   try {
-    const text = readFileSync(join(ROOT, '.env'), 'utf8')
+    const text = readFileSync(ENV_FILE, 'utf8')
     const env = {}
     for (const line of text.split('\n')) {
       const trimmed = line.trim()
@@ -52,7 +51,7 @@ function shouldSkip() {
  */
 function getGatewayPort() {
   try {
-    const cfg = JSON.parse(readFileSync(join(ROOT, 'config', 'openclaw.json'), 'utf8'))
+    const cfg = JSON.parse(readFileSync(GATEWAY_CONFIG_FILE, 'utf8'))
     return cfg.gateway?.port || 19100
   } catch { return 19100 }
 }
@@ -78,7 +77,7 @@ function isGatewayRunning() {
  */
 function getRegisteredAgents() {
   try {
-    const cfg = JSON.parse(readFileSync(join(ROOT, 'config', 'openclaw.json'), 'utf8'))
+    const cfg = JSON.parse(readFileSync(GATEWAY_CONFIG_FILE, 'utf8'))
     return (cfg.agents?.list || []).map(a => a.id).filter(Boolean)
   } catch { return [] }
 }

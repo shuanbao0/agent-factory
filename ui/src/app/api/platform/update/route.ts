@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { exec as execCb } from 'child_process'
 import { promisify } from 'util'
 import { resolve } from 'path'
+import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
 const execAsync = promisify(execCb)
-const PROJECT_ROOT = resolve(process.cwd(), '..')
+const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 
 function getInstalledVersion(): string {
   try {

@@ -12,13 +12,10 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs'
-import { join, resolve, dirname } from 'path'
-import { fileURLToPath } from 'url'
+import { join } from 'path'
+import paths from '../core/common/paths.mjs'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(__dirname, '..')
-const PROJECTS_DIR = join(ROOT, 'projects')
-const STANDARDS_FILE = join(ROOT, 'config', 'project-standards.md')
+const { PROJECT_ROOT: ROOT, PROJECTS_DIR, PROJECT_STANDARDS_FILE: STANDARDS_FILE } = paths
 
 const DRY_RUN = process.argv.includes('--dry-run')
 const targetId = process.argv.slice(2).find(a => !a.startsWith('--'))

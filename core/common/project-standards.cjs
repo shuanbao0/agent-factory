@@ -6,11 +6,9 @@
  * 使用 HTML 注释 marker 包裹，支持幂等更新。
  */
 const { readFileSync, existsSync } = require('fs')
-const { join, resolve } = require('path')
+const { join } = require('path')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
-
-const PROJECT_ROOT = resolve(__dirname, '..', '..')
-const STANDARDS_PATH = join(PROJECT_ROOT, 'config', 'project-standards.md')
+const { PROJECT_STANDARDS_FILE: STANDARDS_PATH, PROJECTS_DIR } = require('./paths.cjs')
 
 const MARKER_BEGIN = '<!-- PROJECT-STANDARDS:BEGIN -->'
 const MARKER_END = '<!-- PROJECT-STANDARDS:END -->'
@@ -133,7 +131,7 @@ function injectStandardsForProject(projectId) {
   const standardsMd = buildProjectStandardsMd(parsed, meta)
 
   // Read existing STANDARDS.md if present, strip old block
-  const existingPath = join(PROJECT_ROOT, 'projects', projectId, 'STANDARDS.md')
+  const existingPath = join(PROJECTS_DIR, projectId, 'STANDARDS.md')
   let content = ''
   if (existsSync(existingPath)) {
     content = readFileSync(existingPath, 'utf-8')

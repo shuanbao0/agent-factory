@@ -10,8 +10,8 @@ import net from 'net'
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const PROJECTS_DIR = join(PROJECT_ROOT, 'projects')
+const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
+const PROJECTS_DIR = core.common.paths.PROJECTS_DIR
 const BASE_PORT = 3200
 
 // In-memory process tracking (survives across requests within same server instance)

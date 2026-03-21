@@ -4,8 +4,7 @@ import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
 
-const PROJECT_ROOT = resolve(process.cwd(), '..')
-const AGENTS_DIR = resolve(PROJECT_ROOT, 'agents')
+const AGENTS_DIR = core.common.paths.AGENTS_DIR
 
 /**
  * POST /api/agents/deploy

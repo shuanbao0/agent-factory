@@ -3,15 +3,11 @@ const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync, truncateSync } = require('fs')
 const { join } = require('path')
+const { BUDGET_FILE, EVENTS_FILE, DEPARTMENTS_DIR: DEPTS_DIR } = require('../../core/common/paths.cjs')
 const { calculateCost, trackCost, queryCosts, COSTS_FILE } = require('../../core/observe/cost-tracker.cjs')
 const { shouldResetDaily, loadCompanyBudget, saveCompanyBudget } = require('../../core/observe/budget.cjs')
 const { deptConfigRepo } = require('../../core/repo/dept-config.cjs')
 const { deptStateRepo } = require('../../core/repo/dept-state.cjs')
-
-const PROJECT_ROOT = join(__dirname, '..', '..')
-const BUDGET_FILE = join(PROJECT_ROOT, 'config', 'budget.json')
-const EVENTS_FILE = join(PROJECT_ROOT, 'config', 'autopilot-events.jsonl')
-const DEPTS_DIR = join(PROJECT_ROOT, 'config', 'departments')
 
 const TEST_DEPT_ID = 'zzz-test-budget-' + process.pid
 const TEST_SOURCE = 'zzz-test-cost-' + process.pid + '-' + Date.now()

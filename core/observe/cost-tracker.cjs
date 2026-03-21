@@ -16,11 +16,8 @@
  * - 追踪后会通过 EventBus 发射 cost.tracked 事件，触发 CostAlertReactor
  */
 const { existsSync, appendFileSync, readFileSync, mkdirSync } = require('fs')
-const { join, dirname } = require('path')
-
-const CONFIG_DIR = join(require('path').resolve(__dirname, '..', '..'), 'config')
-/** 成本日志文件路径 */
-const COSTS_FILE = join(CONFIG_DIR, 'autopilot-costs.jsonl')
+const { dirname } = require('path')
+const { COSTS_FILE } = require('../common/paths.cjs')
 
 /** 模型定价表（来自 entity/observe — 单一来源） */
 const { PRICING } = require('../../entity/observe/cost.cjs')
