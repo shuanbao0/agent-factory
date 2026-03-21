@@ -190,6 +190,13 @@ export default _core as {
       CEO_WORKSPACE: string
     }
     ensureDataDir(): void
+    logger: {
+      error(component: string, message: string, data?: unknown): void
+      warn(component: string, message: string, data?: unknown): void
+      info(component: string, message: string, data?: unknown): void
+      debug(component: string, message: string, data?: unknown): void
+      setLogLevel(level: 'error' | 'warn' | 'info' | 'debug'): void
+    }
     loadState(): AutopilotState
     saveState(state: AutopilotState): void
     validateBudgetConfig(config: unknown): { valid: boolean; errors: string[] }

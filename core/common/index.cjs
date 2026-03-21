@@ -1,6 +1,7 @@
 'use strict'
 module.exports = {
   paths: require('./paths.cjs'),
+  logger: require('./logger.cjs'),
   ...require('./data-init.cjs'),
   ...require('./validators.cjs'),
   ...require('./config-validator.cjs'),

@@ -11,7 +11,7 @@ const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const fileBrowser = require('../common/file-browser.cjs')
 const { injectStandardsForProject } = require('../common/project-standards.cjs')
 const { generatePhaseDeliverables } = require('../common/phase-deliverables.cjs')
-const logger = require('./logger.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * Sync project state from CEO response + filesystem data.

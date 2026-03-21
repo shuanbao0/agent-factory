@@ -10,7 +10,7 @@ const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { buildMemoryContext } = require('../agent/memory.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 const { loadTaskStandards, getTaskTypeStandards } = require('../common/task-standards.cjs')
-const logger = require('./logger.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * Read agent meta and extract display fields.

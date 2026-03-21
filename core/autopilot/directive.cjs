@@ -5,7 +5,7 @@ const { missionRepo } = require('../repo/mission.cjs')
 const { taskRepo } = require('../repo/task.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
-const logger = require('./logger.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * Build a directive for the CEO agent.

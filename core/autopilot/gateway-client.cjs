@@ -8,7 +8,7 @@
 const { DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_COMPACT_TIMEOUT_MS } = require('./constants.cjs')
 const { GatewayConnectionPool } = require('../llm/gateway-pool.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
-const logger = require('./logger.cjs')
+const logger = require('../common/logger.cjs')
 
 // Lazy singleton pool
 let _pool = null

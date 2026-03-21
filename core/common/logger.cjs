@@ -1,12 +1,12 @@
 /**
- * Logger — structured logging to replace empty catch blocks
+ * Logger — 全局结构化日志模块
  *
- * Writes to config/autopilot-logs/YYYY-MM-DD.log
+ * Writes to data/logs/YYYY-MM-DD.log
  * Levels: error | warn | info | debug
  */
 const { existsSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } = require('fs')
 const { join } = require('path')
-const { LOGS_DIR } = require('./constants.cjs')
+const { LOGS_DIR } = require('./paths.cjs')
 
 const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 }
 let currentLevel = LOG_LEVELS.info

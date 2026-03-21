@@ -27,7 +27,7 @@ const { missionRepo } = require('../repo/mission.cjs')
 const { buildTaskContext } = require('./task-prompt.cjs')
 const { inferTaskType } = require('../task/type-inference.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
-const logger = require('./logger.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * Get the default project ID for a department.

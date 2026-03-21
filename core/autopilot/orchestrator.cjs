@@ -21,7 +21,7 @@ const { syncProjects } = require('./sync.cjs')
 const { buildMemoryContext, compressMemory } = require('../agent/memory.cjs')
 const { runDepartmentCycle, autoTransitionTasks } = require('./department-loop.cjs')
 const { createCycleTask, completeCycleTask, updateTaskStatus } = require('../common/task-bridge.cjs')
-const logger = require('./logger.cjs')
+const logger = require('../common/logger.cjs')
 
 const MAX_HISTORY = 50
 

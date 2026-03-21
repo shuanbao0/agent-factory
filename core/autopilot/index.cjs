@@ -14,5 +14,5 @@ module.exports = {
   ...require('./dept-activity.cjs'),
   ...require('./task-prompt.cjs'),
   constants: require('./constants.cjs'),
-  logger: require('./logger.cjs'),
+  logger: require('../common/logger.cjs'),
 }
