@@ -12,6 +12,8 @@
  * 默认阈值：$10/天
  */
 
+const logger = require('../../common/logger.cjs')
+
 /** 默认日成本告警阈值（USD） */
 const DEFAULT_DAILY_THRESHOLD_USD = 10
 
@@ -46,8 +48,9 @@ function register(bus, opts = {}) {
           source: event.source,
         })
       }
-    } catch {
+    } catch (err) {
       // Reactor 错误不传播
+      logger.debug('cost-alert', 'reactor error on cost.tracked', { error: err.message })
     }
   })
 

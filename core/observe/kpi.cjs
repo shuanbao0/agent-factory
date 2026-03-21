@@ -7,6 +7,7 @@
 const { readFileSync, appendFileSync, existsSync, mkdirSync } = require('fs')
 const { join } = require('path')
 const { DEPARTMENTS_DIR } = require('../common/paths.cjs')
+const logger = require('../common/logger.cjs')
 
 // Lazy require to avoid circular deps
 let _deptConfigRepo, _taskRepo
@@ -91,7 +92,9 @@ function saveKPISnapshot(deptId, kpis) {
   const historyFile = join(deptDir, 'kpi-history.jsonl')
   try {
     appendFileSync(historyFile, JSON.stringify({ timestamp: new Date().toISOString(), kpis }) + '\n')
-  } catch { /* skip */ }
+  } catch (err) {
+    logger.debug('kpi', 'failed to save KPI snapshot', { deptId, error: err.message })
+  }
 }
 
 function readKPIHistory(deptId, limit = 100) {
@@ -100,9 +103,10 @@ function readKPIHistory(deptId, limit = 100) {
   try {
     const lines = readFileSync(historyFile, 'utf-8').trim().split('\n')
     return lines.slice(-limit).map(line => {
-      try { return JSON.parse(line) } catch { return null }
+      try { return JSON.parse(line) } catch { /* skip malformed line */ return null }
     }).filter(Boolean)
-  } catch {
+  } catch (err) {
+    logger.debug('kpi', 'failed to read KPI history', { deptId, error: err.message })
     return []
   }
 }
@@ -116,7 +120,9 @@ function getCompanyKPIs() {
     for (const dir of dirs) {
       results[dir.name] = calculateDepartmentKPIs(dir.name)
     }
-  } catch { /* skip */ }
+  } catch (err) {
+    logger.debug('kpi', 'failed to enumerate departments for company KPIs', { error: err.message })
+  }
   return results
 }
 

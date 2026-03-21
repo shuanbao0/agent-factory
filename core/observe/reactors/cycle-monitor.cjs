@@ -13,6 +13,8 @@
  * 告警事件：alert.cycle_slowdown
  */
 
+const logger = require('../../common/logger.cjs')
+
 /** 滑动窗口大小（保留最近 N 轮数据） */
 const MAX_HISTORY = 10
 /** 慢周期判定倍数（当前耗时 > 平均值 × 此倍数） */
@@ -77,8 +79,9 @@ function register(bus, opts = {}) {
         // 重置计数，避免重复告警
         hist.consecutiveSlow = 0
       }
-    } catch {
+    } catch (err) {
       // Reactor 错误不传播
+      logger.debug('cycle-monitor', 'reactor error on cycle.end', { error: err.message })
     }
   })
 

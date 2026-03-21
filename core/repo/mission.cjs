@@ -13,13 +13,15 @@ const { readFileSync, writeFileSync, renameSync, existsSync, readdirSync, mkdirS
 const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
 const { AGENTS_DIR, DEPARTMENTS_DIR, MISSION_FILE, BASE_MISSION_FILE } = require('../common/paths.cjs')
+const logger = require('../common/logger.cjs')
 
 class MissionRepository extends BaseRepository {
   /** Read company mission (config/mission.md) */
   readMission() {
     try {
       return readFileSync(MISSION_FILE, 'utf-8')
-    } catch {
+    } catch (err) {
+      logger.debug('mission-repo', 'mission.md not found', { error: err.message })
       return '(mission.md not found)'
     }
   }
@@ -30,7 +32,9 @@ class MissionRepository extends BaseRepository {
       if (existsSync(BASE_MISSION_FILE)) {
         return readFileSync(BASE_MISSION_FILE, 'utf-8')
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read base-mission.md', { error: err.message })
+    }
     return ''
   }
 
@@ -41,7 +45,9 @@ class MissionRepository extends BaseRepository {
       if (existsSync(missionPath)) {
         return readFileSync(missionPath, 'utf-8')
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read dept mission', { deptId, error: err.message })
+    }
     return ''
   }
 
@@ -57,10 +63,14 @@ class MissionRepository extends BaseRepository {
         if (existsSync(reportPath)) {
           try {
             reports[dir.name] = readFileSync(reportPath, 'utf-8')
-          } catch { /* skip */ }
+          } catch (err) {
+            logger.debug('mission-repo', 'failed to read dept report', { dept: dir.name, error: err.message })
+          }
         }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to enumerate department dirs for reports', { error: err.message })
+    }
     return reports
   }
 
@@ -79,10 +89,14 @@ class MissionRepository extends BaseRepository {
             for (const item of (data.items || [])) {
               escalations.push({ deptId: dir.name, ...item })
             }
-          } catch { /* skip */ }
+          } catch (err) {
+            logger.debug('mission-repo', 'failed to parse escalations', { dept: dir.name, error: err.message })
+          }
         }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to enumerate department dirs for escalations', { error: err.message })
+    }
     return escalations
   }
 
@@ -91,7 +105,9 @@ class MissionRepository extends BaseRepository {
     try {
       const p = join(agentDir, filename)
       if (existsSync(p)) return readFileSync(p, 'utf-8')
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read workspace file', { filename, error: err.message })
+    }
     return null
   }
 
@@ -131,7 +147,9 @@ class MissionRepository extends BaseRepository {
       if (existsSync(summaryPath)) {
         return readFileSync(summaryPath, 'utf-8').slice(0, 2000)
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read memory summary', { agentId, error: err.message })
+    }
     return null
   }
 
@@ -142,7 +160,9 @@ class MissionRepository extends BaseRepository {
       if (existsSync(reportPath)) {
         return readFileSync(reportPath, 'utf-8').slice(0, 2000)
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read dept report', { deptId, error: err.message })
+    }
     return ''
   }
 
@@ -154,7 +174,9 @@ class MissionRepository extends BaseRepository {
         const data = JSON.parse(readFileSync(directivesPath, 'utf-8'))
         return data.directives || []
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read dept directives', { deptId, error: err.message })
+    }
     return []
   }
 

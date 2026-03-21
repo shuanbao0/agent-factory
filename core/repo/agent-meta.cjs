@@ -15,6 +15,7 @@ const { join } = require('path')
 const { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync, rmSync } = require('fs')
 const { BaseRepository } = require('./base.cjs')
 const { AGENTS_DIR } = require('../common/paths.cjs')
+const logger = require('../common/logger.cjs')
 
 class AgentMetaRepository extends BaseRepository {
   /**
@@ -78,7 +79,9 @@ class AgentMetaRepository extends BaseRepository {
     const filePath = join(AGENTS_DIR, agentId, filename)
     try {
       if (existsSync(filePath)) return readFileSync(filePath, 'utf-8')
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'failed to read agent file', { agentId, filename, error: err.message })
+    }
     return null
   }
 
@@ -140,7 +143,10 @@ class AgentMetaRepository extends BaseRepository {
       if (!existsSync(filePath)) return null
       const st = statSync(filePath)
       return { size: st.size, mtimeMs: st.mtimeMs }
-    } catch { return null }
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'failed to stat agent file', { agentId, filename, error: err.message })
+      return null
+    }
   }
 
   /**
@@ -155,10 +161,15 @@ class AgentMetaRepository extends BaseRepository {
     try {
       return readdirSync(dir, { withFileTypes: true }).map(entry => {
         let mtime = 0
-        try { mtime = statSync(join(dir, entry.name)).mtimeMs } catch { /* skip */ }
+        try { mtime = statSync(join(dir, entry.name)).mtimeMs } catch (err) {
+          logger.debug('agent-meta-repo', 'failed to stat entry', { entry: entry.name, error: err.message })
+        }
         return { name: entry.name, isFile: entry.isFile(), mtime }
       })
-    } catch { return [] }
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'failed to list agent dir', { agentId, subpath, error: err.message })
+      return []
+    }
   }
 
   /**

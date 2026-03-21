@@ -14,6 +14,7 @@ const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameS
 const { join, resolve, dirname } = require('path')
 const { BaseRepository } = require('./base.cjs')
 const { PROJECT_ROOT, PROJECTS_DIR, TASKS_FILE } = require('../common/paths.cjs')
+const logger = require('../common/logger.cjs')
 
 /** Atomic write: tmp + rename to avoid partial writes */
 function atomicWrite(filePath, content) {
@@ -23,7 +24,8 @@ function atomicWrite(filePath, content) {
   try {
     writeFileSync(tmp, content)
     renameSync(tmp, filePath)
-  } catch {
+  } catch (err) {
+    logger.debug('task-repo', 'atomic rename failed, falling back to direct write', { filePath, error: err.message })
     writeFileSync(filePath, content)
   }
 }
@@ -73,7 +75,8 @@ class TaskRepository extends BaseRepository {
       if (!existsSync(TASKS_FILE)) return []
       const data = JSON.parse(readFileSync(TASKS_FILE, 'utf-8'))
       return (data.tasks || []).map(t => this.normalizeTask(t))
-    } catch {
+    } catch (err) {
+      logger.warn('task-repo', 'failed to parse standalone tasks', { file: TASKS_FILE, error: err.message })
       return []
     }
   }
@@ -89,7 +92,8 @@ class TaskRepository extends BaseRepository {
     if (!existsSync(metaPath)) return null
     try {
       return JSON.parse(readFileSync(metaPath, 'utf-8'))
-    } catch {
+    } catch (err) {
+      logger.debug('task-repo', 'failed to read project meta', { projectId, error: err.message })
       return null
     }
   }
@@ -123,7 +127,9 @@ class TaskRepository extends BaseRepository {
               }
             }
             results.push({ id: dir.name, ...meta })
-          } catch { /* skip */ }
+          } catch (err) {
+            logger.warn('task-repo', 'failed to parse project meta', { project: dir.name, error: err.message })
+          }
         }
         // Nested sub-projects
         try {
@@ -141,12 +147,18 @@ class TaskRepository extends BaseRepository {
                   }
                 }
                 results.push({ id: subId, ...meta })
-              } catch { /* skip */ }
+              } catch (err) {
+                logger.warn('task-repo', 'failed to parse sub-project meta', { project: subId, error: err.message })
+              }
             }
           }
-        } catch { /* skip */ }
+        } catch (err) {
+          logger.debug('task-repo', 'failed to read sub-projects', { dir: dir.name, error: err.message })
+        }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('task-repo', 'failed to read projects directory', { error: err.message })
+    }
     return results
   }
 
@@ -219,7 +231,8 @@ class TaskRepository extends BaseRepository {
     try {
       if (!existsSync(outputPath)) return null
       return readFileSync(outputPath, 'utf-8')
-    } catch {
+    } catch (err) {
+      logger.debug('task-repo', 'failed to read task output', { outputPath, error: err.message })
       return null
     }
   }

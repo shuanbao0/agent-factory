@@ -7,6 +7,8 @@
  * 依赖注入：惰性 require configRepo、modelsRepo、authProfilesRepo
  */
 
+const logger = require('./logger.cjs')
+
 // Lazy requires to avoid circular dependencies
 let _configRepo
 function getConfigRepo() {
@@ -149,8 +151,9 @@ function syncOpenClawConfig(modelsConfig, providerDefs) {
 
       return ocConfig
     })
-  } catch {
+  } catch (err) {
     // Non-fatal
+    logger.debug('models-service', 'failed to sync openclaw config', { error: err.message })
   }
 }
 

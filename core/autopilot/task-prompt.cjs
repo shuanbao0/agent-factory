@@ -13,6 +13,7 @@ const { getStrategy } = require('../task/strategy.cjs')
 const { getStandardsForType } = require('../common/task-standards.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 const { MAX_TASK_MEMORIES, MEMORY_MAX_CHARS } = require('./constants.cjs')
+const logger = require('../common/logger.cjs')
 
 /**
  * Read agent meta and extract display fields.
@@ -94,7 +95,9 @@ function buildTaskPrompt(agentId, task, options = {}) {
       }
       sections.push(stdParts.join('\n'))
     }
-  } catch { /* skip if standards unavailable */ }
+  } catch (err) {
+    logger.debug('task-prompt', 'task standards unavailable', { type: task.type, error: err.message })
+  }
 
   // 4c. Project standards (from config/project-standards.md via project meta)
   if (task.projectId) {
@@ -114,7 +117,9 @@ function buildTaskPrompt(agentId, task, options = {}) {
       if (projStandards?.boundaries) {
         sections.push(`## 项目边界\n${projStandards.boundaries}`)
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('task-prompt', 'project standards unavailable', { projectId: task.projectId, error: err.message })
+    }
   }
 
   // 5. Rework info
@@ -182,7 +187,9 @@ function buildTaskContext(agentId, summary, options = {}) {
     if (strategy.reviewCriteria) {
       parts.push(`评审关注点: ${strategy.reviewCriteria}`)
     }
-  } catch { /* skip if strategy unavailable */ }
+  } catch (err) {
+    logger.debug('task-prompt', 'strategy unavailable', { taskType, error: err.message })
+  }
 
   // Task standards (completion definition + boundaries)
   try {
@@ -196,7 +203,9 @@ function buildTaskContext(agentId, summary, options = {}) {
       const dontMatch = standards.typeStandards.match(/\*\*DON'T[：:]\*\*\s*(.+)/)
       if (dontMatch) parts.push(`禁止: ${dontMatch[1]}`)
     }
-  } catch { /* skip */ }
+  } catch (err) {
+    logger.debug('task-prompt', 'task standards unavailable for context', { taskType, error: err.message })
+  }
 
   // Project phase standards (from config/project-standards.md)
   if (projectId) {
@@ -214,7 +223,9 @@ function buildTaskContext(agentId, summary, options = {}) {
           }
         }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('task-prompt', 'project phase standards unavailable', { projectId, error: err.message })
+    }
   }
 
   // Project background
@@ -224,7 +235,9 @@ function buildTaskContext(agentId, summary, options = {}) {
       if (mission) {
         parts.push(`\n项目背景: ${mission.slice(0, 500)}`)
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('task-prompt', 'dept mission unavailable', { deptId, error: err.message })
+    }
   }
 
   // Rework feedback
@@ -246,7 +259,9 @@ function buildTaskContext(agentId, summary, options = {}) {
       const memLines = memories.map(m => `- ${m.taskId}: ${m.content.slice(0, 200)}`).join('\n')
       parts.push(`\n相关任务经验:\n${memLines}`)
     }
-  } catch { /* skip */ }
+  } catch (err) {
+    logger.debug('task-prompt', 'failed to load task memories', { agentId, error: err.message })
+  }
 
   return parts.join('\n')
 }

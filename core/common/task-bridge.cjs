@@ -5,6 +5,7 @@
  * 设计模式：Client/Adapter（fire-and-forget）
  */
 const http = require('http')
+const logger = require('./logger.cjs')
 
 const DASHBOARD_BASE = 'http://localhost:3100'
 const INTERNAL_TOKEN = process.env.AGENT_FACTORY_TOKEN || 'agent-factory-internal-token-2026'
@@ -25,10 +26,16 @@ function apiRequest(method, path, body) {
       let data = ''
       res.on('data', chunk => { data += chunk })
       res.on('end', () => {
-        try { resolve(JSON.parse(data)) } catch { resolve(null) }
+        try { resolve(JSON.parse(data)) } catch (err) {
+          logger.debug('task-bridge', 'failed to parse API response', { path, error: err.message })
+          resolve(null)
+        }
       })
     })
-    req.on('error', () => resolve(null))
+    req.on('error', (err) => {
+      logger.debug('task-bridge', 'API request error', { method, path, error: err.message })
+      resolve(null)
+    })
     req.on('timeout', () => { req.destroy(); resolve(null) })
     if (postData) req.write(postData)
     req.end()
@@ -44,7 +51,8 @@ async function createCycleTask(agentId, type, cycleNum) {
       priority: 'P2',
     })
     return result?.task?.id || null
-  } catch {
+  } catch (err) {
+    logger.debug('task-bridge', 'failed to create cycle task', { agentId, type, error: err.message })
     return null
   }
 }
@@ -57,7 +65,9 @@ async function completeCycleTask(agentId, taskId, result) {
       ? (result.text || '').slice(0, 200)
       : `Error: ${result.error || 'unknown'}`
     await apiRequest('PUT', '/api/agent-tasks', { agent: agentId, taskId, status, output })
-  } catch { /* skip */ }
+  } catch (err) {
+    logger.debug('task-bridge', 'failed to complete cycle task', { agentId, taskId, error: err.message })
+  }
 }
 
 async function createWorkTask(assignee, taskName, deptId, options = {}) {
@@ -74,7 +84,8 @@ async function createWorkTask(assignee, taskName, deptId, options = {}) {
       priority: options.priority || 'P1',
     })
     return result?.task?.id || null
-  } catch {
+  } catch (err) {
+    logger.debug('task-bridge', 'failed to create work task', { assignee, taskName, error: err.message })
     return null
   }
 }
@@ -83,7 +94,9 @@ async function updateTaskStatus(agentId, taskId, status, extras) {
   if (!taskId) return
   try {
     await apiRequest('PUT', '/api/agent-tasks', { agent: agentId, taskId, status, ...extras })
-  } catch { /* skip */ }
+  } catch (err) {
+    logger.debug('task-bridge', 'failed to update task status', { agentId, taskId, status, error: err.message })
+  }
 }
 
 async function findActiveTaskForAgent(assignee, _deptId) {
@@ -94,7 +107,8 @@ async function findActiveTaskForAgent(assignee, _deptId) {
     const activeStatuses = new Set(['pending', 'assigned', 'in_progress', 'rework', 'review'])
     const active = result.tasks.find(t => activeStatuses.has(t.status))
     return active ? active.id : null
-  } catch {
+  } catch (err) {
+    logger.debug('task-bridge', 'failed to find active task', { assignee, error: err.message })
     return null
   }
 }

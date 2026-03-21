@@ -8,6 +8,7 @@ const { readFileSync, existsSync, readdirSync, statSync } = require('fs')
 const { join } = require('path')
 const { BaseRepository } = require('./base.cjs')
 const { SESSIONS_DIR } = require('../common/paths.cjs')
+const logger = require('../common/logger.cjs')
 
 class SessionRepository extends BaseRepository {
   /**
@@ -39,9 +40,13 @@ class SessionRepository extends BaseRepository {
             lastActive: latestUpdate || stat.mtimeMs,
             idleMins: Math.round((Date.now() - (latestUpdate || stat.mtimeMs)) / 60000),
           }
-        } catch { /* skip unreadable sessions */ }
+        } catch (err) {
+          logger.debug('session-repo', 'failed to read session file', { agent: dir.name, error: err.message })
+        }
       }
-    } catch { /* skip if directory unreadable */ }
+    } catch (err) {
+      logger.warn('session-repo', 'sessions directory unreadable', { error: err.message })
+    }
     return activity
   }
 
@@ -66,9 +71,13 @@ class SessionRepository extends BaseRepository {
           }
           totals.byAgent[dir.name] = agentTotal
           totals.all += agentTotal
-        } catch { /* skip */ }
+        } catch (err) {
+          logger.debug('session-repo', 'failed to read session tokens', { agent: dir.name, error: err.message })
+        }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('session-repo', 'failed to enumerate session dirs', { error: err.message })
+    }
     return totals
   }
 
@@ -90,7 +99,8 @@ class SessionRepository extends BaseRepository {
         compactionCount: sess.compactionCount || 0,
         contextTokens: sess.contextTokens || 200000,
       }
-    } catch {
+    } catch (err) {
+      logger.debug('session-repo', 'failed to read session token info', { agentId, sessionKey, error: err.message })
       return null
     }
   }
@@ -119,9 +129,13 @@ class SessionRepository extends BaseRepository {
               stale.push({ agentId: dir.name, sessionKey: key, updatedAt })
             }
           }
-        } catch { /* skip */ }
+        } catch (err) {
+          logger.debug('session-repo', 'failed to read stale sessions', { agent: dir.name, error: err.message })
+        }
       }
-    } catch { /* skip */ }
+    } catch (err) {
+      logger.debug('session-repo', 'failed to enumerate session dirs for stale check', { error: err.message })
+    }
     return stale
   }
 }

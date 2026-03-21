@@ -15,6 +15,8 @@
  * - budget.dept_blocked  → 部门预算被阻断
  */
 
+const logger = require('../../common/logger.cjs')
+
 /** 告警队列最大容量 */
 const MAX_ALERTS = 50
 /** @type {Array<{id: string, type: string, severity: string, ts: string, data: object}>} */
@@ -37,7 +39,9 @@ function register(bus) {
         data: { date: event.date, totalCost: event.totalCost, threshold: event.threshold, source: event.source },
       })
       if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
-    } catch { /* reactor 错误不传播 */ }
+    } catch (err) {
+      logger.debug('alert-bridge', 'reactor error on alert.cost_exceeded', { error: err.message })
+    }
   })
 
   // 循环耗时异常告警
@@ -51,7 +55,9 @@ function register(bus) {
         data: { deptId: event.deptId, currentDurationMs: event.currentDurationMs, averageDurationMs: event.averageDurationMs },
       })
       if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
-    } catch { /* reactor 错误不传播 */ }
+    } catch (err) {
+      logger.debug('alert-bridge', 'reactor error on alert.cycle_slowdown', { error: err.message })
+    }
   })
 
   // 部门预算阻断告警
@@ -65,7 +71,9 @@ function register(bus) {
         data: { deptId: event.deptId, reason: event.reason, ratio: event.ratio },
       })
       if (alerts.length > MAX_ALERTS) alerts.splice(0, alerts.length - MAX_ALERTS)
-    } catch { /* reactor 错误不传播 */ }
+    } catch (err) {
+      logger.debug('alert-bridge', 'reactor error on budget.dept_blocked', { error: err.message })
+    }
   })
 }
 

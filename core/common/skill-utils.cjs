@@ -4,6 +4,7 @@
  */
 const { existsSync, readFileSync } = require('fs')
 const { join } = require('path')
+const logger = require('./logger.cjs')
 
 /**
  * 从 SKILL.md 提取 frontmatter 元数据
@@ -51,7 +52,9 @@ function generateToolsMd(agentId, skills, agentDir) {
         if (bins.length > 0) lines.push(`- **Requires:** ${bins.map(b => `\`${b}\``).join(', ')} on PATH`)
         lines.push(`- Full docs: \`skills/${slug}/SKILL.md\``, '')
         continue
-      } catch { /* skip */ }
+      } catch (err) {
+        logger.debug('skill-utils', 'failed to parse skill metadata', { slug, error: err.message })
+      }
     }
     lines.push(`### ${slug}`, `- Full docs: \`skills/${slug}/SKILL.md\``, '')
   }
