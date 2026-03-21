@@ -290,8 +290,10 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 
 当你需要分派工作给其他 Agent 时，**必须**按以下顺序执行：
 
-1. **确认项目** — 查询你部门的项目，确认使用哪个 projectId：
+1. **确认项目并阅读项目标准** — 查询你部门的项目，确认使用哪个 projectId：
    - 部门项目位于 `projects/{部门ID}/{项目名}/`，projectId 格式为 `{部门ID}/{项目名}`（如 `novel/chapter-1`、`tech/mobile-app`）
+   - **必须阅读** `projects/{部门ID}/{项目名}/STANDARDS.md` — 了解当前阶段的入口/出口条件和交付物要求
+   - **必须阅读** `config/task-standards.md` — 了解各任务类型的完成定义和质量检查清单，据此制定明确的任务要求
    - 查询部门项目：`curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects?department=你的部门ID"`
    - 创建新项目：`curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" -d '{"name":"项目名","department":"你的部门ID"}' "http://127.0.0.1:3100/api/projects"`
    - 如果部门下没有项目，先创建再分派任务
@@ -319,17 +321,22 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
    ```bash
    curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
    ```
-2. **更新为进行中** — 开始工作前：
+2. **阅读标准文件** — 开始工作前必须了解质量要求：
+   - **阅读项目标准**: `cat projects/{projectId}/STANDARDS.md` — 了解项目当前阶段的出口条件、交付物要求、项目边界（DO/DON'T）
+   - **阅读任务标准**: `cat config/task-standards.md` — 找到你的任务类型（如 `### writing`），了解完成定义、质量检查清单、DO/DON'T
+   - 任务的 `description` 字段中也包含系统注入的标准摘要，但**阅读原文件可获得完整标准**
+3. **更新为进行中** — 开始工作前：
    ```bash
    curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
      -d '{"agent":"YOUR_ID","taskId":"task-xxx","status":"in_progress","progress":0}' \
      "http://127.0.0.1:3100/api/agent-tasks"
    ```
-3. **过程中更新进度** — 每完成重要阶段：
+4. **过程中更新进度** — 每完成重要阶段：
    ```bash
    curl -X PUT ... -d '{"agent":"YOUR_ID","taskId":"task-xxx","progress":50}'
    ```
-4. **完成时提交** — 附带产出和自检评分：
+5. **完成前对照标准自检** — 提交前对照 `config/task-standards.md` 中你任务类型的质量检查清单逐项核实
+6. **完成时提交** — 附带产出和自检评分：
    ```bash
    curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
      -d '{"agent":"YOUR_ID","taskId":"task-xxx","status":"completed","progress":100,"output":"产出文件路径","quality":{"selfCheck":{"passed":true,"score":85,"checklist":["xxx"],"at":"ISO时间"}}}' \
@@ -337,13 +344,16 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
    ```
 
 **收到没有 Task ID 的工作指令时**：如果 peer-send 消息是明确的工作任务但没有引用 Task ID，你**应该主动创建任务**再开始执行：
+- 先阅读 `config/task-standards.md` 确认任务类型和完成定义
+- 先阅读 `projects/{projectId}/STANDARDS.md` 确认项目阶段要求
 - 从消息上下文推断 projectId（通常是你所属部门的 ID）
 - 如果无法确定 projectId，使用你的 department 作为 projectId
 ```bash
 curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
-  -d '{"agent":"YOUR_ID","name":"从消息中提取的任务名","projectId":"你的部门ID","type":"类型","priority":"P1"}' \
+  -d '{"agent":"YOUR_ID","name":"从消息中提取的任务名","projectId":"你的部门ID","priority":"P1"}' \
   "http://127.0.0.1:3100/api/agent-tasks"
 ```
+注：不需要手动指定 `type`，系统会根据任务名和你的角色自动推断。
 
 #### 任务状态流转
 
