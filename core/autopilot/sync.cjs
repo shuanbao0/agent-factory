@@ -9,6 +9,7 @@ const { sessionRepo } = require('../repo/session.cjs')
 const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const fileBrowser = require('../common/file-browser.cjs')
+const { injectStandardsForProject } = require('../common/project-standards.cjs')
 const logger = require('./logger.cjs')
 
 /**
@@ -67,6 +68,7 @@ function syncProjects(ceoResponseText) {
           }
         }
 
+        const phaseChanged = phase !== meta.currentPhase
         meta.currentPhase = phase
         meta.status = status
         meta.tokensUsed = projectTokens
@@ -74,6 +76,12 @@ function syncProjects(ceoResponseText) {
         meta.updatedAt = new Date().toISOString()
 
         projectMetaRepo.writeMeta(dirName, meta)
+
+        // Re-inject STANDARDS.md when phase advances (updates "当前阶段" marker)
+        if (phaseChanged) {
+          try { injectStandardsForProject(dirName) } catch { /* non-blocking */ }
+        }
+
         logger.info('sync', `Synced project: ${dirName} (phase ${phase}, ${status}, ${blockers.length} blockers)`)
       } catch (err) {
         logger.error('sync', `Failed to sync project ${dirName}`, err)

@@ -134,8 +134,6 @@ class QualityOrchestrator {
   _getProjectContext(task) {
     if (!task.projectId) return ''
     try {
-      const projMetaRepo = getTaskRepo() // lazy — avoids circular
-      // Read project meta via projectMetaRepo (accessed through task repo's parent)
       const { projectMetaRepo } = require('../repo/project-meta.cjs')
       const projMeta = projectMetaRepo.readMeta(task.projectId)
       if (!projMeta?.currentPhase || !projMeta?.phases) return ''
