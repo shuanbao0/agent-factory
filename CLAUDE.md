@@ -142,7 +142,10 @@ agent-factory/
 │   ├── agents/builtin/    # 内置 Agent 模板（65 个角色）
 │   └── departments/builtin/ # 内置部门模板（12 个部门）
 ├── skills/                # 共享技能（project-init、peer-status、task-api 等）
-├── scripts/               # 运维与迁移脚本
+├── scripts/
+│   ├── runtime/           # 系统运行时（start.mjs, autopilot, gateway-chat）
+│   ├── migrate/           # 更新迁移脚本（migrate-*.mjs）
+│   └── tools/             # 运维工具（inject-*, cleanup-*）
 ├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿）
 ├── libs/                  # 本地库（openclaw 源码，不提交）
 ├── .env                   # API Key 等敏感配置（不提交）
@@ -387,18 +390,41 @@ ui/src/
 └── styles/globals.css     # Tailwind + 自定义样式（暗色主题）
 ```
 
-### scripts/ — 运维与迁移脚本
+### scripts/ — 按用途分三类
+
+**`scripts/runtime/`** — 系统运行时脚本
 
 | 脚本 | 用途 | 设计特点 |
 |------|------|----------|
-| `start.mjs` | 统一启动 Dashboard + Gateway | 后台 spawn + PID 文件 |
+| `start.mjs` | 统一启动 Dashboard + Gateway | 初始化 data/ + 后台 spawn + PID 文件 |
 | `autopilot.cjs` | Autopilot 入口（委托 core/autopilot） | detached 进程 |
-| `inject-base-rules.mjs` | 注入 base-rules 到 Agent | 幂等 marker 机制 + `--dry-run` |
-| `inject-project-standards.mjs` | 注入项目标准到项目 STANDARDS.md | 幂等 marker + `--dry-run` |
+| `autopilot/index.cjs` | CEO 协调循环主进程 | 由 orchestrator spawn |
+| `autopilot/department-loop.cjs` | 部门循环子进程 | 独立部门隔离 |
+| `gateway-chat.js` | WebSocket 聊天桥接 | 绕过 Next.js webpack ws 兼容问题 |
+
+**`scripts/migrate/`** — 更新迁移脚本（`agent-factory update` 自动调用）
+
+| 脚本 | 用途 | 设计特点 |
+|------|------|----------|
+| `migrate-data-dir.mjs` | 旧版目录 → data/ 统一目录 | 幂等，已迁移则跳过 |
 | `migrate-sync-builtin.mjs` | 同步内置模板到已有 Agent | peers/skills/AGENTS.md 对齐 |
 | `migrate-sync-config.mjs` | 同步部门配置 | `AF_UPDATE_DIR` 支持 + 智能合并 |
 | `migrate-sync-gateway.mjs` | 同步 openclaw.json + models.json | 深度合并，保留用户值 |
-| `migrate-multi-project.mjs` | 1:1→1:N 项目迁移 | 幂等，`projects/{dept}/` → `projects/{dept}/default/` |
+| `migrate-multi-project.mjs` | 1:1→1:N 项目迁移 | 幂等 |
+
+**`scripts/tools/`** — 运维工具（手动运行）
+
+| 脚本 | 用途 | 设计特点 |
+|------|------|----------|
+| `inject-base-rules.mjs` | 注入 base-rules 到 Agent | 幂等 marker + `--dry-run` |
+| `inject-project-standards.mjs` | 注入项目标准到 STANDARDS.md | 幂等 marker + `--dry-run` |
+| `cleanup-invalid-outputs.mjs` | 清理 workspaces 空文件/残留 | `--dry-run` 支持 |
+
+**`scripts/`** 根目录 — 安装相关
+
+| 脚本 | 用途 | 设计特点 |
+|------|------|----------|
+| `install.sh` | 统一安装脚本 | npm install + 环境检查 + CLI 注册 |
 | `patch-openclaw.mjs` | postinstall 自动补丁 | 幂等，版本 >= 2026.4.0 自动跳过 |
 
 ### templates/builtin/ — 内置 Agent 模板
@@ -708,11 +734,11 @@ orchestrator → gateway-client → WebSocket → OpenClaw Gateway → LLM APIs
 `config/base-rules.md` 包含三段（`## AGENTS_RULES` / `## SOUL_RULES` / `## REMINDER`），通过 `ui/src/lib/base-rules.ts` 的 marker 机制幂等注入到每个 Agent 的 AGENTS.md 和 SOUL.md 中。
 
 - Agent 创建/更新时自动注入（`injectBaseRulesForAgent()`）
-- 手动批量重新注入：`node scripts/inject-base-rules.mjs`
-- 单个 Agent 注入：`node scripts/inject-base-rules.mjs novel-chief`
+- 手动批量重新注入：`node scripts/tools/inject-base-rules.mjs`
+- 单个 Agent 注入：`node scripts/tools/inject-base-rules.mjs novel-chief`
 - `agent-factory update` 会自动重新注入
 
-修改 `config/base-rules.md` 后必须执行 `node scripts/inject-base-rules.mjs` 使规则生效。
+修改 `config/base-rules.md` 后必须执行 `node scripts/tools/inject-base-rules.mjs` 使规则生效。
 
 ### 项目标准 + 任务标准注入机制
 
@@ -720,9 +746,9 @@ orchestrator → gateway-client → WebSocket → OpenClaw Gateway → LLM APIs
 
 **`config/project-standards.md`**（两段：`## LIFECYCLE` + `## BOUNDARIES`）：
 - 项目创建时自动注入 → `projects/{dept}/{slug}/STANDARDS.md`（marker 幂等：`<!-- PROJECT-STANDARDS:BEGIN/END -->`）
-- 手动重新注入：`node scripts/inject-project-standards.mjs`
+- 手动重新注入：`node scripts/tools/inject-project-standards.mjs`
 - 部门指令（`dept-directive.cjs`）自动展示项目当前阶段的出口条件
-- 修改后执行 `node scripts/inject-project-standards.mjs` 使已有项目更新
+- 修改后执行 `node scripts/tools/inject-project-standards.mjs` 使已有项目更新
 
 **`config/task-standards.md`**（两段：`## GENERAL` + `## TYPES`）：
 - 14 种任务类型（通用 9 + 创作 5）定义完成定义、检查清单、DO/DON'T
@@ -753,7 +779,7 @@ WebSocket 连接 `ws://127.0.0.1:19100`，帧协议：
 1. `connect` + token → `hello-ok`
 2. `chat.send` + sessionKey + message → `chat` events (delta/final/error)
 
-为避免 Next.js webpack 打包 `ws` 模块的问题，聊天使用独立 Node 子进程（`ui/scripts/gateway-chat.js`）。
+为避免 Next.js webpack 打包 `ws` 模块的问题，聊天使用独立 Node 子进程（`scripts/runtime/gateway-chat.js`）。
 
 ## 编码规范
 
@@ -946,29 +972,31 @@ cd ui && npm run dev
 ## 常用运维脚本
 
 ```bash
+# ── 运维工具（scripts/tools/）──────────────────────────────
+
 # 重新注入 base-rules 到所有 Agent（修改 config/base-rules.md 后必须执行）
-node scripts/inject-base-rules.mjs
+node scripts/tools/inject-base-rules.mjs
 
 # 重新注入项目标准到所有项目（修改 config/project-standards.md 后执行）
-node scripts/inject-project-standards.mjs              # 全部
-node scripts/inject-project-standards.mjs novel/default # 单个
-node scripts/inject-project-standards.mjs --dry-run     # 预览
+node scripts/tools/inject-project-standards.mjs              # 全部
+node scripts/tools/inject-project-standards.mjs novel/default # 单个
+node scripts/tools/inject-project-standards.mjs --dry-run     # 预览
 
-# 同步部门配置（update 后自动执行，也可手动运行）
-node scripts/migrate-sync-config.mjs --dry-run   # 预览
-node scripts/migrate-sync-config.mjs             # 同步所有部门
-node scripts/migrate-sync-config.mjs novel        # 同步单个部门
+# 清理无效产出文件
+node scripts/tools/cleanup-invalid-outputs.mjs --dry-run
 
-# 同步 Gateway 配置（openclaw.json + models.json，update 后自动执行）
-node scripts/migrate-sync-gateway.mjs --dry-run   # 预览
-node scripts/migrate-sync-gateway.mjs             # 同步
+# ── 迁移脚本（scripts/migrate/，update 自动调用）────────────
 
-# 迁移旧版 1:1 项目到 1:N 多项目（幂等，projects/{dept}/ → projects/{dept}/default/）
-node scripts/migrate-multi-project.mjs --dry-run  # 预览
-node scripts/migrate-multi-project.mjs            # 执行
+node scripts/migrate/migrate-sync-config.mjs --dry-run   # 预览部门配置同步
+node scripts/migrate/migrate-sync-gateway.mjs --dry-run   # 预览 Gateway 配置同步
+node scripts/migrate/migrate-data-dir.mjs --dry-run       # 预览目录迁移
 
-# OpenClaw postinstall 补丁（npm install 自动触发，通常无需手动运行）
-node scripts/patch-openclaw.mjs
+# ── 查看日志 ───────────────────────────────────────────────
+
+agent-factory logs                     # 实时 tail 今日结构化日志
+agent-factory logs --level=ERROR       # 按级别过滤
+agent-factory logs --lines=50          # 最近 50 行
+agent-factory logs --no-follow         # 打印后退出
 
 # 升级（用户端）
 agent-factory update
@@ -1053,7 +1081,7 @@ lsof -ti:19100 | xargs kill -9 2>/dev/null
 npm run gateway
 
 # 4. 用 gateway-chat.js 发测试消息（stderr 输出 [chat-debug] 诊断日志）
-CHAT_INPUT='{"sessionKey":"agent:ceo:test","message":"测试消息"}' node ui/scripts/gateway-chat.js
+CHAT_INPUT='{"sessionKey":"agent:ceo:test","message":"测试消息"}' node scripts/runtime/gateway-chat.js
 
 # 5. 测试完毕后恢复 npm registry 版本
 rm /Users/yuanwu/workspace/agent-factory-workspace/node_modules/openclaw
