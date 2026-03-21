@@ -143,7 +143,7 @@ agent-factory/
 │   └── departments/builtin/ # 内置部门模板（12 个部门）
 ├── skills/                # 共享技能（project-init、peer-status、task-api 等）
 ├── scripts/
-│   ├── runtime/           # 系统运行时（start.mjs, autopilot, gateway-chat）
+│   ├── runtime/           # 系统运行时（start.mjs, autopilot）
 │   ├── migrate/           # 更新迁移脚本（migrate-*.mjs）
 │   └── tools/             # 运维工具（inject-*, cleanup-*）
 ├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿）
@@ -400,7 +400,6 @@ ui/src/
 | `autopilot.cjs` | Autopilot 入口（委托 core/autopilot） | detached 进程 |
 | `autopilot/index.cjs` | CEO 协调循环主进程 | 由 orchestrator spawn |
 | `autopilot/department-loop.cjs` | 部门循环子进程 | 独立部门隔离 |
-| `gateway-chat.js` | WebSocket 聊天桥接 | 绕过 Next.js webpack ws 兼容问题 |
 
 **`scripts/migrate/`** — 更新迁移脚本（`agent-factory update` 自动调用）
 
@@ -779,7 +778,7 @@ WebSocket 连接 `ws://127.0.0.1:19100`，帧协议：
 1. `connect` + token → `hello-ok`
 2. `chat.send` + sessionKey + message → `chat` events (delta/final/error)
 
-为避免 Next.js webpack 打包 `ws` 模块的问题，聊天使用独立 Node 子进程（`scripts/runtime/gateway-chat.js`）。
+为避免 Next.js webpack 打包 `ws` 模块的问题，聊天使用独立 Node 子进程（`ui/scripts/gateway-chat.js`）。
 
 ## 编码规范
 
@@ -1081,7 +1080,7 @@ lsof -ti:19100 | xargs kill -9 2>/dev/null
 npm run gateway
 
 # 4. 用 gateway-chat.js 发测试消息（stderr 输出 [chat-debug] 诊断日志）
-CHAT_INPUT='{"sessionKey":"agent:ceo:test","message":"测试消息"}' node scripts/runtime/gateway-chat.js
+CHAT_INPUT='{"sessionKey":"agent:ceo:test","message":"测试消息"}' node ui/scripts/gateway-chat.js
 
 # 5. 测试完毕后恢复 npm registry 版本
 rm /Users/yuanwu/workspace/agent-factory-workspace/node_modules/openclaw
