@@ -108,26 +108,39 @@ agent-factory/
 │   ├── autopilot/         # Autopilot 自主循环（CEO + 部门循环）
 │   └── common/            # 通用工具（validators, task-bridge, autopilot-state）
 ├── ui/                    # Next.js Dashboard（详见下方）
-├── agents/                # Agent 核心定义（运行时创建，不提交）
-├── workspaces/            # Agent 产出空间（不提交）
-├── projects/              # 项目空间（projects/{dept}/{project-slug}/，1 部门 N 项目，不提交）
+├── data/                  # 运行时数据（gitignored，统一管理）
+│   ├── agents/            # Agent 核心定义（运行时创建）
+│   ├── workspaces/        # Agent 产出空间
+│   ├── projects/          # 项目空间（{dept}/{slug}/，1 部门 N 项目）
+│   ├── departments/       # 部门运行时配置（config.json + state.json + mission.md）
+│   ├── config/            # 运行时配置文件
+│   │   ├── openclaw.json  # Gateway 配置（端口、模型、Agent 列表）
+│   │   ├── models.json    # 模型别名
+│   │   ├── autopilot-state.json # Autopilot 状态
+│   │   ├── tasks.json     # 独立任务
+│   │   ├── departments.json # 部门注册表
+│   │   ├── budget.json    # 预算配置
+│   │   ├── mission.md     # 全局使命
+│   │   ├── autopilot-costs.jsonl  # 成本审计（append-only）
+│   │   └── autopilot-events.jsonl # 事件审计（append-only）
+│   ├── logs/              # 系统运行日志（按天轮转 YYYY-MM-DD.log）
+│   ├── openclaw-state/    # Gateway 会话状态
+│   └── templates/         # 用户自定义模板
+│       ├── agents/custom/
+│       └── departments/custom/
 ├── bin/
 │   └── agent-factory.mjs  # CLI 入口（start/stop/update/doctor 等命令）
-├── config/
-│   ├── openclaw.json      # Gateway 配置（端口、模型、插件、Agent 列表）
-│   ├── models.json        # 模型别名定义（Anthropic/MiniMax）
+├── config/                # 源码配置（git 跟踪，不可运行时修改）
 │   ├── base-rules.md      # 全局强制注入规则（三段：AGENTS_RULES/SOUL_RULES/REMINDER）
-│   ├── project-standards.md # 项目标准（生命周期 LIFECYCLE + 边界 BOUNDARIES，注入到项目 STANDARDS.md）
-│   ├── task-standards.md  # 任务标准（通用 GENERAL + 按类型 TYPES，注入到任务上下文和质量门自检）
-│   ├── autopilot-state.json # Autopilot 运行状态
-│   ├── departments.json   # 部门注册表
-│   ├── departments/       # 按部门的 config.json + state.json
-│   ├── budget.json        # 全局预算配置
-│   ├── autopilot-costs.jsonl  # 成本审计日志（append-only）
-│   └── autopilot-events.jsonl # 事件审计日志（append-only）
+│   ├── project-standards.md # 项目标准（LIFECYCLE + BOUNDARIES）
+│   ├── task-standards.md  # 任务标准（GENERAL + TYPES）
+│   ├── phase-deliverables.md # 阶段交付物模板
+│   ├── base-mission.md    # 默认使命模板
+│   ├── openclaw.default.json # Gateway 默认配置模板
+│   └── models.default.json  # 模型默认配置模板
 ├── templates/
-│   ├── builtin/           # 内置 Agent 模板（65 个角色）
-│   └── custom/            # 用户自定义模板（不提交）
+│   ├── agents/builtin/    # 内置 Agent 模板（65 个角色）
+│   └── departments/builtin/ # 内置部门模板（12 个部门）
 ├── skills/                # 共享技能（project-init、peer-status、task-api 等）
 ├── scripts/               # 运维与迁移脚本
 ├── docs/                  # 项目文档（BLUEPRINT、PLAN、设计稿）
@@ -148,7 +161,7 @@ agent-factory/
 |------|----------|
 | `task/` | `STATUSES`, `TRANSITIONS`, `TERMINAL`, `canTransition()`, `Task`, `TaskQuality`, `PipelineStep` |
 | `agent/` | `Agent`, `AgentMeta`, `AgentTemplate`, `AgentConfigEntry` |
-| `dept/` | `DepartmentConfig`, `DepartmentWorkflow`, `DepartmentLoopState`, `DEFAULT_DEPT_STATE` |
+| `dept/` | `DepartmentConfig`, `DepartmentWorkflow`, `DepartmentLoopState`, `DepartmentTemplate`, `DEFAULT_DEPT_STATE` |
 | `config/` | `OpenClawConfig`, `GatewayConfig` |
 | `autopilot/` | `AutopilotState` |
 | `observe/` | `CompanyBudget`, `CostEntry`, `DailyCostSummary` |
@@ -161,14 +174,14 @@ agent-factory/
 | Repository | 管理数据 | 缓存 TTL |
 |------------|----------|----------|
 | `BaseRepository` | 抽象基类：JSON 文件读写 + TTL 缓存 + 原子写入（tmp+rename） | 可配置 |
-| `ConfigRepository` | `config/openclaw.json` — Gateway 配置 + Agent 注册 | 30s |
-| `TaskRepository` | `config/tasks.json` + `projects/{id}/.project-meta.json` — 独立/项目任务 | 0（API 实时） |
-| `SessionRepository` | `.openclaw-state/` — Session token 用量 | 0 |
-| `DeptConfigRepository` | `config/departments/{id}/config.json` — 部门策略 | 30s |
-| `DeptStateRepository` | `config/departments/{id}/state.json` — 部门运行时状态 | 30s |
-| `MissionRepository` | `config/mission.md` / `config/departments/{id}/mission.md` | 0 |
-| `AgentMetaRepository` | `agents/{id}/agent.json` — Agent 元数据 | 0 |
-| `ProjectMetaRepository` | `projects/{dept}/{slug}/.project-meta.json` — 项目元数据（1 部门 N 项目） | 0 |
+| `ConfigRepository` | `data/config/openclaw.json` — Gateway 配置 + Agent 注册 | 30s |
+| `TaskRepository` | `data/config/tasks.json` + `data/projects/{id}/.project-meta.json` — 独立/项目任务 | 0（API 实时） |
+| `SessionRepository` | `data/openclaw-state/` — Session token 用量 | 0 |
+| `DeptConfigRepository` | `data/departments/{id}/config.json` — 部门策略 | 30s |
+| `DeptStateRepository` | `data/departments/{id}/state.json` — 部门运行时状态 | 30s |
+| `MissionRepository` | `data/config/mission.md` / `data/departments/{id}/mission.md` | 0 |
+| `AgentMetaRepository` | `data/agents/{id}/agent.json` — Agent 元数据 | 0 |
+| `ProjectMetaRepository` | `data/projects/{dept}/{slug}/.project-meta.json` — 项目元数据（1 部门 N 项目） | 0 |
 
 ### core/task/ — 任务生命周期（State Machine + Strategy + Quality Gate）
 
@@ -274,12 +287,15 @@ CEO 协调周期 (30min)
 
 | 模块 | 职责 |
 |------|------|
+| `paths.cjs` | **所有数据目录和文件路径的单一真相源**。支持 `AGENT_FACTORY_DATA_DIR` 环境变量覆盖 |
+| `logger.cjs` | **全局结构化日志**（error/warn/info/debug 四级，按天轮转 `data/logs/YYYY-MM-DD.log`，14 天清理） |
+| `data-init.cjs` | 初始化 `data/` 目录结构（首次启动时创建必要的运行时目录） |
 | `task-bridge.cjs` | Dashboard API 客户端（fire-and-forget HTTP），用于 Autopilot 同步任务状态到 UI |
-| `autopilot-state.cjs` | 管理 `config/autopilot-state.json`（PID、周期计数） |
+| `autopilot-state.cjs` | 管理 `data/config/autopilot-state.json`（PID、周期计数） |
 | `validators.cjs` | 通用配置校验 |
 | `config-validator.cjs` | 配置结构验证 |
-| `agent-service.cjs` | Agent 元数据服务 |
-| `department-service.cjs` | 部门生命周期管理（创建/更新/删除） |
+| `agent-service.cjs` | Agent 生命周期（创建/更新/删除，12 步原子操作，全流程日志） |
+| `department-service.cjs` | 部门生命周期管理（创建/更新/删除，支持模板） |
 | `project-service.cjs` | 项目生命周期（1 部门 N 项目，dept/slug 复合 ID）+ Token 用量聚合。创建时自动注入 `STANDARDS.md` |
 | `file-browser.cjs` | 安全目录遍历 + workspace 管理 |
 | `skill-utils.cjs` | 技能元数据解析 + TOOLS.md 生成 |
@@ -287,6 +303,7 @@ CEO 协调周期 (30min)
 | `base-rules-injector.cjs` | Base-rules 解析与幂等注入 |
 | `project-standards.cjs` | 项目标准解析（`config/project-standards.md`）+ 幂等注入 `STANDARDS.md` 到项目目录 |
 | `task-standards.cjs` | 任务标准解析（`config/task-standards.md`）+ 按类型提取检查清单（内部缓存） |
+| `phase-deliverables.cjs` | 阶段交付物模板解析 + 骨架文件生成 |
 | `models-service.cjs` | models.json ↔ openclaw.json 同步 |
 | `env-manager.cjs` | .env 文件读写 |
 | `event-relay.cjs` | SSE 事件转发 |
@@ -470,21 +487,24 @@ interface DepartmentLoopState {
 
 ## 关键文件 I/O 一览
 
+所有运行时数据文件位于 `data/` 目录下，路径通过 `core/common/paths.cjs` 统一管理。
+
 | 文件 | 用途 | 模式 |
 |------|------|------|
-| `config/openclaw.json` | Gateway 配置 + Agent 注册 | ConfigRepository (30s 缓存) |
-| `config/departments/{id}/config.json` | 部门策略 | DeptConfigRepository (30s 缓存) |
-| `config/departments/{id}/state.json` | 部门运行时状态 | DeptStateRepository (30s 缓存) |
-| `config/tasks.json` | 独立任务 | TaskRepository (实时) |
-| `projects/{dept}/{slug}/.project-meta.json` | 项目元数据 + 任务 | TaskRepository (实时) |
-| `config/autopilot-state.json` | Autopilot 进程状态 | AutopilotState (实时) |
-| `config/autopilot-costs.jsonl` | 成本审计日志 | CostTracker (append-only) |
-| `config/autopilot-events.jsonl` | 事件审计日志 | EventBus (append-only) |
-| `config/budget.json` | 全局预算 | Budget (实时) |
+| `data/config/openclaw.json` | Gateway 配置 + Agent 注册 | ConfigRepository (30s 缓存) |
+| `data/departments/{id}/config.json` | 部门策略 | DeptConfigRepository (30s 缓存) |
+| `data/departments/{id}/state.json` | 部门运行时状态 | DeptStateRepository (30s 缓存) |
+| `data/config/tasks.json` | 独立任务 | TaskRepository (实时) |
+| `data/projects/{dept}/{slug}/.project-meta.json` | 项目元数据 + 任务 | TaskRepository (实时) |
+| `data/config/autopilot-state.json` | Autopilot 进程状态 | AutopilotState (实时) |
+| `data/config/autopilot-costs.jsonl` | 成本审计日志 | CostTracker (append-only) |
+| `data/config/autopilot-events.jsonl` | 事件审计日志 | EventBus (append-only) |
+| `data/config/budget.json` | 全局预算 | Budget (实时) |
+| `data/logs/YYYY-MM-DD.log` | 系统运行日志 | Logger (append, 14 天轮转) |
 | `config/project-standards.md` | 项目标准 base 文件 | project-standards.cjs (mtime 缓存) |
 | `config/task-standards.md` | 任务标准 base 文件 | task-standards.cjs (mtime 缓存) |
-| `projects/{dept}/{slug}/STANDARDS.md` | 项目执行标准（注入生成） | project-standards.cjs (幂等 marker) |
-| `agents/{id}/memory/` | Agent 记忆 | MemoryManager (实时) |
+| `data/projects/{dept}/{slug}/STANDARDS.md` | 项目执行标准（注入生成） | project-standards.cjs (幂等 marker) |
+| `data/agents/{id}/memory/` | Agent 记忆 | MemoryManager (实时) |
 
 ## 技术栈
 
@@ -608,6 +628,7 @@ npm run test:all              # 全部（含 E2E）
 | `DEEPSEEK_API_KEY` | 可选 | DeepSeek API Key |
 | `OPENCLAW_GATEWAY_PORT` | 否 | 自定义 Gateway 端口（默认 19100） |
 | `AGENT_FACTORY_DIR` | 否 | 项目根目录（自动检测） |
+| `AGENT_FACTORY_DATA_DIR` | 否 | 运行时数据目录（默认 `{PROJECT_ROOT}/data`，容器化部署可覆盖） |
 | `AGENT_FACTORY_TOKEN` | 否 | 内部通信 Token（默认 `agent-factory-internal-token-2026`） |
 | `AF_UPDATE_DIR` | 否 | update 时自动设置，指向新版 tmpDir，migrate 脚本用来读取 incoming config |
 
@@ -641,18 +662,27 @@ orchestrator → gateway-client → WebSocket → OpenClaw Gateway → LLM APIs
 
 `getStatus()` 返回值：`'running'` | `'stopped'` | `'starting'` | `'no-key'` | `'error'`
 
-### 双目录架构（agents/ vs workspaces/）
+### 源码与数据分离（data/ 统一数据目录）
 
-Agent 的核心定义与工作产出严格分离：
+所有运行时数据统一在 `data/` 下管理，源码目录保持干净：
 
-| 目录 | 用途 | 内容 |
+| 目录 | 类型 | 说明 |
 |------|------|------|
-| `agents/{id}/` | 核心定义 | AGENTS.md, SOUL.md, IDENTITY.md, MEMORY.md, memory/, skills/, agent.json |
-| `workspaces/{id}/` | 产出空间 | 文档、代码、分析报告等一切工作产出 |
+| `data/agents/{id}/` | 运行时 | Agent 核心定义（AGENTS.md, agent.json, memory/, skills/） |
+| `data/workspaces/{id}/` | 运行时 | Agent 产出空间 |
+| `data/projects/{dept}/{slug}/` | 运行时 | 项目空间（1 部门 N 项目） |
+| `data/departments/{id}/` | 运行时 | 部门配置（config.json, state.json, mission.md） |
+| `data/config/` | 运行时 | 运行时配置（openclaw.json, tasks.json 等） |
+| `data/logs/` | 运行时 | 系统日志（YYYY-MM-DD.log，14 天轮转） |
+| `data/openclaw-state/` | 运行时 | Gateway 会话状态 |
+| `data/templates/` | 运行时 | 用户自定义模板 |
+| `config/` | 源码 | 源码配置（base-rules.md 等，git 跟踪） |
+| `templates/` | 源码 | 内置模板（agents/builtin/, departments/builtin/） |
 
-- `config/openclaw.json` 的 workspace 字段指向 `agents/{id}/`（Gateway 从这里读取 Agent 定义）
-- `config/base-rules.md` 中的规则强制 Agent 把产出写到 `workspaces/{id}/`
-- `projects/{department}/{project-slug}/` 是项目空间（1 部门 N 项目），同部门 Agent 可读写。项目 ID 格式为 `{department}/{slug}`
+路径通过 `core/common/paths.cjs` 统一管理，支持 `AGENT_FACTORY_DATA_DIR` 环境变量覆盖（容器化部署用）。
+
+- `data/config/openclaw.json` 的 workspace 字段指向 `data/agents/{id}/`（Gateway 从这里读取 Agent 定义）
+- `config/base-rules.md` 中的规则强制 Agent 把产出写到 `data/workspaces/{id}/`
 
 ### 双 Session 架构（Chat + Worker）
 
@@ -798,12 +828,8 @@ Gateway 核心配置，包含：模型定义、Agent 列表、端口、认证 To
 
 ### 不提交的内容
 
+- `data/` — 所有运行时数据（agents、workspaces、projects、departments、config、logs、openclaw-state、自定义模板）
 - `.env` — API Key 等敏感信息
-- `agents/` — Agent 核心定义（运行时创建，仅保留 `.gitkeep`）
-- `workspaces/` — Agent 产出空间（运行时写入）
-- `projects/` — 项目空间（`projects/{dept}/{slug}/`，1 部门 N 项目）
-- `templates/custom/` — 用户自定义模板（仅保留 `.gitkeep`）
-- `.openclaw-state/` — Gateway 运行时状态
 - `libs/` — 本地库源码
 - `node_modules/`
 
@@ -818,7 +844,7 @@ Gateway 核心配置，包含：模型定义、Agent 列表、端口、认证 To
 
 - 切勿提交 `.env` 或任何包含 API Key 的文件
 - Gateway 内部 Token（`agent-factory-internal-token-2026`）仅用于本地通信
-- Auth profiles 存储在 `.openclaw-state/agents/main/agent/auth-profiles.json`（不提交）
+- Auth profiles 存储在 `data/openclaw-state/agents/main/agent/auth-profiles.json`（不提交）
 
 ## 修改代码后的操作流程
 
