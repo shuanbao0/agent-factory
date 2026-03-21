@@ -821,8 +821,10 @@ async function fallbackDispatch(deptId, config) {
       // No existing task — create one before dispatching
       const meta = readAgentMeta(agentId)
       const roleDesc = meta && meta.description ? meta.description : agentId
+      const fallbackMeta = agentMetaRepo.readMeta(agentId)
+      const fallbackType = inferTaskType(roleDesc, fallbackMeta)
       const newTaskId = await createWorkTask(agentId, `[${deptId}] ${agentId} 空闲派发`, deptId, {
-        type: 'fallback-dispatch',
+        type: fallbackType,
       })
       if (newTaskId) {
         updateTaskStatus(agentId, newTaskId, 'in_progress')
