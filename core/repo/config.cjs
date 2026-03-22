@@ -12,7 +12,7 @@
  * 导出单例 configRepo（30 秒缓存），供 Autopilot 循环使用
  */
 const { BaseRepository } = require('./base.cjs')
-const { GATEWAY_CONFIG_FILE } = require('../common/paths.cjs')
+const { GATEWAY_CONFIG_FILE, GATEWAY_DEFAULT_FILE } = require('../common/paths.cjs')
 
 class ConfigRepository extends BaseRepository {
   constructor(opts) {
@@ -20,9 +20,9 @@ class ConfigRepository extends BaseRepository {
     this._configPath = GATEWAY_CONFIG_FILE
   }
 
-  /** 读取完整配置对象 */
+  /** 读取完整配置对象，文件不存在时从默认模板加载 */
   getConfig() {
-    return this.read(this._configPath) || {}
+    return this.read(this._configPath) || this.read(GATEWAY_DEFAULT_FILE) || {}
   }
 
   /**
@@ -30,7 +30,8 @@ class ConfigRepository extends BaseRepository {
    * @param {function} mutator - (config) => config 修改函数
    */
   updateConfig(mutator) {
-    return this.update(this._configPath, mutator, {})
+    const defaultConfig = this.read(GATEWAY_DEFAULT_FILE) || {}
+    return this.update(this._configPath, mutator, defaultConfig)
   }
 
   /**
