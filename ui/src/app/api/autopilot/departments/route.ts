@@ -13,12 +13,12 @@ export async function GET() {
 
 /**
  * POST /api/autopilot/departments — update department config or directives
- * Body: { deptId, enabled?, interval?, directives?: string[] }
+ * Body: { deptId, enabled?, interval?, directives?: string[], mission?, standards? }
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { deptId, enabled, interval, directives, mission } = body
+    const { deptId, enabled, interval, directives, mission, standards } = body
 
     if (!deptId) {
       return NextResponse.json({ ok: false, error: 'deptId required' }, { status: 400 })
@@ -37,6 +37,11 @@ export async function POST(req: Request) {
     // Update department mission
     if (mission !== undefined) {
       core.repo.missionRepo.writeDeptMission(deptId, mission)
+    }
+
+    // Update department standards
+    if (standards !== undefined) {
+      core.repo.missionRepo.writeDeptStandards(deptId, standards)
     }
 
     // Update CEO directives

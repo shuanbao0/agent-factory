@@ -10,6 +10,7 @@ const { projectMetaRepo } = require('../repo/project-meta.cjs')
 const { buildMemoryContext } = require('../agent/memory.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
 const { loadTaskStandards, getTaskTypeStandards } = require('../common/task-standards.cjs')
+const { getStandardsForDept } = require('../common/dept-standards.cjs')
 const logger = require('../common/logger.cjs')
 
 /**
@@ -246,6 +247,30 @@ function buildKpiStatus(deptId, kpiDefs) {
 }
 
 /**
+ * Build department standards section from config/dept-standards.md + per-dept override.
+ * Falls back to hardcoded defaults if no standards file exists.
+ * @param {string} deptId
+ * @returns {string}
+ */
+function buildDeptStandardsSection(deptId) {
+  const FALLBACK = `- **先完成再开始** — 已有进行中任务的 agent 不派新活，专注完成现有工作
+- **待办优先于新建** — 优先分配已存在的 pending 任务，减少任务膨胀
+- **无任务的空闲 agent 必须有事做** — 发现无任务的空闲 agent 不分配是失职
+- 卡住超过 2 轮的任务要换方式推进或换人
+- 重要进展和阻塞立即上报`
+
+  const { generalStandards, typeStandards, customStandards } = getStandardsForDept(deptId)
+  if (!generalStandards && !typeStandards && !customStandards) return FALLBACK
+
+  const parts = []
+  if (generalStandards) parts.push(generalStandards)
+  if (typeStandards) parts.push(`### ${deptId} 部门专项\n${typeStandards}`)
+  if (customStandards) parts.push(`### 部门自定义标准\n${customStandards}`)
+
+  return parts.join('\n\n') || FALLBACK
+}
+
+/**
  * Build a complete directive for a department head.
  *
  * @param {string} deptId - Department ID
@@ -411,11 +436,7 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-
 5. **如果部门方向、工作重点发生变化，更新部门使命文件** — 写入 config/departments/${deptId}/mission.md
 
 ## 行动原则
-- **先完成再开始** — 已有进行中任务的 agent 不派新活，专注完成现有工作
-- **待办优先于新建** — 优先分配已存在的 pending 任务，减少任务膨胀
-- **无任务的空闲 agent 必须有事做** — 发现无任务的空闲 agent 不分配是失职
-- 卡住超过 2 轮的任务要换方式推进或换人
-- 重要进展和阻塞立即上报
+${buildDeptStandardsSection(deptId)}
 
 ## 输出格式要求
 请在响应中包含以下结构化总结：
@@ -432,4 +453,4 @@ node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-
 `
 }
 
-module.exports = { buildDepartmentDirective, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildDeptProjects, buildKpiStatus }
+module.exports = { buildDepartmentDirective, buildDeptStandardsSection, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildDeptProjects, buildKpiStatus }

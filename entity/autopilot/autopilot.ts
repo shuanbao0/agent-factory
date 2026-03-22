@@ -61,6 +61,7 @@ export interface DeptInfo {
   interval: number
   directives?: string[]
   mission?: string
+  standards?: string
   report?: string
   headExists?: boolean
   state: {

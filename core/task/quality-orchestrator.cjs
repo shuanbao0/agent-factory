@@ -12,6 +12,7 @@
 const { getStrategy } = require('./strategy.cjs')
 const { getStandardsForType } = require('../common/task-standards.cjs')
 const { loadProjectStandards, getPhaseStandards } = require('../common/project-standards.cjs')
+const { getStandardsForDept } = require('../common/dept-standards.cjs')
 const logger = require('../common/logger.cjs')
 
 // Lazy require to avoid circular dependencies
@@ -75,7 +76,7 @@ class QualityOrchestrator {
 
       // 1. Self-check
       try {
-        const selfCheck = await this._requestSelfCheck(task.assignedAgent || task.assignees?.[0], task)
+        const selfCheck = await this._requestSelfCheck(task.assignedAgent || task.assignees?.[0], task, deptId)
         sessionKeys.push(`agent:${task.assignedAgent || task.assignees?.[0]}:quality-check:${task.id}`)
         task.quality.selfCheck = selfCheck
         if (!selfCheck.passed) {
@@ -95,7 +96,7 @@ class QualityOrchestrator {
       const reviewer = this.selectReviewer(deptId, task, config)
       if (reviewer) {
         try {
-          const peerReview = await this._requestPeerReview(reviewer, task)
+          const peerReview = await this._requestPeerReview(reviewer, task, deptId)
           sessionKeys.push(`agent:${reviewer}:peer-review:${task.id}`)
           task.quality.peerReview = peerReview
           if (!peerReview.passed) {
@@ -138,6 +139,20 @@ class QualityOrchestrator {
       // Fire-and-forget: clean up temporary quality gate sessions
       this._cleanupSessions(sessionKeys)
     }
+  }
+
+  /** @private — Build department standards context for quality gate prompts */
+  _getDeptStandardsContext(deptId) {
+    if (!deptId) return ''
+    try {
+      const { generalStandards, typeStandards, customStandards } = getStandardsForDept(deptId)
+      const parts = []
+      if (typeStandards) parts.push(typeStandards)
+      if (customStandards) parts.push(customStandards)
+      if (parts.length === 0 && generalStandards) parts.push(generalStandards)
+      if (parts.length === 0) return ''
+      return `\n部门执行标准:\n${parts.join('\n')}`
+    } catch { return '' }
   }
 
   /** @private — Build project phase context string for quality gate prompts */
@@ -234,7 +249,7 @@ class QualityOrchestrator {
   }
 
   /** @private */
-  async _requestSelfCheck(agentId, task) {
+  async _requestSelfCheck(agentId, task, deptId) {
     if (!agentId) return { passed: false, score: 0, checklist: ['无执行者'], at: new Date().toISOString() }
 
     // Hard validation: check output content via injected readTaskOutput
@@ -268,10 +283,11 @@ class QualityOrchestrator {
       ? checklistItems.map((item, i) => `${i + 1}. ${item}`).join('\n')
       : '1. 是否完成了任务要求的所有内容？\n2. 是否有明显的错误或遗漏？\n3. 格式和表述是否规范？\n4. 是否可以交付给下一环节？'
 
-    // Project phase context
+    // Project phase context + department standards
     const projectCtx = this._getProjectContext(task)
+    const deptCtx = this._getDeptStandardsContext(deptId)
 
-    const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}${projectCtx ? `\n${projectCtx}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n${checklist}\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
+    const prompt = `请检查你的任务产出质量：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}${projectCtx ? `\n${projectCtx}` : ''}${deptCtx ? `\n${deptCtx}` : ''}\n${outputContent ? `产出内容:\n${outputContent}` : '(无产出文件)'}\n\n请按以下清单自检，给出 0-100 的质量评分：\n${checklist}\n\n回复格式：\nSCORE: <number>\nPASSED: <true/false>\nISSUES: <comma-separated list or "none">`
 
     try {
       const result = await this._sendFn(agentId, `agent:${agentId}:quality-check:${task.id}`, prompt, 60000)
@@ -294,7 +310,7 @@ class QualityOrchestrator {
   }
 
   /** @private */
-  async _requestPeerReview(reviewerId, task) {
+  async _requestPeerReview(reviewerId, task, deptId) {
     let peerOutputContent = ''
     if (task.output) {
       const raw = this._readTaskOutput(task)
@@ -308,8 +324,9 @@ class QualityOrchestrator {
       if (standards.typeStandards) reviewStandards = `\n任务类型标准 (${task.type}):\n${standards.typeStandards}\n`
     } catch { /* skip */ }
     const projectCtx = this._getProjectContext(task)
+    const deptCtx = this._getDeptStandardsContext(deptId)
 
-    const prompt = `请 review 以下任务的产出：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}${projectCtx ? `\n${projectCtx}` : ''}${reviewStandards}\n${peerOutputContent ? `产出内容:\n${peerOutputContent}` : '(产出未附带)'}\n\n评审标准：\n1. 完成度 — 是否满足任务要求？\n2. 质量 — 是否有错误或可改进之处？\n3. 一致性 — 是否与项目整体风格一致？\n\n回复格式：\nSCORE: <0-100>\nPASSED: <true/false>\nCOMMENTS: <your review comments>`
+    const prompt = `请 review 以下任务的产出：\n\n任务: ${task.name}\n${task.description ? `描述: ${task.description}` : ''}\n执行者: ${task.assignedAgent || task.assignees?.[0] || '未知'}${projectCtx ? `\n${projectCtx}` : ''}${reviewStandards}${deptCtx ? `\n${deptCtx}` : ''}\n${peerOutputContent ? `产出内容:\n${peerOutputContent}` : '(产出未附带)'}\n\n评审标准：\n1. 完成度 — 是否满足任务要求？\n2. 质量 — 是否有错误或可改进之处？\n3. 一致性 — 是否与项目整体风格一致？\n\n回复格式：\nSCORE: <0-100>\nPASSED: <true/false>\nCOMMENTS: <your review comments>`
 
     try {
       const result = await this._sendFn(reviewerId, `agent:${reviewerId}:peer-review:${task.id}`, prompt, 60000)

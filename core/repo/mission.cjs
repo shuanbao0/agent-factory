@@ -140,6 +140,29 @@ class MissionRepository extends BaseRepository {
     renameSync(tmp, filePath)
   }
 
+  /** Read a department's standards.md */
+  readDeptStandards(deptId) {
+    const stdPath = join(DEPARTMENTS_DIR, deptId, 'standards.md')
+    try {
+      if (existsSync(stdPath)) {
+        return readFileSync(stdPath, 'utf-8')
+      }
+    } catch (err) {
+      logger.debug('mission-repo', 'failed to read dept standards', { deptId, error: err.message })
+    }
+    return ''
+  }
+
+  /** Atomic write department standards */
+  writeDeptStandards(deptId, content) {
+    const dir = join(DEPARTMENTS_DIR, deptId)
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, 'standards.md')
+    const tmp = filePath + '.tmp.' + process.pid
+    writeFileSync(tmp, content)
+    renameSync(tmp, filePath)
+  }
+
   /** Read an agent's memory SUMMARY.md (first 2000 chars) */
   readMemorySummary(agentId) {
     const summaryPath = join(AGENTS_DIR, agentId, 'memory', 'SUMMARY.md')

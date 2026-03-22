@@ -159,6 +159,42 @@ describe('autopilot/dept-directive', () => {
     })
   })
 
+  describe('buildDeptStandardsSection', () => {
+    // Import the real function — it reads config/dept-standards.md which exists in repo
+    const { buildDeptStandardsSection } = require('../../../core/autopilot/dept-directive.cjs')
+
+    it('should return content for known dept type (novel)', () => {
+      const result = buildDeptStandardsSection('novel')
+      // Should include GENERAL standards
+      assert.ok(result.includes('先完成再开始'), 'should include GENERAL standards')
+      // Should include novel-specific standards
+      assert.ok(result.includes('novel 部门专项'), 'should have novel section header')
+      assert.ok(result.includes('创意优先'), 'should include novel-specific rules')
+    })
+
+    it('should return content for dev dept', () => {
+      const result = buildDeptStandardsSection('dev')
+      assert.ok(result.includes('先完成再开始'))
+      assert.ok(result.includes('dev 部门专项'))
+      assert.ok(result.includes('代码质量'))
+    })
+
+    it('should return general standards for unknown dept type', () => {
+      const result = buildDeptStandardsSection('unknown-dept')
+      // Should still have GENERAL section
+      assert.ok(result.includes('先完成再开始'))
+      // Should NOT have type-specific section
+      assert.ok(!result.includes('部门专项'))
+    })
+
+    it('should return non-empty fallback for null deptId', () => {
+      const result = buildDeptStandardsSection(null)
+      // Should fallback to hardcoded defaults
+      assert.ok(result.length > 0)
+      assert.ok(result.includes('先完成再开始'))
+    })
+  })
+
   describe('buildKpiStatus 逻辑', () => {
     function buildKpiStatus(kpiDefs) {
       if (!kpiDefs || Object.keys(kpiDefs).length === 0) return '(无 KPI 定义)'

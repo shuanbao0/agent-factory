@@ -54,6 +54,14 @@ function createDepartment(body) {
         if (m) missionContent = m
       }
       logger.debug('dept-service', 'Template defaults loaded', { templateId })
+      // Copy template standards if available
+      if (tmplDir) {
+        const s = readDeptTemplateFile(tmplDir, 'standards.md')
+        if (s) {
+          missionRepo.writeDeptStandards(id, s)
+          logger.debug('dept-service', 'Template standards copied', { id, templateId })
+        }
+      }
     }
   }
 

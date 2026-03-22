@@ -52,6 +52,8 @@ function loadDepartments(): DeptInfo[] {
         try { report = core.repo.missionRepo.readDeptReport(deptId) } catch (err) { logError('autopilot/load-dept-report', err) }
         try { directives = core.repo.missionRepo.readDeptDirectives(deptId) } catch (err) { logError('autopilot/load-dept-directives', err) }
         try { mission = core.repo.missionRepo.readDeptMission(deptId).slice(0, 3000) } catch { /* skip */ }
+        let standards = ''
+        try { standards = core.repo.missionRepo.readDeptStandards(deptId).slice(0, 3000) } catch { /* skip */ }
         const headExists = config.head ? core.repo.agentMetaRepo.exists(config.head) : false
         results.push({
           id: config.id || deptId,
@@ -62,6 +64,7 @@ function loadDepartments(): DeptInfo[] {
           interval: config.interval || 600,
           directives,
           mission,
+          standards,
           report,
           headExists,
           state: {

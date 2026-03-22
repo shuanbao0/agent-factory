@@ -28,9 +28,12 @@ export function DepartmentLoopCard({ dept, sendAction, loading, onRefresh }: {
   const [modalOpen, setModalOpen] = useState(false)
   const [directiveText, setDirectiveText] = useState('')
   const [missionText, setMissionText] = useState(dept.mission || '')
+  const [standardsText, setStandardsText] = useState(dept.standards || '')
   const [saving, setSaving] = useState(false)
   const [missionSaving, setMissionSaving] = useState(false)
   const [missionSaved, setMissionSaved] = useState(false)
+  const [standardsSaving, setStandardsSaving] = useState(false)
+  const [standardsSaved, setStandardsSaved] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [error, setError] = useState('')
 
@@ -109,6 +112,30 @@ export function DepartmentLoopCard({ dept, sendAction, loading, onRefresh }: {
       setError(String(e))
     } finally {
       setMissionSaving(false)
+    }
+  }
+
+  const saveStandards = async () => {
+    setStandardsSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/autopilot/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deptId: dept.id, standards: standardsText }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) {
+        setError(data.error || t('autopilot.error.actionFailed'))
+        return
+      }
+      setStandardsSaved(true)
+      setTimeout(() => setStandardsSaved(false), 2000)
+      onRefresh()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setStandardsSaving(false)
     }
   }
 
@@ -267,6 +294,30 @@ export function DepartmentLoopCard({ dept, sendAction, loading, onRefresh }: {
               </button>
               {missionSaved && (
                 <span className="text-xs text-emerald-400">{t('autopilot.dept.missionSaved')}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Department Standards */}
+          <div className="space-y-2 bg-muted/30 rounded-md p-3 border border-muted/50">
+            <span className="text-xs font-medium text-foreground">{t('autopilot.dept.standards')}</span>
+            <textarea
+              value={standardsText}
+              onChange={e => setStandardsText(e.target.value)}
+              placeholder={t('autopilot.dept.standardsPlaceholder')}
+              className="w-full bg-background border border-muted rounded px-3 py-2.5 text-sm leading-relaxed resize-vertical placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/30 min-h-[80px] max-h-[200px]"
+              rows={4}
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={saveStandards}
+                disabled={standardsSaving}
+                className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50"
+              >
+                {standardsSaving ? t('common.saving') : t('common.save')}
+              </button>
+              {standardsSaved && (
+                <span className="text-xs text-emerald-400">{t('autopilot.dept.standardsSaved')}</span>
               )}
             </div>
           </div>
