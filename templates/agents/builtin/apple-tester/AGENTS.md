@@ -11,46 +11,191 @@
 
 | 类型 | 路径 | 说明 |
 |------|------|------|
-| 测试用例 | projects/{dept}/{slug}/tests/ | 测试计划、用例文档 |
 | 测试代码 | projects/{dept}/{slug}/tests/ | Swift Testing 测试文件 |
-| 测试报告 | projects/{dept}/{slug}/docs/ | 测试结果、覆盖率报告 |
+| Mock 文件 | projects/{dept}/{slug}/tests/Mocks/ | Mock Repository/Service |
+| 测试报告 | projects/{dept}/{slug}/docs/ | 测试结果、覆盖率 |
 
 ## 核心职责
 
-### 1. 测试策略
-- 制定分层测试策略：单元测试 → 集成测试 → UI 测试
-- 设计测试用例矩阵（正常流程 + 边界条件 + 异常场景）
-- 规划多设备测试覆盖（iPhone、iPad、Apple Watch、不同 iOS 版本）
-- 定义质量验收标准和测试通过条件
+### 1. 测试分层策略
 
-### 2. 单元测试与集成测试
-- 使用 Swift Testing 框架（@Suite/@Test）编写测试
-- Repository 层：使用 `ModelConfiguration(isStoredInMemoryOnly: true)` 测试真实 SwiftData 操作
-- Service 层：通过 Mock Repository 注入，验证业务逻辑
-- ViewModel 层：通过 Mock Service 注入，验证状态变化和用户交互
-- 确保测试隔离，不依赖外部服务或网络
+```
+测试金字塔：
+├── Repository 集成测试（SwiftData 内存模式）
+│   └── 验证 CRUD、查询、分页、关系
+├── Service 单元测试（Mock Repo 注入）
+│   └── 验证业务逻辑、错误处理、边界条件
+├── ViewModel 单元测试（Mock Service 注入）
+│   └── 验证状态变化、用户交互响应
+└── UI 测试（XCUITest，可选）
+    └── 验证核心用户流程、多设备适配
+```
 
-### 3. UI 测试
-- 编写 XCUITest 验证核心用户流程
-- 验证深色模式 / 浅色模式下的 UI 表现
-- 验证不同设备尺寸的布局适配
-- 验证无障碍访问（VoiceOver 导航）
+覆盖率目标：Service ≥80%、Repository ≥70%、ViewModel ≥60%
 
-### 4. 质量报告
-- 汇总测试结果（通过率、失败列表、覆盖率）
-- 标记已知问题和风险项
-- 评估发布就绪度
-- 跟踪缺陷修复状态
+### 2. Swift Testing 编写规范
 
-## 测试规范
-- 测试文件命名：`{被测模块}Tests.swift`
-- Mock 命名：`Mock{Protocol}` 或 `Mock{Entity}Repo`
-- 使用 `makeContext()` / `makeSampleData()` 辅助函数减少样板代码
-- 每个测试方法只验证一个行为
-- 测试描述使用中文，清楚表达被测场景
+```swift
+import Testing
+@testable import ProjectName
+
+@Suite("RecordingService Tests")
+@MainActor
+struct RecordingServiceTests {
+
+    // MARK: - Dependencies
+    let mockTransactionRepo = MockTransactionRepo()
+    let mockCategoryRepo = MockCategoryRepo()
+    let mockBookRepo = MockBookRepo()
+
+    // MARK: - Helpers
+    func makeService() -> RecordingService {
+        RecordingService(
+            transactionRepo: mockTransactionRepo,
+            categoryRepo: mockCategoryRepo,
+            bookRepo: mockBookRepo
+        )
+    }
+
+    // MARK: - Tests
+
+    @Test("创建交易 — 有效金额返回 Transaction")
+    func test_create_validAmount_returnsTransaction() async throws {
+        let service = makeService()
+        let category = Category(name: "餐饮", type: .expense, ...)
+        let book = Book(name: "默认", isDefault: true)
+
+        let tx = try service.create(amount: 50, type: .expense,
+                                     category: category, book: book)
+
+        #expect(tx.amount == 50)
+        #expect(tx.type == .expense)
+        #expect(mockTransactionRepo.insertedTransactions.count == 1)
+        #expect(mockCategoryRepo.incrementUsageCalls.count == 1)
+    }
+
+    @Test("创建交易 — 零金额抛出 invalidAmount")
+    func test_create_zeroAmount_throwsInvalidAmount() async throws {
+        let service = makeService()
+        #expect(throws: AppError.invalidAmount) {
+            try service.create(amount: 0, ...)
+        }
+    }
+}
+```
+
+### 3. Mock 编写模式
+
+```swift
+@MainActor
+final class MockTransactionRepo: TransactionRepository {
+    // 追踪调用
+    var insertedTransactions: [Transaction] = []
+    var deletedTransactions: [Transaction] = []
+    var fetchCallCount = 0
+
+    // 可配置返回值
+    var fetchResult: [Transaction] = []
+    var totalAmountResult: Decimal = 0
+
+    func insert(_ transaction: Transaction) throws {
+        insertedTransactions.append(transaction)
+    }
+
+    func fetch(from: Date, to: Date, ...) throws -> [Transaction] {
+        fetchCallCount += 1
+        return fetchResult
+    }
+
+    func totalAmount(from: Date, to: Date, type: TransactionType) throws -> Decimal {
+        return totalAmountResult
+    }
+}
+```
+
+### 4. Repository 集成测试
+
+```swift
+@Suite("SwiftDataTransactionRepo Tests")
+@MainActor
+struct TransactionRepoTests {
+    func makeContext() -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try! ModelContainer(for: Transaction.self, Category.self, ...,
+                                             configurations: config)
+        return ModelContext(container)
+    }
+
+    @Test("插入后可查询到")
+    func test_insertAndFetch() throws {
+        let context = makeContext()
+        let repo = SwiftDataTransactionRepo(context: context)
+        // ... 测试逻辑
+    }
+}
+```
+
+### 5. 测试命名规范
+
+```
+格式：test_<方法名>_<场景>_<预期结果>
+
+示例：
+test_create_validAmount_returnsTransaction
+test_create_zeroAmount_throwsInvalidAmount
+test_parseText_simpleCoffee20_returnsLocal
+test_checkBudget_exceeds80Percent_triggersAlert
+test_fetchTransactions_emptyDatabase_returnsEmptyArray
+```
+
+### 6. 测试文件组织
+
+```
+Tests/
+├── Services/
+│   ├── RecordingServiceTests.swift
+│   ├── StatisticsServiceTests.swift
+│   ├── BudgetServiceTests.swift
+│   └── AIServiceTests.swift
+├── Repositories/
+│   ├── TransactionRepoTests.swift
+│   └── CategoryRepoTests.swift
+├── ViewModels/
+│   ├── QuickRecordViewModelTests.swift
+│   └── StatsViewModelTests.swift
+├── Integration/
+│   ├── WidgetDataProviderTests.swift
+│   └── WatchDataProviderTests.swift
+└── Mocks/
+    ├── MockTransactionRepo.swift
+    ├── MockCategoryRepo.swift
+    └── MockSubscriptionProvider.swift
+```
+
+### 7. 退出标准验证
+
+每个模块完成时，验证退出标准并记录：
+```
+退出标准：
+├── ✅ 编译零 warning
+├── ✅ N/N 测试通过（原有 X + 新增 Y）
+├── ✅ SwiftLint 零违规（Z 文件扫描通过）
+└── ✅ 功能可在模拟器上演示
+```
+
+### 8. Claude Code 使用
+
+使用 `claude-code` skill 批量生成测试代码：
+
+1. 用 `prepare-prompt.mjs --task <taskId> --workdir <path>` 准备测试任务上下文
+2. 通过 `exec` 工具启动 Claude Code 生成测试
+3. 验证生成的测试能编译通过并正确覆盖目标代码
+
+详见 `skills/claude-code/SKILL.md`。
 
 ## 约束
 - 测试不依赖真实网络请求（AI API 等使用 Mock）
-- 测试不依赖设备特定功能（Camera、Speech 使用 Mock Protocol）
+- 测试不依赖设备功能（Camera、Speech 使用 Mock Protocol）
 - SwiftData 测试使用内存模式，不污染真实数据
-- UI 测试可在模拟器上运行，不依赖真机
+- `Category` 类型歧义：测试中需要 `private typealias Category = ProjectName.Category`
+- 每个模块退出标准必须注明测试通过总数（原有 + 新增）

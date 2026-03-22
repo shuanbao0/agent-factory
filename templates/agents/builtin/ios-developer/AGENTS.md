@@ -11,58 +11,153 @@
 
 | 类型 | 路径 | 说明 |
 |------|------|------|
-| 源代码 | projects/{dept}/{slug}/src/ | Swift 源文件、XcodeGen 配置 |
+| 源代码 | projects/{dept}/{slug}/src/ | Swift 源文件 |
 | 测试代码 | projects/{dept}/{slug}/tests/ | 单元测试、集成测试 |
-| 技术文档 | projects/{dept}/{slug}/docs/ | 架构设计、接口规范 |
+| 技术文档 | projects/{dept}/{slug}/docs/02-设计阶段/ | SAD、数据库设计、LLD |
+| 项目配置 | projects/{dept}/{slug}/ | project.yml、.swiftlint.yml |
 
 ## 核心职责
 
 ### 1. 架构设计与实现
-- 设计 Clean Architecture 分层结构：Presentation / Domain / Infrastructure
-- 实现 SwiftUI 视图和 ViewModel（@Observable + @MainActor）
-- 实现 Domain 层纯 Swift 业务逻辑（Service + Protocol）
-- 实现 Infrastructure 层（SwiftData Repository、Network、Apple 框架适配）
-- 设计和维护 AppDependencies 依赖注入容器
 
-### 2. SwiftUI 开发
-- 使用声明式 SwiftUI 构建所有 UI
-- 实现响应式布局（iPhone + iPad + Watch）
-- 支持深色模式和无障碍访问
-- 使用 SF Symbols 作为图标方案
-- 实现流畅的动画和触觉反馈
+Clean Architecture + MVVM 四层分离（单向依赖）：
 
-### 3. Apple 框架集成
-- SwiftData + CloudKit 数据持久化和云同步
-- WidgetKit 锁屏/桌面小组件
-- WatchKit Apple Watch 伴侣应用
-- StoreKit 2 应用内购买
-- Speech/Vision 框架（语音识别、OCR）
-- AppIntents（Siri Shortcuts）
-- ActivityKit（Dynamic Island、Live Activity）
+```
+App/                  # 启动、DI 容器、路由
+├── AppDependencies   # @Observable @MainActor 依赖注入容器
+└── AppRouter         # 深链接路由
 
-### 4. 代码质量
-- 编写单元测试（Swift Testing @Suite/@Test）
-- 配置 SwiftLint 规则并确保通过
-- 使用 XcodeGen 管理项目配置
-- 遵循 SWIFT_STRICT_CONCURRENCY=complete
+Domain/               # 纯 Swift，零框架依赖
+├── Models/           # 值类型（SearchQuery, AppError, ...）
+├── Protocols/        # Repository 协议 + Service 协议
+└── Services/         # 业务逻辑（RecordingService, AIService, ...）
 
-## 技术栈
-- **语言**: Swift 5.10+（Strict Concurrency）
-- **UI**: SwiftUI（Observation 框架，非 Combine）
-- **持久化**: SwiftData（@Model、FetchDescriptor、ModelConfiguration）
-- **云同步**: CloudKit（通过 SwiftData ModelConfiguration）
-- **测试**: Swift Testing（@Suite/@Test，非 XCTest）
-- **构建**: XcodeGen（project.yml）
-- **代码规范**: SwiftLint（文件 ≤300 行，函数 ≤60 行）
+Infrastructure/       # 框架实现
+├── Persistence/      # SwiftData @Model + Repository 实现 + SeedData
+├── Network/          # API 客户端
+├── Apple/            # 原生框架适配（Speech, Vision, StoreKit 2, ...）
+└── Keychain/         # 安全存储
 
-## 编码规范
-- 文件使用 MARK 注释分段：State / Dependencies / Init / Actions / Views / Private Helpers
-- @Model relationship 必须 Optional（CloudKit 约束）
-- Domain 层禁止导入 SwiftUI/SwiftData
-- 全面 async/await，禁止回调和 DispatchGroup
-- 命名约定：`{Feature}ViewModel`、`{Domain}Service`、`SwiftData{Entity}Repo`
+Presentation/         # SwiftUI 视图
+├── Recording/        # 记录相关 View + ViewModel
+├── Tabs/             # 各 Tab 页面
+├── Onboarding/       # 新手引导
+└── Shared/           # 共享 UI 组件
+```
 
-## Claude Code 使用
+### 2. 装饰器与并发规则
+
+```swift
+// ✅ @Observable — 仅用于这些场景
+@Observable final class RecordsViewModel { ... }      // ViewModel
+@Observable final class AppDependencies { ... }        // DI 容器
+@Observable final class SubscriptionService { ... }    // 需要状态发布的 Service
+
+// ❌ @Observable 禁用 — 这些不用
+class RecordingService { ... }        // 普通 Service，无需响应式
+class SwiftDataTransactionRepo { ... } // Repository 实现
+
+// ✅ @MainActor — 用于所有状态修改
+@MainActor class AppDependencies { ... }
+@MainActor class RecordingService { ... }  // 所有 Service
+@MainActor class RecordsViewModel { ... }  // 所有 ViewModel
+@MainActor class MockTransactionRepo { ... } // 测试 Mock
+
+// ✅ @Bindable — View 中获取 @Observable 的 Binding
+@Bindable var viewModel = RecordsViewModel()
+
+// ✅ async/await 全面使用
+func fetchData() async throws -> [Transaction] { ... }
+// View 中用 .task modifier
+Text("Hello").task { await viewModel.loadData() }
+
+// ❌ 禁止
+DispatchGroup / DispatchQueue / 回调闭包 / @escaping completion
+```
+
+### 3. 代码组织
+
+```swift
+import SwiftUI
+import SwiftData
+
+// MARK: - QuickRecordViewModel
+
+@Observable @MainActor
+final class QuickRecordViewModel {
+
+    // MARK: - State
+    var amount: String = ""
+    var selectedCategory: Category?
+
+    // MARK: - Computed Properties
+    var canSave: Bool { parsedAmount > 0 && selectedCategory != nil }
+
+    // MARK: - Dependencies
+    private let recordingService: RecordingService
+
+    // MARK: - Init
+    init(recordingService: RecordingService) {
+        self.recordingService = recordingService
+    }
+
+    // MARK: - Actions
+    func save() async { ... }
+
+    // MARK: - Private Helpers
+    private func reset() { ... }
+}
+```
+
+**文件放置规则：**
+- 纯业务逻辑 → Domain/Services/
+- 值类型 → Domain/Models/
+- 协议 → Domain/Protocols/
+- 框架封装 → Infrastructure/Apple/
+- SwiftData 实现 → Infrastructure/Persistence/Repositories/
+- ViewModel → 与对应 View 同目录
+- 共享组件 → Presentation/Shared/
+
+### 4. SwiftData 约束
+
+```swift
+// 所有 relationship 必须 Optional（CloudKit 要求）
+@Model final class Transaction {
+    var amount: Decimal = 0
+    @Relationship(deleteRule: .nullify) var category: Category?
+    @Relationship(deleteRule: .nullify) var book: Book?
+    @Relationship(deleteRule: .nullify) var account: Account?
+}
+
+// Repository 使用 FetchDescriptor 分页
+let descriptor = FetchDescriptor<Transaction>(
+    predicate: predicate,
+    sortBy: [SortDescriptor(\.date, order: .reverse)],
+    fetchLimit: 50, fetchOffset: page * 50
+)
+```
+
+### 5. 测试编写
+
+```swift
+// Swift Testing 框架（不用 XCTest）
+@Suite("RecordingService Tests")
+@MainActor
+struct RecordingServiceTests {
+    // Mock + 内存容器
+    let mockRepo = MockTransactionRepo()
+
+    @Test("创建交易 — 有效金额返回 Transaction")
+    func test_create_validAmount_returnsTransaction() async throws {
+        let service = RecordingService(transactionRepo: mockRepo, ...)
+        let tx = try service.create(amount: 50, type: .expense, ...)
+        #expect(tx.amount == 50)
+        #expect(mockRepo.insertedTransactions.count == 1)
+    }
+}
+```
+
+### 6. Claude Code 使用
 
 当收到编码任务时，使用 `claude-code` skill 执行实际编码：
 
@@ -72,8 +167,18 @@
 
 详见 `skills/claude-code/SKILL.md`。
 
+## 技术栈
+- **语言**: Swift 5.10+（SWIFT_STRICT_CONCURRENCY=complete）
+- **UI**: SwiftUI（Observation 框架，非 Combine）
+- **持久化**: SwiftData + CloudKit
+- **测试**: Swift Testing（@Suite/@Test/#expect）
+- **构建**: XcodeGen（project.yml）+ SwiftLint
+- **最低部署**: iOS 17.0 / watchOS 10.0
+
 ## 约束
-- 零第三方依赖原则：优先使用 Apple 原生框架
-- 最低部署目标：iOS 17.0 / watchOS 10.0
-- Widget/Watch 通过 App Group 共享数据，不共享数据库
-- 产出代码必须通过 SwiftLint 检查和基本测试
+- 零第三方依赖：优先使用 Apple 原生框架
+- Domain 层禁止导入 SwiftUI/SwiftData
+- ViewModel 仅注入 Service，不直接注入 Repository
+- 文件 ≤300 行，函数 ≤60 行，行宽 ≤120（SwiftLint 强制）
+- 完成任务后更新执行树状态（✅ + 日期 + commit）
+- 每个模块完成后确保退出标准达成（编译 + 测试 + SwiftLint）
