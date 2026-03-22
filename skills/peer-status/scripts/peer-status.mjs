@@ -23,18 +23,18 @@ const BUSY_THRESHOLD_MS = 300_000 // 5 minutes, same as frontend
 // ── Resolve project root ─────────────────────────────────────────
 
 function findProjectRoot() {
-  // Walk up from script location to find package.json with openclaw
+  // Walk up from script location to find package.json with name "agent-factory"
   let dir = resolve(new URL('.', import.meta.url).pathname)
   for (let i = 0; i < 10; i++) {
-    if (existsSync(join(dir, 'config', 'openclaw.json'))) return dir
+    if (existsSync(join(dir, 'data', 'config', 'openclaw.json'))) return dir
     const parent = resolve(dir, '..')
     if (parent === dir) break
     dir = parent
   }
   // Fallback: common paths
   const cwd = process.cwd()
-  if (existsSync(join(cwd, 'config', 'openclaw.json'))) return cwd
-  throw new Error('Cannot find project root (config/openclaw.json not found)')
+  if (existsSync(join(cwd, 'data', 'config', 'openclaw.json'))) return cwd
+  throw new Error('Cannot find project root (data/config/openclaw.json not found)')
 }
 
 const PROJECT_ROOT = findProjectRoot()
@@ -96,7 +96,7 @@ function main() {
   const { agentId } = parseArgs()
 
   // 1. Read agent.json to get peers list
-  const agentJsonPath = join(PROJECT_ROOT, 'agents', agentId, 'agent.json')
+  const agentJsonPath = join(PROJECT_ROOT, 'data', 'agents', agentId, 'agent.json')
   if (!existsSync(agentJsonPath)) {
     console.error(`agent.json not found: ${agentJsonPath}`)
     process.exit(1)
@@ -137,7 +137,7 @@ function main() {
   // 4. Read peer agent.json for name info and cross-reference
   const result = []
   for (const peerId of peers) {
-    const peerJsonPath = join(PROJECT_ROOT, 'agents', peerId, 'agent.json')
+    const peerJsonPath = join(PROJECT_ROOT, 'data', 'agents', peerId, 'agent.json')
     let peerName = peerId
     try {
       if (existsSync(peerJsonPath)) {

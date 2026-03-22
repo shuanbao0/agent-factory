@@ -3,9 +3,9 @@ const { readFileSync, writeFileSync, truncateSync, statSync, existsSync, rmSync 
 const { join } = require('path')
 const { ROOT } = require('./env-loader.cjs')
 
-const COSTS_FILE = join(ROOT, 'config', 'autopilot-costs.jsonl')
-const EVENTS_FILE = join(ROOT, 'config', 'autopilot-events.jsonl')
-const TASKS_FILE = join(ROOT, 'config', 'tasks.json')
+const COSTS_FILE = join(ROOT, 'data', 'config', 'autopilot-costs.jsonl')
+const EVENTS_FILE = join(ROOT, 'data', 'config', 'autopilot-events.jsonl')
+const TASKS_FILE = join(ROOT, 'data', 'config', 'tasks.json')
 
 /**
  * Snapshot a JSONL file's current size for later restore.
@@ -58,7 +58,7 @@ function cleanupTestTasks(taskIds) {
 function cleanupTestProjects(projectIds) {
   if (!projectIds || projectIds.length === 0) return
   for (const id of projectIds) {
-    const dir = join(ROOT, 'projects', id)
+    const dir = join(ROOT, 'data', 'projects', id)
     try {
       if (existsSync(dir)) {
         rmSync(dir, { recursive: true, force: true })

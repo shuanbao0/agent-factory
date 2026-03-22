@@ -34,14 +34,14 @@ import http from 'http'
 function findProjectRoot() {
   let dir = resolve(new URL('.', import.meta.url).pathname)
   for (let i = 0; i < 10; i++) {
-    if (existsSync(join(dir, 'config', 'openclaw.json'))) return dir
+    if (existsSync(join(dir, 'data', 'config', 'openclaw.json'))) return dir
     const parent = resolve(dir, '..')
     if (parent === dir) break
     dir = parent
   }
   const cwd = process.cwd()
-  if (existsSync(join(cwd, 'config', 'openclaw.json'))) return cwd
-  throw new Error('Cannot find project root (config/openclaw.json not found)')
+  if (existsSync(join(cwd, 'data', 'config', 'openclaw.json'))) return cwd
+  throw new Error('Cannot find project root (data/config/openclaw.json not found)')
 }
 
 const PROJECT_ROOT = findProjectRoot()
@@ -64,7 +64,7 @@ const readMemorySummary = (agentId) => missionRepo.readMemorySummary(agentId)
 // ── Gateway config ───────────────────────────────────────────────
 
 function getGatewayConfig() {
-  const cfgPath = join(PROJECT_ROOT, 'config', 'openclaw.json')
+  const cfgPath = join(PROJECT_ROOT, 'data', 'config', 'openclaw.json')
   if (existsSync(cfgPath)) {
     try {
       const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'))
@@ -107,7 +107,7 @@ function parseArgs() {
 // ── Validate peer relationship ──────────────────────────────────
 
 function validatePeer(from, to) {
-  const agentJsonPath = join(PROJECT_ROOT, 'agents', from, 'agent.json')
+  const agentJsonPath = join(PROJECT_ROOT, 'data', 'agents', from, 'agent.json')
   if (!existsSync(agentJsonPath)) {
     console.error(`ERROR: agent.json not found for "${from}": ${agentJsonPath}`)
     process.exit(1)
@@ -130,7 +130,7 @@ function validatePeer(from, to) {
 
 function getPeerName(peerId) {
   try {
-    const peerJsonPath = join(PROJECT_ROOT, 'agents', peerId, 'agent.json')
+    const peerJsonPath = join(PROJECT_ROOT, 'data', 'agents', peerId, 'agent.json')
     if (existsSync(peerJsonPath)) {
       const config = JSON.parse(readFileSync(peerJsonPath, 'utf-8'))
       return config.name || peerId
