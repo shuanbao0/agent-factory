@@ -88,3 +88,20 @@ Setting status to `in_progress` will fail with 409 if any dependency tasks are n
 ## Pipeline
 
 When a task is completed and its type has a downstream pipeline step (configured per department), a follow-up task is automatically created.
+
+## Prepare Prompt（生成编码任务 PROMPT.md）
+
+为编码类任务生成标准化的 PROMPT.md，自动注入任务标准和部门标准。配合 `coding-agent` skill 使用。
+
+```bash
+# 从任务系统生成
+node skills/task-api/scripts/prepare-prompt.mjs --task <taskId> --workdir /path/to/project
+
+# 直接指定目标
+node skills/task-api/scripts/prepare-prompt.mjs --goal "实现用户登录功能" --workdir /path/to/project
+
+# 指定部门（加载部门标准）
+node skills/task-api/scripts/prepare-prompt.mjs --goal "实现 SwiftUI 列表" --dept apple-dev --workdir /path/to/project
+```
+
+生成的 PROMPT.md 包含：任务目标、任务类型标准（config/task-standards.md）、部门执行标准（config/dept-standards.md）、产出要求。

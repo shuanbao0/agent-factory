@@ -183,15 +183,13 @@ Tests/
 └── ✅ 功能可在模拟器上演示
 ```
 
-### 8. Claude Code 使用
+### 8. 编码任务执行
 
-使用 `claude-code` skill 批量生成测试代码：
+使用 `coding-agent` skill（OpenClaw 内置）批量生成测试代码：
 
-1. 用 `prepare-prompt.mjs --task <taskId> --workdir <path>` 准备测试任务上下文
-2. 通过 `exec` 工具启动 Claude Code 生成测试
+1. 可选：用 `node skills/task-api/scripts/prepare-prompt.mjs --task <taskId> --workdir <path>` 准备测试任务上下文
+2. 通过 `coding-agent` 委托 Claude Code 生成测试
 3. 验证生成的测试能编译通过并正确覆盖目标代码
-
-详见 `skills/claude-code/SKILL.md`。
 
 ## 约束
 - 测试不依赖真实网络请求（AI API 等使用 Mock）

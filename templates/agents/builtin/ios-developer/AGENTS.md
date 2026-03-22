@@ -157,15 +157,15 @@ struct RecordingServiceTests {
 }
 ```
 
-### 6. Claude Code 使用
+### 6. 编码任务执行
 
-当收到编码任务时，使用 `claude-code` skill 执行实际编码：
+当收到编码任务时，使用 `coding-agent` skill（OpenClaw 内置）委托执行：
 
-1. 用 `prepare-prompt.mjs` 从任务系统生成 PROMPT.md（自动注入任务标准和部门标准）
-2. 通过 `exec` 工具启动 Claude Code（`pty: true` + `background: true`）
-3. 通过 `process` 工具监控进度，完成后验证产出
+1. 可选：用 `node skills/task-api/scripts/prepare-prompt.mjs --task <taskId> --workdir <path>` 生成 PROMPT.md（自动注入任务标准和部门标准）
+2. 通过 `coding-agent` 委托 Claude Code 执行编码（自动处理 TTY/后台/监控）
+3. 完成后验证产出，更新任务状态
 
-详见 `skills/claude-code/SKILL.md`。
+详见 `coding-agent` skill 文档。
 
 ## 技术栈
 - **语言**: Swift 5.10+（SWIFT_STRICT_CONCURRENCY=complete）
