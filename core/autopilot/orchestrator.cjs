@@ -10,10 +10,11 @@ const {
   DEPARTMENTS_DIR, AGENTS_DIR,
   CEO_COORDINATION_INTERVAL_SEC, CEO_STRATEGY_INTERVAL_SEC, DEFAULT_DEPT_INTERVAL_SEC,
   IDLE_COMPLETE_MINS, STALE_TASK_MINS,
+  SESSION_RESET_INPUT_TOKENS, SESSION_FORCE_COMPACT_TOKENS,
 } = require('./constants.cjs')
 const { deptConfigRepo } = require('../repo/dept-config.cjs')
 const { loadState, saveState } = require('../common/autopilot-state.cjs')
-const { sendToCeo } = require('./gateway-client.cjs')
+const { sendToCeo, compactSession, killSession, sendToAgent } = require('./gateway-client.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { taskRepo } = require('../repo/task.cjs')
 const { buildDirective } = require('./directive.cjs')
@@ -79,6 +80,26 @@ async function runCycle(options = {}) {
   const directive = buildDirective(cycleNum, 'coordination', memoryContext)
   console.log(`📤 Sending directive to CEO...\n`)
   logger.info('main', `Cycle #${cycleNum} started`)
+
+  // CEO session health check
+  const ceoSessionKey = 'agent:ceo:autopilot'
+  try {
+    const sessInfo = sessionRepo.getSessionTokenInfo('ceo', ceoSessionKey)
+    const tokens = sessInfo?.totalTokens || 0
+    if (tokens > SESSION_RESET_INPUT_TOKENS) {
+      // Extract memory before kill
+      try {
+        const summary = await sendToAgent('ceo', ceoSessionKey,
+          '[系统查询] 请用 3-5 句话总结最近的关键决策和待跟进事项。', 30000)
+        if (summary.ok && summary.text) compressMemory('ceo', summary.text)
+      } catch { /* best effort */ }
+      await killSession(ceoSessionKey)
+      logger.info('main', `Reset CEO session (${tokens} tokens > ${SESSION_RESET_INPUT_TOKENS})`)
+    } else if (tokens > SESSION_FORCE_COMPACT_TOKENS) {
+      await compactSession(ceoSessionKey)
+      logger.info('main', `Compacted CEO session (${tokens} tokens)`)
+    }
+  } catch (e) { logger.debug('main', 'CEO session health check failed', e) }
 
   const taskId = await createCycleTask('ceo', 'coordination', cycleNum)
 

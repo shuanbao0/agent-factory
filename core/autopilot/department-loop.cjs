@@ -19,7 +19,7 @@ const { taskRepo } = require('../repo/task.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
 const { sendToAgent, compactSession, killSession, queryAgentStatus } = require('./gateway-client.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
-const { compressMemoryByRole } = require('../agent/memory.cjs')
+const { compressMemoryByRole, extractTaskMemory } = require('../agent/memory.cjs')
 const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, reconcileBudget } = require('../observe/budget.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
 const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
@@ -77,6 +77,18 @@ const MAX_GATE_ERRORS = 3
 
 // Dual-session: no-response tracking per agent
 const noResponseCounts = new Map()  // agentId → count
+
+/**
+ * Check if an agent has any non-terminal tasks.
+ */
+function agentHasActiveTasks(agentId, projects, standaloneTasks) {
+  const activeStatuses = ['pending', 'assigned', 'in_progress', 'rework', 'review']
+  const isAssigned = (t) => t.assignedAgent === agentId || (t.assignees || []).includes(agentId)
+  for (const proj of projects) {
+    if ((proj.tasks || []).some(t => isAssigned(t) && activeStatuses.includes(t.status))) return true
+  }
+  return standaloneTasks.some(t => isAssigned(t) && activeStatuses.includes(t.status))
+}
 
 /**
  * Read agent meta and extract display fields.
@@ -305,6 +317,15 @@ async function processOneQualityGate(task, assignee, deptId, config, transition)
         `质量审核通过 (self:${task.quality?.selfCheck?.score ?? 'N/A'}, peer:${task.quality?.peerReview?.score ?? 'N/A'})`,
         { quality: task.quality })
       logger.info('dept-loop', `Task ${task.id} passed quality gate in ${deptId}`)
+
+      // Persist worker memory on task completion
+      try {
+        const output = taskRepo.readTaskOutput(task)
+        if (output) {
+          extractTaskMemory(assignee, task, output)
+          compressMemoryByRole(assignee, output, 'member')
+        }
+      } catch { logger.debug('dept-loop', `Task memory extraction failed for ${task.id}`) }
       try {
         const { eventBus } = require('../observe/event-bus.cjs')
         eventBus.fire('quality.gate_completed', { taskId: task.id, deptId, passed: true })
@@ -316,6 +337,15 @@ async function processOneQualityGate(task, assignee, deptId, config, transition)
           `质量审核不通过且已返工 ${reworkCount} 次: ${gate.reason}`,
           { quality: task.quality, reworkCount })
         logger.warn('dept-loop', `Task ${task.id} failed after ${reworkCount} rework rounds`)
+
+        // Persist failure memory — failed experience is also valuable
+        try {
+          const output = taskRepo.readTaskOutput(task)
+          if (output) {
+            extractTaskMemory(assignee, task, output)
+            compressMemoryByRole(assignee, output, 'member')
+          }
+        } catch { logger.debug('dept-loop', `Task memory extraction failed for ${task.id}`) }
       } else {
         gateErrorCounts.delete(task.id)
         transition(task, assignee, 'review', 'rework',
@@ -627,6 +657,12 @@ async function runDepartmentCycle(deptId) {
         // Reset session to clear bloated context that caused the failure (respect cooldown)
         const lastResetAt = sessionResetCooldowns.get(sessionKey)
         if (!lastResetAt || Date.now() - lastResetAt >= RESET_COOLDOWN_MS) {
+          // Best-effort memory extraction before kill
+          try {
+            const summary = await sendToAgent(config.head, sessionKey,
+              '[系统查询] 请用 3-5 句话总结本轮工作重点、关键决策和待跟进事项。', 15000)
+            if (summary.ok && summary.text) compressMemoryByRole(config.head, summary.text, 'leader')
+          } catch { /* chief already failing, skip */ }
           try {
             await killSession(sessionKey)
             sessionResetCooldowns.set(sessionKey, Date.now())
@@ -730,6 +766,15 @@ async function ensureSessionHealth(headAgent, sessionKey, deptId) {
 
   if (inputTokens > SESSION_RESET_INPUT_TOKENS) {
     logger.warn('dept-loop', `Session ${sessionKey} bloated (${inputTokens} tokens > ${SESSION_RESET_INPUT_TOKENS}), resetting`)
+    // Extract chief memory before kill
+    try {
+      const summary = await sendToAgent(headAgent, sessionKey,
+        '[系统查询] 请用 3-5 句话总结本轮工作重点、关键决策和待跟进事项。', 30000)
+      if (summary.ok && summary.text) {
+        compressMemoryByRole(headAgent, summary.text, 'leader')
+        logger.info('dept-loop', `Extracted chief memory from ${sessionKey} before reset`)
+      }
+    } catch { logger.debug('dept-loop', `Chief memory extraction skipped for ${sessionKey}`) }
     try {
       await killSession(sessionKey)
       sessionResetCooldowns.set(sessionKey, Date.now())
@@ -889,29 +934,42 @@ async function runHealthCheck(deptId, config, headResponse) {
 
   logger.info('dept-loop', `Running health check for ${deptId} (${agents.length} agents)`)
 
-  for (const agentId of agents) {
-    // Save member memories (not the head — head is handled above)
-    if (agentId !== config.head) {
-      try {
-        compressMemoryByRole(agentId, null, 'member')
-      } catch (e) {
-        logger.debug('dept-loop', `Member memory save skipped for ${agentId} (no response)`, e)
-      }
-    }
+  // Load tasks once for active-task checks
+  const projects = taskRepo.readProjectsWithTasks()
+  const standaloneTasks = taskRepo.readStandaloneTasks()
 
-    // Check main session
+  for (const agentId of agents) {
+    // Check main session — cleanup strategy depends on task state
     const mainKey = `agent:${agentId}:main`
     const mainInfo = sessionRepo.getSessionTokenInfo(agentId, mainKey)
     if (mainInfo && mainInfo.totalTokens > compactThreshold) {
-      try {
-        const res = await compactSession(mainKey)
-        if (res.ok) {
-          logger.info('dept-loop', `Compacted ${mainKey} (was ${mainInfo.totalTokens} tokens)`)
-        } else {
-          logger.warn('dept-loop', `Compact failed for ${mainKey}: ${res.error}`)
+      const active = agentHasActiveTasks(agentId, projects, standaloneTasks)
+      if (!active) {
+        // No active tasks — extract memory from :main before killing
+        try {
+          const summary = await sendToAgent(agentId, mainKey,
+            '[系统查询] 请用 3-5 句话总结你最近完成的工作、学到的经验和当前状态。', 30000)
+          if (summary.ok && summary.text) {
+            compressMemoryByRole(agentId, summary.text, 'member')
+            logger.info('dept-loop', `Extracted memory from ${mainKey} before kill`)
+          }
+        } catch { logger.debug('dept-loop', `Memory extraction skipped for ${mainKey}`) }
+        try {
+          await killSession(mainKey)
+          logger.info('dept-loop', `Killed idle ${mainKey} (${mainInfo.totalTokens} tokens, no active tasks)`)
+        } catch (e) {
+          logger.debug('dept-loop', `Kill error for ${mainKey}`, e)
         }
-      } catch (e) {
-        logger.debug('dept-loop', `Compact error for ${mainKey}`, e)
+      } else if (mainInfo.totalTokens > SESSION_RESET_INPUT_TOKENS) {
+        // Active tasks but severely bloated — compact only
+        try {
+          const res = await compactSession(mainKey)
+          if (res.ok) {
+            logger.info('dept-loop', `Compacted ${mainKey} (${mainInfo.totalTokens} tokens, has active tasks)`)
+          }
+        } catch (e) {
+          logger.debug('dept-loop', `Compact error for ${mainKey}`, e)
+        }
       }
     }
 
@@ -940,7 +998,7 @@ async function runHealthCheck(deptId, config, headResponse) {
 
 /**
  * Kill sessions that have been inactive for more than maxDays days.
- * Skips :main sessions (primary agent sessions).
+ * Includes :main sessions — covers CEO and agents removed from departments.
  */
 async function cleanStaleSessions(maxDays = 14) {
   let cleaned = 0
@@ -949,6 +1007,13 @@ async function cleanStaleSessions(maxDays = 14) {
     const staleSessions = sessionRepo.listStaleSessions(maxDays)
 
     for (const { agentId, sessionKey, updatedAt } of staleSessions) {
+      // Best-effort memory extraction before kill
+      try {
+        const role = sessionKey.includes(':dept-autopilot') ? 'leader' : 'member'
+        const summary = await sendToAgent(agentId, sessionKey,
+          '[系统查询] 请用 3-5 句话总结这个会话中的关键工作和经验。', 15000)
+        if (summary.ok && summary.text) compressMemoryByRole(agentId, summary.text, role)
+      } catch { /* stale session, likely unresponsive */ }
       try {
         await killSession(sessionKey)
         cleaned++

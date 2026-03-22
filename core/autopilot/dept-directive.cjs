@@ -268,10 +268,6 @@ function buildDepartmentDirective(deptId, config, state, transitions, statusQuer
     // No memory available
   }
 
-  const budgetInfo = config.budget
-    ? `今日已用: ${state.tokensUsedToday || 0} / ${config.budget.dailyTokenLimit} tokens`
-    : '(无预算限制)'
-
   // Read base mission + department mission
   const baseMission = missionRepo.readBaseMission()
   const deptMission = missionRepo.readDeptMission(deptId)
@@ -323,8 +319,6 @@ ${readCeoDirectives(deptId)}
 ## 部门项目
 ${buildDeptProjects(deptId, projects)}
 
-## 部门预算
-${budgetInfo}
 ${transitionSection}
 ## 团队状态
 ${buildTeamStatus(config.agents, agentActivity, projects, statusQueryResults)}

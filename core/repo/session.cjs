@@ -123,7 +123,7 @@ class SessionRepository extends BaseRepository {
           const sessions = JSON.parse(readFileSync(sessFile, 'utf-8'))
           for (const [key, sess] of Object.entries(sessions)) {
             if (!sess || typeof sess !== 'object') continue
-            if (key.endsWith(':main')) continue
+            // No longer skip :main — stale :main sessions (e.g. CEO, orphaned agents) need cleanup too
             const updatedAt = sess.updatedAt || 0
             if (updatedAt > 0 && updatedAt < cutoff) {
               stale.push({ agentId: dir.name, sessionKey: key, updatedAt })

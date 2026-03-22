@@ -268,6 +268,7 @@ CEO 协调周期 (30min)
   │   ├─ idle > 18min → auto-complete
   │   ├─ idle > 30min → auto-fail
   │   └─ processQualityGate() — 三阶段评审（每阶段均注入任务标准 + 项目标准）
+  │       └─ 通过/失败 → extractTaskMemory() + compressMemoryByRole() 持久化记忆
   ├─ trackTokenUsage() → cost-tracker
   └─ eventBus.fire() → Reactors
 
@@ -276,7 +277,7 @@ CEO 协调周期 (30min)
   ├─ Agent 遵循 base-rules 任务执行协议:
   │   ├─ sessions_spawn(mode: "run") → 创建 worker 子会话
   │   ├─ :main 保持响应 → 回复 [系统查询] STATUS: working
-  │   └─ worker 完成 → auto-announce → Agent 调 API 更新状态
+  │   └─ worker 完成 → auto-announce 推送结果摘要回 :main → Agent 调 API 更新状态
   └─ Worker 子会话由 Gateway 自动回收（mode:"run" 结束即终结）
 ```
 
@@ -284,7 +285,7 @@ CEO 协调周期 (30min)
 
 | 模块 | 职责 |
 |------|------|
-| `memory.cjs` | 构建记忆上下文：`buildMemoryContext(agentId, cycleType)` → {summary, recentDecisions, lessonsLearned}；从 `agents/{id}/memory/` 读取 |
+| `memory.cjs` | 构建记忆上下文：`buildMemoryContext(agentId, cycleType)` → {summary, recentDecisions, lessonsLearned}；从 `agents/{id}/memory/` 读取。`extractTaskMemory()` 持久化任务产出到 `memory/tasks/{taskId}.md`。`compressMemoryByRole()` 按角色（ceo/leader/member）更新 SUMMARY.md、decisions/、work-output/、domains/ |
 
 ### core/common/ — 通用工具
 
@@ -529,7 +530,12 @@ interface DepartmentLoopState {
 | `config/project-standards.md` | 项目标准 base 文件 | project-standards.cjs (mtime 缓存) |
 | `config/task-standards.md` | 任务标准 base 文件 | task-standards.cjs (mtime 缓存) |
 | `data/projects/{dept}/{slug}/STANDARDS.md` | 项目执行标准（注入生成） | project-standards.cjs (幂等 marker) |
-| `data/agents/{id}/memory/` | Agent 记忆 | MemoryManager (实时) |
+| `data/agents/{id}/memory/SUMMARY.md` | Agent 记忆摘要（每轮循环/session kill 前覆写） | memory.cjs (覆写, max 2000 chars) |
+| `data/agents/{id}/memory/decisions/{YYYY-MM-DD}.md` | CEO/Chief 决策日志 | memory.cjs (append, max 500 chars/条) |
+| `data/agents/{id}/memory/work-output/{YYYY-MM-DD}.md` | Member 工作产出日志 | memory.cjs (append) |
+| `data/agents/{id}/memory/domains/knowledge.md` | Member 领域知识 | memory.cjs (append+trim, max 3000 chars) |
+| `data/agents/{id}/memory/lessons/what-worked.md` | CEO 经验教训 | memory.cjs (append+trim, max 5000 chars) |
+| `data/agents/{id}/memory/tasks/{taskId}.md` | 任务产出记忆（质量门通过/失败时写入） | memory.cjs (覆写, max 3000 chars) |
 
 ## 技术栈
 
@@ -715,7 +721,7 @@ orchestrator → gateway-client → WebSocket → OpenClaw Gateway → LLM APIs
 
 | Session | 创建者 | 用途 | 生命周期 |
 |---------|--------|------|----------|
-| `:main` (Chat) | Gateway 自动 | 接收指令、响应状态查询、汇报完成 | 持久，系统被动清理（50k compact / 80k kill） |
+| `:main` (Chat) | Gateway 自动 | 接收指令、响应状态查询、汇报完成 | 持久，系统主动清理（见下方 Session 生命周期管理） |
 | Worker 子会话 | Agent 自己 (`sessions_spawn`) | 实际执行任务、写入产出 | 临时，Gateway `mode:"run"` 完成即回收 |
 
 **任务执行流程：**
@@ -723,10 +729,35 @@ orchestrator → gateway-client → WebSocket → OpenClaw Gateway → LLM APIs
 2. Agent 遵循 base-rules，调用 `sessions_spawn(mode: "run", agentId: 自己)` 创建 worker 子会话
 3. Worker 子会话在隔离环境中执行任务，产出写入 `workspaces/{id}/`
 4. `:main` 保持响应——收到 `[系统查询]` 立即回复 `STATUS: working/completed/idle`
-5. Worker 完成 → `auto-announce` → Agent 在 `:main` 调用任务 API 更新状态
-6. Worker 子会话由 Gateway 自动回收
+5. Worker 完成 → OpenClaw `auto-announce` 将结果摘要推送回 `:main`（作为 user message 注入）
+6. Agent 在 `:main` 处理完成通知，调用任务 API 更新状态
+7. Worker 子会话由 Gateway 自动回收
 
 **状态查询（`queryAgentStatus`）发到 `:main`** 而非 worker——因为 `:main` 始终响应，worker 在 Gateway 内部运行、外部无法直接查询。
+
+### Session 生命周期管理
+
+所有 session 在 kill 前会先发 `[系统查询]` 提取记忆，持久化到 `agents/{id}/memory/` 后再销毁。
+
+**清理策略：**
+
+| Session | 清理触发 | 记忆提取 | 位置 |
+|---------|----------|----------|------|
+| CEO `:autopilot` | 每轮循环前检查：>80k kill, >50k compact | `compressMemory('ceo', ...)` | `orchestrator.cjs` |
+| Chief `:dept-autopilot` | 每轮循环前 `ensureSessionHealth`：>80k kill, >50k compact；fallback dispatch 后 kill | `compressMemoryByRole(head, ..., 'leader')` | `department-loop.cjs` |
+| Member `:main` | `runHealthCheck`（每 3 轮）：无活跃任务 → kill；有活跃任务 + >80k → compact | `compressMemoryByRole(agent, ..., 'member')` | `department-loop.cjs` |
+| 所有 session（含 `:main`） | `cleanStaleSessions`：14 天不活跃 → kill | 按 session 类型提取 | `department-loop.cjs` |
+| Worker | Gateway 自动回收（`mode:"run"` 结束） | 不需要（产出在文件中，任务完成时由 `extractTaskMemory` 持久化） | Gateway 内部 |
+
+**记忆持久化时机：**
+
+| 时机 | 角色 | 写入 | 触发位置 |
+|------|------|------|----------|
+| CEO 循环完成 | CEO | SUMMARY.md + decisions/ | `orchestrator.cjs` |
+| 部门循环完成 | Chief | SUMMARY.md + decisions/ | `department-loop.cjs` |
+| 任务通过质量门（→completed） | Member | tasks/{taskId}.md + SUMMARY.md + work-output/ + domains/ | `department-loop.cjs` `processOneQualityGate()` |
+| 任务失败（3 次返工后 →failed） | Member | 同上 | `department-loop.cjs` `processOneQualityGate()` |
+| Session kill 前 | 所有角色 | 发查询提取 → 按角色写入对应记忆文件 | 各 kill 点 |
 
 ### Base-Rules 注入机制
 
@@ -875,8 +906,8 @@ core.common.logger.info('gateway', 'Gateway started', { port: 19100 })
 | core/common | agent-service, dept-service, project-service 等 | CRUD 全流程链路（12 步 Agent 创建等） |
 | core/task | state-machine, quality-orchestrator, auto-transition | 状态变迁审计、质量门流水线 |
 | core/observe | budget, cost-tracker, event-bus, kpi | 预算追踪、成本记录 |
-| core/agent | memory | 记忆压缩/更新 |
-| core/autopilot | orchestrator, department-loop, sync 等 | CEO/部门循环全流程 |
+| core/agent | memory | 记忆压缩/更新、任务记忆提取、session kill 前记忆保存 |
+| core/autopilot | orchestrator, department-loop, sync 等 | CEO/部门循环全流程、session 生命周期管理 |
 | UI 服务层 | gateway-manager, task-api, data-fetchers 等 | Gateway 启停、任务操作 |
 
 ### 编码规范
