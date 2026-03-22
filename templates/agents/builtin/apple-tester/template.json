@@ -1,0 +1,13 @@
+{
+  "id": "apple-tester",
+  "name": "Apple QA Engineer",
+  "description": "Apple 应用测试工程师，负责 Swift Testing、XCUITest 和多设备验证",
+  "emoji": "\uD83D\uDD0D",
+  "category": "builtin",
+  "group": "apple-dev",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": ["peer-status", "task-api", "project-api", "tmux", "session-logs", "claude-code"],
+    "peers": ["apple-pm", "ios-developer", "apple-designer"]
+  }
+}

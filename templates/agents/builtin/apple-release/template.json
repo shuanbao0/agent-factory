@@ -1,0 +1,13 @@
+{
+  "id": "apple-release",
+  "name": "Apple Release Engineer",
+  "description": "Apple 应用发布工程师，负责构建配置、签名管理、App Store 上架和版本发布",
+  "emoji": "\uD83D\uDE80",
+  "category": "builtin",
+  "group": "apple-dev",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": ["peer-status", "task-api", "project-api", "github", "tmux", "session-logs"],
+    "peers": ["apple-pm", "ios-developer", "apple-tester"]
+  }
+}

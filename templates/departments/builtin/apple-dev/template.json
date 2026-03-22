@@ -1,0 +1,84 @@
+{
+  "id": "apple-dev",
+  "name": "Apple 应用开发部",
+  "nameEn": "Apple App Development",
+  "description": "负责 iOS/watchOS/visionOS 等 Apple 平台应用的全生命周期开发",
+  "descriptionEn": "Full lifecycle development of Apple platform apps (iOS, watchOS, visionOS)",
+  "emoji": "\uD83C\uDF4E",
+  "category": "builtin",
+  "recommendedAgents": [
+    "apple-pm",
+    "ios-developer",
+    "apple-designer",
+    "apple-tester",
+    "apple-release"
+  ],
+  "defaults": {
+    "head": "apple-pm",
+    "interval": 600,
+    "budget": {
+      "dailyTokenLimit": 600000,
+      "alertThreshold": 0.8
+    },
+    "kpis": {
+      "build_success_rate": { "target": 95, "unit": "%" },
+      "test_pass_rate": { "target": 90, "unit": "%" },
+      "crash_free_rate": { "target": 99.5, "unit": "%" }
+    },
+    "workflow": {
+      "phases": [
+        { "key": "requirements", "labelZh": "需求分析", "labelEn": "Requirements" },
+        { "key": "design", "labelZh": "设计", "labelEn": "Design" },
+        { "key": "develop", "labelZh": "开发", "labelEn": "Development" },
+        { "key": "test", "labelZh": "测试", "labelEn": "Testing" },
+        { "key": "release", "labelZh": "上架", "labelEn": "Release" },
+        { "key": "monitor", "labelZh": "监控", "labelEn": "Monitoring" }
+      ],
+      "taskTypes": [
+        { "value": "research", "labelZh": "调研", "labelEn": "Research", "color": "cyan" },
+        { "value": "design", "labelZh": "设计", "labelEn": "Design", "color": "purple" },
+        { "value": "coding", "labelZh": "编码", "labelEn": "Coding", "color": "blue" },
+        { "value": "testing", "labelZh": "测试", "labelEn": "Testing", "color": "amber" },
+        { "value": "review", "labelZh": "评审", "labelEn": "Review", "color": "orange" },
+        { "value": "release", "labelZh": "发布", "labelEn": "Release", "color": "emerald" }
+      ],
+      "directories": [
+        "docs",
+        "design",
+        "src",
+        "tests",
+        "assets",
+        "scripts"
+      ],
+      "pipeline": [
+        {
+          "from": "coding",
+          "to": "review",
+          "qualityGate": {
+            "minScore": 75,
+            "requireSelfCheck": true,
+            "maxReworks": 3
+          }
+        },
+        {
+          "from": "review",
+          "to": "testing",
+          "qualityGate": {
+            "minScore": 80,
+            "requireSelfCheck": true,
+            "requirePeerReview": true,
+            "maxReworks": 2
+          }
+        }
+      ]
+    },
+    "floorColor": { "h": 210, "s": 35, "b": 12, "c": 0 },
+    "furniture": [
+      { "type": "desk", "count": 5 },
+      { "type": "monitor", "count": 5 },
+      { "type": "plant", "count": 2 },
+      { "type": "whiteboard", "count": 1 }
+    ],
+    "order": 12
+  }
+}

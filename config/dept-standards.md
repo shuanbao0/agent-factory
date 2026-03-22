@@ -73,3 +73,11 @@
 - **严谨准确** — 法律文件和意见必须准确无误
 - **风险预警** — 主动识别法律风险并提出防范建议
 - **时效敏感** — 关注法规变更和截止日期
+
+### apple-dev
+- **原生优先** — 优先使用 Apple 原生框架，零第三方依赖原则
+- **架构纪律** — 严格 Clean Architecture + MVVM 分层，Domain 层禁止导入框架
+- **Swift 现代化** — @Observable、async/await、Strict Concurrency，为 Swift 6 准备
+- **测试覆盖** — 新功能必须有单元测试，核心流程必须有集成测试
+- **HIG 合规** — 所有 UI 设计必须符合 Apple Human Interface Guidelines
+- 发布前必须通过完整测试 + SwiftLint 检查 + App Store 审核指南检查
