@@ -234,6 +234,105 @@ function buildTaskStandardsSummary(deptId, projects) {
 }
 
 /**
+ * Detect whether a department is idle and needs autonomous initiative.
+ *
+ * @param {string} deptId
+ * @param {object} config - Department config
+ * @param {Array} projects - All projects with tasks
+ * @returns {{ hasProjects: boolean, hasActiveTasks: boolean, hasCeoDirectives: boolean, idleAgentCount: number, isAutonomousNeeded: boolean }}
+ */
+function detectDeptIdleState(deptId, config, projects) {
+  const allProjects = projectMetaRepo.readAll()
+  const deptProjects = allProjects.filter(({ projectId }) => projectId.startsWith(deptId + '/'))
+  const agents = config.agents || []
+  const agentActivity = sessionRepo.readAgentActivity()
+
+  const activeStatuses = ['pending', 'assigned', 'in_progress', 'rework', 'review']
+  let hasActiveTasks = false
+  for (const proj of projects) {
+    for (const t of (proj.tasks || [])) {
+      const assignees = [t.assignedAgent, ...(t.assignees || [])].filter(Boolean)
+      if (assignees.some(a => agents.includes(a)) && activeStatuses.includes(t.status)) {
+        hasActiveTasks = true
+        break
+      }
+    }
+    if (hasActiveTasks) break
+  }
+
+  const directives = missionRepo.readDeptDirectives(deptId)
+  const hasCeoDirectives = !!(directives && directives.length > 0 &&
+    !(directives.length === 1 && /^\(无/.test(directives[0])))
+
+  const workers = agents.filter(id => id !== config.head)
+  const idleAgentCount = workers.filter(id => {
+    const a = agentActivity[id]
+    return !a || a.idleMins >= 5
+  }).length
+
+  return {
+    hasProjects: deptProjects.length > 0,
+    hasActiveTasks,
+    hasCeoDirectives,
+    idleAgentCount,
+    isAutonomousNeeded: !hasActiveTasks && idleAgentCount > 0,
+  }
+}
+
+/**
+ * Build the autonomous initiative directive section.
+ * Injected when the department has no active work and idle agents.
+ *
+ * @param {string} deptId
+ * @param {object} config
+ * @param {{ hasProjects: boolean, hasCeoDirectives: boolean }} idleState
+ * @returns {string}
+ */
+function buildAutonomousInitiativeSection(deptId, config, idleState) {
+  let section = `## 🚀 自主行动指令（部门无活跃工作）
+
+你的部门当前没有进行中的工作。作为部门主管，你有责任**主动推动部门发展**，不需要等待 CEO 指令。
+
+### 第一步：确定方向
+- 参考上方「部门使命」了解你的职责范围
+- 参考「你的记忆」回忆之前的工作和经验教训
+`
+
+  if (!idleState.hasProjects) {
+    section += `- ⚠️ 你还没有创建任何项目。**必须先创建项目**，再创建任务
+- 基于部门使命，确定一个具体的项目主题（例如：调研某个领域、开发某个功能、撰写某类内容）
+`
+  } else {
+    section += `- 你已有项目但没有活跃任务。检查项目当前阶段，创建该阶段匹配的任务
+- 如果所有项目都已完成，考虑创建新项目推进部门使命
+`
+  }
+
+  if (!idleState.hasCeoDirectives) {
+    section += `- CEO 暂无特别指令，由你自主决定工作方向
+`
+  }
+
+  section += `
+### 第二步：${!idleState.hasProjects ? '创建项目' : '规划任务'}
+${!idleState.hasProjects ? `使用 Project API 创建一个与部门使命对齐的项目：
+\`\`\`bash
+curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"name":"项目名","description":"项目描述","department":"${deptId}"}' \\
+  "http://127.0.0.1:3100/api/projects"
+\`\`\`` : `检查现有项目的阶段，为当前阶段创建合适的任务。`}
+
+### 第三步：分配初始任务
+- 新项目从阶段 1 开始（通常是调研/需求分析），**初始任务必须是 research/analysis 类型**
+- 每个空闲 agent 至少分配一个任务
+- 先通过任务 API 创建任务，再 peer-send 给 agent
+
+> 等待不作为是失职。部门的价值在于持续产出。
+`
+  return section
+}
+
+/**
  * Build KPI status display
  */
 function buildKpiStatus(deptId, kpiDefs) {
@@ -334,6 +433,26 @@ function buildDepartmentDirective(deptId, config, state, transitions, statusQuer
     }
   }
 
+  // Detect idle state for autonomous initiative
+  const idleState = detectDeptIdleState(deptId, config, projects)
+  const autonomousSection = idleState.isAutonomousNeeded
+    ? '\n' + buildAutonomousInitiativeSection(deptId, config, idleState) + '\n'
+    : ''
+
+  // When autonomous, replace the first step with proactive creation guidance
+  const firstStepSection = idleState.isAutonomousNeeded
+    ? `**第一步：主动创建项目和任务**
+部门当前无活跃工作。参考上方「🚀 自主行动指令」，你必须：
+- ${!idleState.hasProjects ? '先创建项目（Project API），再创建任务' : '检查现有项目阶段，创建该阶段的任务'}
+- 为每个空闲 agent 分配至少一个任务
+- 初始任务以 research/analysis 类型为主（遵守阶段纪律）`
+    : `**第一步：审视全局状态**
+分配任务前，先审视上方「部门任务」和「团队状态」：
+- 哪些项目有待办(pending)任务尚未被认领？
+- 哪些进行中任务卡住了（进度长期无变化）？需要换人或换方式吗？
+- 哪些任务已完成？是否释放了后续依赖任务？
+- 项目整体进度如何？是否需要调整优先级？`
+
   return `[Department Loop: ${deptId} Cycle #${(state.cycleCount || 0) + 1}]
 
 你是 ${config.head}，${config.name || deptId} 部门主管。
@@ -356,17 +475,12 @@ ${buildKpiStatus(deptId, config.kpis)}
 
 ## 任务类型标准（分配任务时参考）
 ${buildTaskStandardsSummary(deptId, projects)}
-
+${autonomousSection}
 ## 行动要求
 
 ### ⛔ 分配决策原则（按优先级）
 
-**第一步：审视全局状态**
-分配任务前，先审视上方「部门任务」和「团队状态」：
-- 哪些项目有待办(pending)任务尚未被认领？
-- 哪些进行中任务卡住了（进度长期无变化）？需要换人或换方式吗？
-- 哪些任务已完成？是否释放了后续依赖任务？
-- 项目整体进度如何？是否需要调整优先级？
+${firstStepSection}
 
 **第二步：判断 agent 是否可分配**
 - agent 🔵 工作中 → **绝对不要**分配新任务，worker session 正在执行
@@ -453,4 +567,4 @@ ${buildDeptStandardsSection(deptId)}
 `
 }
 
-module.exports = { buildDepartmentDirective, buildDeptStandardsSection, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildDeptProjects, buildKpiStatus }
+module.exports = { buildDepartmentDirective, buildDeptStandardsSection, readCeoDirectives, buildTeamStatus, buildDeptTasks, buildDeptProjects, buildKpiStatus, detectDeptIdleState }
