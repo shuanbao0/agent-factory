@@ -123,7 +123,7 @@ function killPort(port) {
 // ─── Commands ────────────────────────────────────────────────────────────────
 
 async function cmdStart() {
-  const logDir = resolve(ROOT, '.openclaw-state');
+  const logDir = resolve(ROOT, 'data', 'openclaw-state');
   mkdirSync(logDir, { recursive: true });
   const logFile = resolve(logDir, 'startup.log');
 
@@ -159,7 +159,7 @@ async function cmdStop() {
   let stopped = false;
 
   // Kill start.mjs process via PID file (sends SIGTERM which cascades to children)
-  const startPidFile = resolve(ROOT, '.openclaw-state', 'start.pid');
+  const startPidFile = resolve(ROOT, 'data', 'openclaw-state', 'start.pid');
   if (existsSync(startPidFile)) {
     try {
       const startPid = parseInt(readFileSync(startPidFile, 'utf-8').trim(), 10);
@@ -186,7 +186,7 @@ async function cmdStop() {
   }
 
   // Kill autopilot main process
-  const stateFile = resolve(ROOT, 'config', 'autopilot-state.json');
+  const stateFile = resolve(ROOT, 'data', 'config', 'autopilot-state.json');
   if (existsSync(stateFile)) {
     try {
       const state = JSON.parse(readFileSync(stateFile, 'utf-8'));
@@ -200,7 +200,7 @@ async function cmdStop() {
   }
 
   // Kill department loop processes
-  const deptsDir = resolve(ROOT, 'config', 'departments');
+  const deptsDir = resolve(ROOT, 'data', 'departments');
   if (existsSync(deptsDir)) {
     try {
       for (const entry of readdirSync(deptsDir, { withFileTypes: true })) {
@@ -539,8 +539,8 @@ async function cmdDoctor() {
 
   // 6. Config files
   const configs = [
-    ['config/openclaw.json', 'Gateway config'],
-    ['config/models.json', 'Models config'],
+    ['data/config/openclaw.json', 'Gateway config'],
+    ['data/config/models.json', 'Models config'],
     ['.env', 'Environment file'],
   ];
   for (const [file, label] of configs) {

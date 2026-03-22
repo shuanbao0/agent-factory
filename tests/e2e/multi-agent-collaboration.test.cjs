@@ -14,7 +14,7 @@ if (skip.skip) {
   return
 }
 
-const NOVEL_DEPT_STATE_FILE = join(ROOT, 'config', 'departments', 'novel', 'state.json')
+const NOVEL_DEPT_STATE_FILE = join(ROOT, 'data', 'departments', 'novel', 'state.json')
 
 describe('Multi-Agent Department Collaboration — Novel Department', { timeout: 300_000 }, () => {
   let buildDepartmentDirective, sendToAgent, closePool, parseTaskAssignments

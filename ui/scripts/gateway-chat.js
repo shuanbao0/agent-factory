@@ -32,21 +32,22 @@ function getConfig() {
   const envPort = parseInt(process.env.AGENT_FACTORY_PORT || '0')
   const envToken = process.env.AGENT_FACTORY_TOKEN || ''
 
-  // 2. 尝试从项目配置文件读取
+  // 2. 尝试从运行时配置文件读取（data/config/openclaw.json）
   const factoryDir = process.env.AGENT_FACTORY_DIR || resolve(__dirname, '../..')
-  const projectCfg = resolve(factoryDir, 'config/openclaw.json')
+  const dataDir = process.env.AGENT_FACTORY_DATA_DIR || resolve(factoryDir, 'data')
+  const projectCfg = resolve(dataDir, 'config/openclaw.json')
   if (existsSync(projectCfg)) {
     try {
       const cfg = JSON.parse(readFileSync(projectCfg, 'utf-8'))
       return {
         port: envPort || cfg.gateway?.port || 19100,
-        token: envToken || cfg.gateway?.auth?.token || '',
+        token: envToken || cfg.gateway?.auth?.token || 'agent-factory-internal-token-2026',
       }
     } catch {}
   }
 
   // 3. fallback 到环境变量或默认值
-  return { port: envPort || 19100, token: envToken }
+  return { port: envPort || 19100, token: envToken || 'agent-factory-internal-token-2026' }
 }
 
 const config = getConfig()

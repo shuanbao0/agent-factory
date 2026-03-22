@@ -13,8 +13,8 @@ import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
-const PROJECT_ROOT = resolve(__dirname, '..')
-const WORKSPACES_DIR = join(PROJECT_ROOT, 'workspaces')
+const PROJECT_ROOT = resolve(__dirname, '..', '..')
+const WORKSPACES_DIR = join(PROJECT_ROOT, 'data', 'workspaces')
 
 const args = process.argv.slice(2)
 const dryRun = !args.includes('--execute')

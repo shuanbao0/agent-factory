@@ -32,7 +32,7 @@ const SAMPLE_OUTPUT = [
   '三两个小孩追逐着一只灰色的野猫，笑声在石板路上回荡。城墙上的钟声敲响了第七下。',
 ].join('')
 
-const NOVEL_DEPT_STATE_FILE = join(ROOT, 'config', 'departments', 'novel', 'state.json')
+const NOVEL_DEPT_STATE_FILE = join(ROOT, 'data', 'departments', 'novel', 'state.json')
 
 // Preferred reviewers for writing tasks — now set via dept config override (strategy.cjs has empty defaults)
 const WRITING_PREFERRED = ['reader-analyst', 'style-editor', 'continuity-mgr']

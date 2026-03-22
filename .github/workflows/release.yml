@@ -40,11 +40,7 @@ jobs:
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='.env' \
-            --exclude='.openclaw-state' \
-            --exclude='agent-factory/agents/*' \
-            --exclude='agent-factory/workspaces/*' \
-            --exclude='agent-factory/projects/*' \
-            --exclude='agent-factory/templates/custom/*' \
+            --exclude='agent-factory/data' \
             --exclude='libs' \
             --exclude='ui/.next' \
             --exclude='*.log' \
