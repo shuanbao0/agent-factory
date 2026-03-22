@@ -11,12 +11,13 @@ const TEST_DEPT = 'zzz-test-dept'
 const TEST_ID = `${TEST_DEPT}/${TEST_SLUG}`
 
 afterEach(() => {
-  // Clean up any test project directories
+  // Clean up any test project directories (both top-level and nested dept/slug)
   if (existsSync(PROJECTS_DIR)) {
     try {
       for (const name of readdirSync(PROJECTS_DIR)) {
+        const fullPath = join(PROJECTS_DIR, name)
         if (name.startsWith('zzz-test-')) {
-          rmSync(join(PROJECTS_DIR, name), { recursive: true, force: true })
+          rmSync(fullPath, { recursive: true, force: true })
         }
       }
     } catch { /* ignore */ }

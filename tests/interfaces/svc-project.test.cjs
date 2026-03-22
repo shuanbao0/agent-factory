@@ -8,10 +8,12 @@ const fs = require('fs')
 const { PROJECTS_DIR } = require('../../core/common/paths.cjs')
 const { createProject, listProjects } = require('../../core/common/project-service.cjs')
 
+const TEST_DEPT = 'test-dept'
 const testIds = []
+const testDepts = new Set()
 
 afterEach(() => {
-  // Clean up test projects
+  // Clean up test project directories (dept/slug structure)
   for (const id of testIds) {
     const dir = join(PROJECTS_DIR, id)
     if (fs.existsSync(dir)) {
@@ -19,12 +21,26 @@ afterEach(() => {
     }
   }
   testIds.length = 0
+
+  // Clean up test department directories if empty
+  for (const dept of testDepts) {
+    const deptDir = join(PROJECTS_DIR, dept)
+    if (fs.existsSync(deptDir)) {
+      try {
+        const remaining = fs.readdirSync(deptDir)
+        if (remaining.length === 0) fs.rmSync(deptDir, { recursive: true, force: true })
+      } catch { /* ignore */ }
+    }
+  }
+  testDepts.clear()
 })
 
-function makeTestId() {
-  const id = `zzz-test-proj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+function makeTestId(dept) {
+  const slug = `zzz-test-proj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  const id = dept ? `${dept}/${slug}` : slug
   testIds.push(id)
-  return id
+  if (dept) testDepts.add(dept)
+  return slug
 }
 
 describe('ProjectService', () => {
@@ -34,9 +50,9 @@ describe('ProjectService', () => {
   })
 
   it('createProject with valid data returns ok=true with project object', () => {
-    const testId = makeTestId()
+    const testId = makeTestId(TEST_DEPT)
     const result = createProject(
-      { name: testId, description: 'Test project', department: 'test-dept' },
+      { name: testId, description: 'Test project', department: TEST_DEPT },
       { phases: [{ labelEn: 'Phase 1', labelZh: '阶段1' }], directories: ['docs'] }
     )
     assert.equal(result.ok, true)
