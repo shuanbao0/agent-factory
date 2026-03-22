@@ -340,7 +340,7 @@
     "notConfigured": "Not configured",
     "keySaveSuccess": "API key saved successfully",
     "keySaveFailed": "Failed to save API key",
-    "keyHint": "Saved to .env, available to OpenClaw immediately",
+    "keyHint": "Saved to .env, Gateway is restarting to load new config",
     "changeKey": "Change",
     "toolsConfigTitle": "Tool Configuration",
     "toolsConfigDesc": "Configure OpenClaw built-in tool behaviors",

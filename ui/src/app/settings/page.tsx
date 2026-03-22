@@ -1063,6 +1063,8 @@ function OpenClawToolsTab() {
         if (section === 'embedding') setEmbeddingApiKey('')
         setEditingSection(prev => ({ ...prev, [section]: false }))
         await fetchEnv()
+        // Restart Gateway so it picks up the new env var
+        try { await fetch('/api/gateway/restart', { method: 'POST' }) } catch {}
       } else {
         setSaveResult({ section, ok: false, message: data.error || t('settings.keySaveFailed') })
       }
