@@ -11,7 +11,12 @@
     "skills": [
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "coding-agent",
+      "summarize",
+      "github",
+      "tmux",
+      "session-logs"
     ],
     "peers": []
   }

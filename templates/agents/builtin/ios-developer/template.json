@@ -2,12 +2,27 @@
   "id": "ios-developer",
   "name": "iOS Developer",
   "description": "iOS 开发工程师，精通 SwiftUI + SwiftData，负责 Apple 平台原生应用开发",
-  "emoji": "\uD83D\uDCF1",
+  "emoji": "📱",
   "category": "builtin",
   "group": "apple-dev",
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
-    "skills": ["peer-status", "task-api", "project-api", "github", "tmux", "session-logs", "claude-code"],
-    "peers": ["apple-pm", "apple-designer", "apple-tester", "apple-release"]
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "coding-agent",
+      "claude-code",
+      "gh-issues",
+      "github",
+      "tmux",
+      "session-logs"
+    ],
+    "peers": [
+      "apple-pm",
+      "apple-designer",
+      "apple-tester",
+      "apple-release"
+    ]
   }
 }

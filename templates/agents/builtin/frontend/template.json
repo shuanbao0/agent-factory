@@ -8,11 +8,16 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "github",
-      "tmux",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "coding-agent",
+      "gh-issues",
+      "github",
+      "tmux",
+      "canvas",
+      "frontend-design-3",
+      "session-logs"
     ],
     "peers": [
       "designer",

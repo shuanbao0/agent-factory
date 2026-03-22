@@ -8,11 +8,14 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "summarize",
-      "nano-pdf",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "project-init",
+      "summarize",
+      "document-pro",
+      "nano-pdf",
+      "session-logs"
     ],
     "peers": [
       "pm",

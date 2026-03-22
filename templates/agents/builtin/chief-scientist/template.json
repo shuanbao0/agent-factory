@@ -8,12 +8,15 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "summarize",
-      "session-logs",
-      "nano-pdf",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "project-init",
+      "coding-agent",
+      "github",
+      "summarize",
+      "nano-pdf",
+      "session-logs"
     ],
     "peers": [
       "ceo",

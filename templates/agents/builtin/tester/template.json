@@ -8,12 +8,14 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "tmux",
-      "peekaboo",
-      "github",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "coding-agent",
+      "github",
+      "tmux",
+      "peekaboo",
+      "session-logs"
     ],
     "peers": [
       "pm",

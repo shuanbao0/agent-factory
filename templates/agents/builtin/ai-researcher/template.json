@@ -8,13 +8,16 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "summarize",
-      "session-logs",
-      "nano-pdf",
-      "github",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "coding-agent",
+      "github",
+      "tmux",
+      "summarize",
+      "nano-pdf",
+      "blogwatcher",
+      "session-logs"
     ],
     "peers": [
       "chief-scientist",

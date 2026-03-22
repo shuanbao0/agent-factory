@@ -8,11 +8,13 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "summarize",
-      "session-logs",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "openai-image-gen",
+      "peekaboo",
+      "summarize",
+      "session-logs"
     ],
     "peers": [
       "tutorial-chief",

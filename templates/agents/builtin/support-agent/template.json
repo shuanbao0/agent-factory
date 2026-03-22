@@ -8,11 +8,12 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "summarize",
-      "session-logs",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "summarize",
+      "document-pro",
+      "session-logs"
     ],
     "peers": [
       "service-manager",

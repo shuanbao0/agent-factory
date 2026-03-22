@@ -8,10 +8,15 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "peekaboo",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "openai-image-gen",
+      "canvas",
+      "frontend-design-3",
+      "peekaboo",
+      "summarize",
+      "session-logs"
     ],
     "peers": [
       "product",

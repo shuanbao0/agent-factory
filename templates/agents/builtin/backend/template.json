@@ -8,12 +8,15 @@
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
     "skills": [
-      "1password",
-      "github",
-      "tmux",
       "peer-status",
       "task-api",
-      "project-api"
+      "project-api",
+      "coding-agent",
+      "gh-issues",
+      "github",
+      "tmux",
+      "1password",
+      "session-logs"
     ],
     "peers": [
       "pm",

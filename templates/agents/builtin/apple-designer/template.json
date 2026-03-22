@@ -2,12 +2,25 @@
   "id": "apple-designer",
   "name": "Apple UI/UX Designer",
   "description": "Apple 应用 UI/UX 设计师，精通 Apple HIG，负责交互设计和视觉规范",
-  "emoji": "\uD83C\uDFA8",
+  "emoji": "🎨",
   "category": "builtin",
   "group": "apple-dev",
   "defaults": {
     "model": "minimax/MiniMax-M2.5",
-    "skills": ["peer-status", "task-api", "project-api", "tmux", "session-logs"],
-    "peers": ["apple-pm", "ios-developer", "apple-tester"]
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "openai-image-gen",
+      "canvas",
+      "peekaboo",
+      "summarize",
+      "session-logs"
+    ],
+    "peers": [
+      "apple-pm",
+      "ios-developer",
+      "apple-tester"
+    ]
   }
 }
