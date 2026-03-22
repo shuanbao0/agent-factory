@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { useMobile } from '@/hooks/use-mobile'
 import {
-  ArrowLeft, User, Cpu, Activity, FolderTree, MessageSquare,
+  ArrowLeft, User, Cpu, Activity, FolderTree, MessageSquare, Brain,
   FileText, ChevronRight, ChevronDown, Loader2, Puzzle, Check, X, RefreshCw, Sparkles,
-  Pencil, Save
+  Pencil, Save, ClipboardList
 } from 'lucide-react'
 import Link from 'next/link'
 import { formatNumber, timeAgo } from '@/lib/utils'
@@ -298,9 +298,17 @@ export default function AgentWorkspacePage() {
   const searchParams = useSearchParams()
   const { t } = useTranslation()
   const agents = useAppStore(s => s.agents)
+  const allTasks = useAppStore(s => s.tasks)
   const agentModels = useAppStore(s => s.agentModels)
   const defaultModel = useAppStore(s => s.defaultModel)
   const isMobile = useMobile()
+
+  const agentTasks = useMemo(() =>
+    allTasks
+      .filter(t => t.assignees?.includes(id) || t.assignedAgent === id)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    [allTasks, id]
+  )
 
   const [tab, setTab] = useState<Tab>('info')
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -319,8 +327,16 @@ export default function AgentWorkspacePage() {
   const [syncingConfig, setSyncingConfig] = useState(false)
   const [initializingAI, setInitializingAI] = useState(false)
   const [initLog, setInitLog] = useState('')
-  const [agentConfig, setAgentConfig] = useState<{ peers?: string[]; skills?: string[] } | null>(null)
+  const [agentConfig, setAgentConfig] = useState<{ peers?: string[]; skills?: string[]; department?: string } | null>(null)
   const [skillFilter, setSkillFilter] = useState<'all' | 'enabled' | 'builtin' | 'project'>('all')
+
+  // Memory files state
+  const [memoryFiles, setMemoryFiles] = useState<FileEntry[]>([])
+  const [memoryExpandedDirs, setMemoryExpandedDirs] = useState<Record<string, FileEntry[]>>({})
+  const [memoryLoadingDirs, setMemoryLoadingDirs] = useState<Set<string>>(new Set())
+  const [loadingMemory, setLoadingMemory] = useState(false)
+  const [showAgentFiles, setShowAgentFiles] = useState(false)
+  const [expandedOutputs, setExpandedOutputs] = useState<Set<string>>(new Set())
 
   // Identity & Soul state
   const [identityContent, setIdentityContent] = useState('')
@@ -454,6 +470,53 @@ export default function AgentWorkspacePage() {
       }
     } catch (err) { logError('agent-detail/toggleDir', err) } finally {
       setLoadingDirs(prev => { const next = new Set(prev); next.delete(dirPath); return next })
+    }
+  }
+
+  // ── Fetch memory files ─────────────────────────────────────────
+  const fetchMemoryFiles = useCallback(async () => {
+    setLoadingMemory(true)
+    try {
+      const res = await fetch(`/api/agents/${id}/workspace?dir=memory`)
+      if (res.ok) {
+        const data = await res.json()
+        const entries = (data.files || []).map((e: Record<string, unknown>) => ({
+          name: e.name as string,
+          type: e.type as string,
+          size: e.size as number | undefined,
+          path: 'memory/' + (e.name as string),
+        }))
+        setMemoryFiles(entries)
+      }
+    } catch (err) { logError('agent-detail/fetchMemoryFiles', err) } finally { setLoadingMemory(false) }
+  }, [id])
+
+  const toggleMemoryDir = async (dirPath: string) => {
+    if (memoryExpandedDirs[dirPath]) {
+      setMemoryExpandedDirs(prev => {
+        const next = { ...prev }
+        for (const key of Object.keys(next)) {
+          if (key === dirPath || key.startsWith(dirPath + '/')) delete next[key]
+        }
+        return next
+      })
+      return
+    }
+    setMemoryLoadingDirs(prev => new Set(prev).add(dirPath))
+    try {
+      const res = await fetch(`/api/agents/${id}/workspace?dir=${encodeURIComponent(dirPath)}`)
+      if (res.ok) {
+        const data = await res.json()
+        const entries = (data.files || []).map((e: Record<string, unknown>) => ({
+          name: e.name as string,
+          type: e.type as string,
+          size: e.size as number | undefined,
+          path: dirPath + '/' + (e.name as string),
+        }))
+        setMemoryExpandedDirs(prev => ({ ...prev, [dirPath]: entries }))
+      }
+    } catch (err) { logError('agent-detail/toggleMemoryDir', err) } finally {
+      setMemoryLoadingDirs(prev => { const next = new Set(prev); next.delete(dirPath); return next })
     }
   }
 
@@ -675,12 +738,13 @@ export default function AgentWorkspacePage() {
     fetchSessions()
     fetchSkills()
     fetchIdentityFiles()
+    fetchMemoryFiles()
     // Fetch agent.json for peers/skills config
     fetch(`/api/agents/${id}/workspace?file=agent.json`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.content) try { setAgentConfig(JSON.parse(data.content)) } catch (err) { logError('agent-detail/parseAgentConfig', err) } })
       .catch(() => {})
-  }, [fetchFiles, fetchSessions, fetchSkills, fetchIdentityFiles, id])
+  }, [fetchFiles, fetchSessions, fetchSkills, fetchIdentityFiles, fetchMemoryFiles, id])
 
   if (!agent) {
     return (
@@ -1012,50 +1076,196 @@ export default function AgentWorkspacePage() {
     })
   }
 
+  const statusColors: Record<string, string> = {
+    completed: 'bg-emerald-500/20 text-emerald-400',
+    in_progress: 'bg-blue-500/20 text-blue-400',
+    assigned: 'bg-amber-500/20 text-amber-400',
+    pending: 'bg-gray-500/20 text-gray-400',
+    review: 'bg-purple-500/20 text-purple-400',
+    failed: 'bg-red-500/20 text-red-400',
+    rework: 'bg-orange-500/20 text-orange-400',
+  }
+
+  const renderMemoryFileTree = (entries: FileEntry[], depth: number) => {
+    return entries.map(f => {
+      const isExpanded = !!memoryExpandedDirs[f.path]
+      const isLoading = memoryLoadingDirs.has(f.path)
+      return (
+        <div key={f.path}>
+          <button
+            onClick={() => f.type === 'directory' ? toggleMemoryDir(f.path) : fetchFileContent(f.path, f.name)}
+            className={`w-full flex items-center gap-1.5 py-1.5 rounded-lg text-sm transition-colors cursor-pointer ${
+              fileContent?.name === f.name ? 'bg-primary/10' : 'hover:bg-muted/50'
+            }`}
+            style={{ paddingLeft: `${depth * 16 + 12}px`, paddingRight: '12px' }}
+          >
+            {f.type === 'directory' ? (
+              isLoading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
+                : isExpanded
+                  ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            ) : <span className="w-3.5 shrink-0" />}
+            {f.type === 'directory'
+              ? <FolderTree className="w-4 h-4 text-amber-400 shrink-0" />
+              : <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+            }
+            <span className="truncate">{f.name}</span>
+            {f.size !== undefined && f.type === 'file' && (
+              <span className="ml-auto text-xs text-muted-foreground">{formatNumber(f.size)}B</span>
+            )}
+          </button>
+          {isExpanded && memoryExpandedDirs[f.path] && renderMemoryFileTree(memoryExpandedDirs[f.path], depth + 1)}
+        </div>
+      )
+    })
+  }
+
   const FilesTab = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      {/* File list */}
+    <div className="space-y-3">
+      {/* Task output section */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">{t('agents.workspaceFiles')}</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ClipboardList className="w-4 h-4" />
+            {t('agents.taskOutput')}
+            <Badge variant="muted" className="text-[10px]">{agentTasks.length}</Badge>
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {loadingFiles ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : files.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">{t('agents.noFiles')}</p>
+          {agentTasks.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">{t('agents.noTasks')}</p>
           ) : (
-            <div className="space-y-0.5">
-              {renderFileTree(files, 0)}
+            <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+              {agentTasks.map(task => (
+                <div key={task.id} className="border border-border rounded-lg p-3 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className={`text-[10px] ${statusColors[task.status] || statusColors.pending}`}>
+                      {task.status}
+                    </Badge>
+                    <span className="text-sm font-medium truncate">{task.name}</span>
+                    {task.type && (
+                      <Badge variant="muted" className="text-[10px] ml-auto">{task.type}</Badge>
+                    )}
+                  </div>
+                  {task.progress > 0 && task.status !== 'completed' && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${task.progress}%` }} />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{task.progress}%</span>
+                    </div>
+                  )}
+                  {task.output && (
+                    <div>
+                      <button
+                        onClick={() => setExpandedOutputs(prev => {
+                          const next = new Set(prev)
+                          next.has(task.id) ? next.delete(task.id) : next.add(task.id)
+                          return next
+                        })}
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {expandedOutputs.has(task.id)
+                          ? <ChevronDown className="w-3 h-3" />
+                          : <ChevronRight className="w-3 h-3" />
+                        }
+                        {t('agents.taskOutputLabel')}
+                      </button>
+                      {expandedOutputs.has(task.id) && (
+                        <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-muted/30 p-2 rounded mt-1 max-h-[200px] overflow-y-auto">
+                          {task.output}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-muted-foreground">
+                    {timeAgo(task.updatedAt)}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* File preview */}
-      <Card className="max-h-[60vh] overflow-y-auto">
-        <CardContent className="p-4">
-          {fileContent ? (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium font-mono">{fileContent.name}</span>
-                <button
-                  onClick={() => setFileContent(null)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  ✕
-                </button>
+      {/* Work memory section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Brain className="w-4 h-4" />
+              {t('agents.workMemory')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingMemory ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-              <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-muted/30 p-3 rounded-lg max-h-[50vh] overflow-y-auto">
-                {fileContent.content}
-              </pre>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">{t('agents.selectFile')}</p>
-          )}
-        </CardContent>
+            ) : memoryFiles.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('agents.noMemory')}</p>
+            ) : (
+              <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
+                {renderMemoryFileTree(memoryFiles, 0)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* File preview */}
+        <Card className="max-h-[60vh] overflow-y-auto">
+          <CardContent className="p-4">
+            {fileContent ? (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium font-mono">{fileContent.name}</span>
+                  <button
+                    onClick={() => setFileContent(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-muted/30 p-3 rounded-lg max-h-[50vh] overflow-y-auto">
+                  {fileContent.content}
+                </pre>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">{t('agents.selectFile')}</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Agent definition files (collapsible) */}
+      <Card>
+        <button
+          onClick={() => { setShowAgentFiles(!showAgentFiles); if (!showAgentFiles && files.length === 0) fetchFiles() }}
+          className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors"
+        >
+          {showAgentFiles
+            ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            : <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          }
+          {t('agents.agentDefinitionFiles')}
+          <Badge variant="muted" className="ml-auto text-[10px]">{files.length}</Badge>
+        </button>
+        {showAgentFiles && (
+          <CardContent className="pt-0">
+            {loadingFiles ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : files.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">{t('agents.noFiles')}</p>
+            ) : (
+              <div className="space-y-0.5">
+                {renderFileTree(files, 0)}
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
     </div>
   )
