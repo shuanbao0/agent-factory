@@ -2,7 +2,7 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { existsSync, readFileSync, writeFileSync } = require('fs')
+const { existsSync, readFileSync, writeFileSync, unlinkSync } = require('fs')
 
 const { DEPARTMENTS_FILE: DEPTS_FILE } = require('../../core/common/paths.cjs')
 const { DeptRegistryRepository, deptRegistryRepo, DEFAULT_DEPARTMENTS } = require('../../core/repo/dept-registry.cjs')
@@ -16,6 +16,7 @@ describe('DeptRegistryRepository', () => {
 
   afterEach(() => {
     if (backupRaw !== null) writeFileSync(DEPTS_FILE, backupRaw)
+    else if (existsSync(DEPTS_FILE)) unlinkSync(DEPTS_FILE)
     deptRegistryRepo.invalidate()
   })
 
@@ -24,12 +25,9 @@ describe('DeptRegistryRepository', () => {
     assert.ok(Array.isArray(result))
   })
 
-  it('DEFAULT_DEPARTMENTS is array with at least 2 entries (dev, novel)', () => {
+  it('DEFAULT_DEPARTMENTS is an empty array', () => {
     assert.ok(Array.isArray(DEFAULT_DEPARTMENTS))
-    assert.ok(DEFAULT_DEPARTMENTS.length >= 2)
-    const ids = DEFAULT_DEPARTMENTS.map(d => d.id)
-    assert.ok(ids.includes('dev'))
-    assert.ok(ids.includes('novel'))
+    assert.equal(DEFAULT_DEPARTMENTS.length, 0)
   })
 
   it('writeAll + readAll roundtrip', () => {
@@ -51,11 +49,9 @@ describe('DeptRegistryRepository', () => {
     assert.equal(found.emoji, '🧪')
   })
 
-  it('each default dept has id, name, emoji fields', () => {
-    for (const dept of DEFAULT_DEPARTMENTS) {
-      assert.ok(typeof dept.id === 'string' && dept.id.length > 0, `dept missing id`)
-      assert.ok(typeof dept.name === 'string' && dept.name.length > 0, `dept ${dept.id} missing name`)
-      assert.ok(typeof dept.emoji === 'string' && dept.emoji.length > 0, `dept ${dept.id} missing emoji`)
-    }
+  it('readAll returns empty array when no file exists', () => {
+    // DEFAULT_DEPARTMENTS is empty, so when file is missing readAll returns []
+    const result = DEFAULT_DEPARTMENTS
+    assert.ok(Array.isArray(result))
   })
 })

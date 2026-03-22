@@ -3,7 +3,7 @@
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
 const { join } = require('path')
-const { existsSync, rmSync, readdirSync, readFileSync, writeFileSync } = require('fs')
+const { existsSync, rmSync, readdirSync, readFileSync, writeFileSync, unlinkSync } = require('fs')
 
 const { DEPARTMENTS_FILE: DEPTS_FILE, DEPARTMENTS_DIR } = require('../../core/common/paths.cjs')
 const { createDepartment, updateDepartment, deleteDepartment } = require('../../core/common/department-service.cjs')
@@ -20,6 +20,7 @@ describe('DepartmentService', () => {
   afterEach(() => {
     // Restore departments.json with original bytes to preserve formatting
     if (backupRaw !== null) writeFileSync(DEPTS_FILE, backupRaw)
+    else if (existsSync(DEPTS_FILE)) unlinkSync(DEPTS_FILE)
     deptRegistryRepo.invalidate()
 
     // Clean up test department config dirs

@@ -2,7 +2,7 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { existsSync, readFileSync, writeFileSync } = require('fs')
+const { existsSync, readFileSync, writeFileSync, unlinkSync } = require('fs')
 
 const { STATE_FILE } = require('../../core/common/paths.cjs')
 const { loadState, saveState, DEFAULT_STATE } = require('../../core/common/autopilot-state.cjs')
@@ -16,6 +16,7 @@ describe('AutopilotState', () => {
 
   afterEach(() => {
     if (backupRaw !== null) writeFileSync(STATE_FILE, backupRaw)
+    else if (existsSync(STATE_FILE)) unlinkSync(STATE_FILE)
   })
 
   it('DEFAULT_STATE has expected fields', () => {

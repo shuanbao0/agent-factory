@@ -2,7 +2,7 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { existsSync, readFileSync, writeFileSync } = require('fs')
+const { existsSync, readFileSync, writeFileSync, unlinkSync } = require('fs')
 
 const { TASKS_FILE } = require('../../core/common/paths.cjs')
 const { TaskRepository, taskRepo } = require('../../core/repo/task.cjs')
@@ -75,6 +75,7 @@ describe('TaskRepository', () => {
 
     afterEach(() => {
       if (backupRaw !== null) writeFileSync(TASKS_FILE, backupRaw)
+      else if (existsSync(TASKS_FILE)) unlinkSync(TASKS_FILE)
     })
 
     it('readStandaloneTasks returns array', () => {

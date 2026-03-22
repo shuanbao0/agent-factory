@@ -2,7 +2,7 @@
 
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { existsSync, readFileSync, writeFileSync } = require('fs')
+const { existsSync, readFileSync, writeFileSync, unlinkSync } = require('fs')
 
 const { MODELS_FILE } = require('../../core/common/paths.cjs')
 const { ModelsRepository, modelsRepo } = require('../../core/repo/models-repo.cjs')
@@ -16,6 +16,7 @@ describe('ModelsRepository', () => {
 
   afterEach(() => {
     if (backupRaw !== null) writeFileSync(MODELS_FILE, backupRaw)
+    else if (existsSync(MODELS_FILE)) unlinkSync(MODELS_FILE)
     modelsRepo.invalidate()
   })
 
