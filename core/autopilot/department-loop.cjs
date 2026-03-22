@@ -1031,4 +1031,4 @@ async function cleanStaleSessions(maxDays = 14) {
   }
 }
 
-module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, autoTransitionTasks }
+module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, autoTransitionTasks, agentHasActiveTasks }
