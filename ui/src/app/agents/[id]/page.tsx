@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { useMobile } from '@/hooks/use-mobile'
 import {
   ArrowLeft, User, Cpu, Activity, FolderTree, MessageSquare,
-  FileText, ChevronRight, Loader2, Puzzle, Check, X, RefreshCw, Sparkles,
+  FileText, ChevronRight, ChevronDown, Loader2, Puzzle, Check, X, RefreshCw, Sparkles,
   Pencil, Save
 } from 'lucide-react'
 import Link from 'next/link'
@@ -31,6 +31,7 @@ interface FileEntry {
   type: 'file' | 'directory'
   size?: number
   path: string
+  children?: FileEntry[]
 }
 
 interface SessionEntry {
@@ -310,6 +311,8 @@ export default function AgentWorkspacePage() {
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [fileContent, setFileContent] = useState<{ name: string; content: string } | null>(null)
+  const [expandedDirs, setExpandedDirs] = useState<Record<string, FileEntry[]>>({})
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [loadingSkills, setLoadingSkills] = useState(false)
   const [savingSkills, setSavingSkills] = useState(false)
@@ -427,6 +430,31 @@ export default function AgentWorkspacePage() {
         setFileContent({ name, content: data.content || '' })
       }
     } catch (err) { logError('agent-detail/fetchFileContent', err) }
+  }
+
+  // ── Toggle directory expand/collapse ─────────────────────────────
+  const toggleDir = async (dirPath: string) => {
+    if (expandedDirs[dirPath]) {
+      setExpandedDirs(prev => {
+        const next = { ...prev }
+        // Collapse this dir and all children
+        for (const key of Object.keys(next)) {
+          if (key === dirPath || key.startsWith(dirPath + '/')) delete next[key]
+        }
+        return next
+      })
+      return
+    }
+    setLoadingDirs(prev => new Set(prev).add(dirPath))
+    try {
+      const res = await fetch(`/api/agents/${id}/workspace?dir=${encodeURIComponent(dirPath)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setExpandedDirs(prev => ({ ...prev, [dirPath]: data.files || [] }))
+      }
+    } catch (err) { logError('agent-detail/toggleDir', err) } finally {
+      setLoadingDirs(prev => { const next = new Set(prev); next.delete(dirPath); return next })
+    }
   }
 
   // ── Fetch skills ────────────────────────────────────────────────
@@ -949,6 +977,41 @@ export default function AgentWorkspacePage() {
     </div>
   )
 
+  const renderFileTree = (entries: FileEntry[], depth: number) => {
+    return entries.map(f => {
+      const isExpanded = !!expandedDirs[f.path]
+      const isLoading = loadingDirs.has(f.path)
+      return (
+        <div key={f.path}>
+          <button
+            onClick={() => f.type === 'directory' ? toggleDir(f.path) : fetchFileContent(f.path, f.name)}
+            className={`w-full flex items-center gap-1.5 py-1.5 rounded-lg text-sm transition-colors cursor-pointer ${
+              fileContent?.name === f.name ? 'bg-primary/10' : 'hover:bg-muted/50'
+            }`}
+            style={{ paddingLeft: `${depth * 16 + 12}px`, paddingRight: '12px' }}
+          >
+            {f.type === 'directory' ? (
+              isLoading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
+                : isExpanded
+                  ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            ) : <span className="w-3.5 shrink-0" />}
+            {f.type === 'directory'
+              ? <FolderTree className="w-4 h-4 text-amber-400 shrink-0" />
+              : <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+            }
+            <span className="truncate">{f.name}</span>
+            {f.size !== undefined && f.type === 'file' && (
+              <span className="ml-auto text-xs text-muted-foreground">{formatNumber(f.size)}B</span>
+            )}
+          </button>
+          {isExpanded && expandedDirs[f.path] && renderFileTree(expandedDirs[f.path], depth + 1)}
+        </div>
+      )
+    })
+  }
+
   const FilesTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {/* File list */}
@@ -964,25 +1027,8 @@ export default function AgentWorkspacePage() {
           ) : files.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">{t('agents.noFiles')}</p>
           ) : (
-            <div className="space-y-1">
-              {files.map(f => (
-                <button
-                  key={f.path}
-                  onClick={() => f.type === 'file' && fetchFileContent(f.path, f.name)}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    fileContent?.name === f.name ? 'bg-primary/10' : 'hover:bg-muted/50'
-                  } ${f.type === 'directory' ? 'text-muted-foreground' : 'cursor-pointer'}`}
-                >
-                  {f.type === 'directory'
-                    ? <FolderTree className="w-4 h-4 text-amber-400 shrink-0" />
-                    : <FileText className="w-4 h-4 text-blue-400 shrink-0" />
-                  }
-                  <span className="truncate">{f.name}</span>
-                  {f.size !== undefined && (
-                    <span className="ml-auto text-xs text-muted-foreground">{formatNumber(f.size)}B</span>
-                  )}
-                </button>
-              ))}
+            <div className="space-y-0.5">
+              {renderFileTree(files, 0)}
             </div>
           )}
         </CardContent>

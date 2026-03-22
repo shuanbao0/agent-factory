@@ -69,21 +69,23 @@ export async function GET(
   }
 
   const file = req.nextUrl.searchParams.get('file')
+  const dir = req.nextUrl.searchParams.get('dir') || ''
 
   if (!file) {
     // List directory
     try {
-      const result = core.common.fileBrowser.listDirectory(workspaceDir, '')
+      const result = core.common.fileBrowser.listDirectory(workspaceDir, dir)
       if (result.error) {
         return NextResponse.json({ error: result.error }, { status: 400 })
       }
       // Map to expected format
       const entries = (result.entries as Array<Record<string, unknown>>) || []
+      const prefix = dir ? dir + '/' : ''
       const files = entries.map((e: Record<string, unknown>) => ({
         name: e.name,
         type: e.type,
         size: e.size,
-        path: e.name,
+        path: prefix + e.name,
       }))
       return NextResponse.json({ files })
     } catch (err: unknown) {
