@@ -116,15 +116,17 @@ export const PROVIDERS: ProviderDef[] = [
   {
     id: 'minimax',
     name: 'MiniMax',
-    desc: 'MiniMax M2.5 / M2.1 / VL',
+    desc: 'MiniMax M2.7 / M2.5 / M2.1 / VL',
     color: 'bg-pink-500/20 text-pink-400',
     baseUrl: 'https://api.minimaxi.com/anthropic',
     api: 'anthropic-messages',
     catalogModels: [
+      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', alias: 'M2.7', reasoning: true, input: ['text'], cost: { input: 12, output: 48, cacheRead: 1.5, cacheWrite: 6 }, contextWindow: 204800, maxTokens: 16384 },
+      { id: 'MiniMax-M2.7-highspeed', name: 'MiniMax M2.7 Highspeed', alias: 'M2.7-highspeed', reasoning: true, input: ['text'], cost: { input: 12, output: 48, cacheRead: 1.5, cacheWrite: 6 }, contextWindow: 204800, maxTokens: 16384 },
       { id: 'MiniMax-M2.5', name: 'MiniMax M2.5', alias: 'M2.5', reasoning: true, input: ['text'], cost: { input: 12, output: 48, cacheRead: 1.5, cacheWrite: 6 }, contextWindow: 200000, maxTokens: 16384 },
-      { id: 'MiniMax-M2.5-Lightning', name: 'MiniMax M2.5 Lightning', alias: 'M2.5-lightning', reasoning: true, input: ['text'], cost: { input: 12, output: 48, cacheRead: 1.5, cacheWrite: 6 }, contextWindow: 200000, maxTokens: 16384 },
+      { id: 'MiniMax-M2.5-highspeed', name: 'MiniMax M2.5 Highspeed', alias: 'M2.5-highspeed', reasoning: true, input: ['text'], cost: { input: 12, output: 48, cacheRead: 1.5, cacheWrite: 6 }, contextWindow: 200000, maxTokens: 16384 },
       { id: 'MiniMax-M2.1', name: 'MiniMax M2.1', alias: 'M2.1', reasoning: false, input: ['text'], cost: { input: 15, output: 60, cacheRead: 2, cacheWrite: 10 }, contextWindow: 200000, maxTokens: 8192 },
-      { id: 'MiniMax-M2.1-lightning', name: 'MiniMax M2.1 Lightning', alias: 'M2.1-lightning', reasoning: false, input: ['text'], cost: { input: 15, output: 60, cacheRead: 2, cacheWrite: 10 }, contextWindow: 200000, maxTokens: 8192 },
+      { id: 'MiniMax-M2.1-highspeed', name: 'MiniMax M2.1 Highspeed', alias: 'M2.1-highspeed', reasoning: false, input: ['text'], cost: { input: 15, output: 60, cacheRead: 2, cacheWrite: 10 }, contextWindow: 200000, maxTokens: 8192 },
       { id: 'MiniMax-VL-01', name: 'MiniMax VL-01 (Vision)', alias: 'VL-01', reasoning: false, input: ['text', 'image'], cost: { input: 15, output: 60, cacheRead: 2, cacheWrite: 10 }, contextWindow: 200000, maxTokens: 8192 },
     ],
     authMethods: [
