@@ -993,6 +993,7 @@ function OpenClawToolsTab() {
   const [embeddingApiKey, setEmbeddingApiKey] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const [saveResult, setSaveResult] = useState<{ section: string; ok: boolean; message: string } | null>(null)
+  const [editingSection, setEditingSection] = useState<Record<string, boolean>>({})
 
   // Tools config state
   const [toolsConfig, setToolsConfig] = useState<ToolsConfig>({})
@@ -1060,6 +1061,7 @@ function OpenClawToolsTab() {
         if (section === 'search') setSearchApiKey('')
         if (section === 'fetch') setFirecrawlApiKey('')
         if (section === 'embedding') setEmbeddingApiKey('')
+        setEditingSection(prev => ({ ...prev, [section]: false }))
         await fetchEnv()
       } else {
         setSaveResult({ section, ok: false, message: data.error || t('settings.keySaveFailed') })
@@ -1162,28 +1164,46 @@ function OpenClawToolsTab() {
                   <Badge variant="muted">{t('settings.notConfigured')}</Badge>
                 )}
               </div>
-              {envVars[selectedSearchProvider.envKey] && (
-                <div className="text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
-                  {selectedSearchProvider.envKey}={envVars[selectedSearchProvider.envKey]}
+              {envVars[selectedSearchProvider.envKey] && !editingSection.search && (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
+                    {selectedSearchProvider.envKey}={envVars[selectedSearchProvider.envKey]}
+                  </div>
+                  <button
+                    onClick={() => setEditingSection(prev => ({ ...prev, search: true }))}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {t('settings.changeKey')}
+                  </button>
                 </div>
               )}
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={searchApiKey}
-                  onChange={e => setSearchApiKey(e.target.value)}
-                  placeholder={`${selectedSearchProvider.envKey}...`}
-                  className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-                <button
-                  onClick={() => handleSave('search', selectedSearchProvider.envKey, searchApiKey)}
-                  disabled={!searchApiKey.trim() || saving === 'search'}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {saving === 'search' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  {t('common.save')}
-                </button>
-              </div>
+              {(!envVars[selectedSearchProvider.envKey] || editingSection.search) && (
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={searchApiKey}
+                    onChange={e => setSearchApiKey(e.target.value)}
+                    placeholder={`${selectedSearchProvider.envKey}...`}
+                    className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <button
+                    onClick={() => handleSave('search', selectedSearchProvider.envKey, searchApiKey)}
+                    disabled={!searchApiKey.trim() || saving === 'search'}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {saving === 'search' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {t('common.save')}
+                  </button>
+                  {editingSection.search && (
+                    <button
+                      onClick={() => { setEditingSection(prev => ({ ...prev, search: false })); setSearchApiKey('') }}
+                      className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-lg border border-border hover:border-primary/30 transition-colors"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                  )}
+                </div>
+              )}
               {saveResult?.section === 'search' && (
                 <div className={`text-xs px-3 py-2 rounded-lg ${saveResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                   {saveResult.message}
@@ -1213,28 +1233,46 @@ function OpenClawToolsTab() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {envVars['FIRECRAWL_API_KEY'] && (
-            <div className="text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
-              FIRECRAWL_API_KEY={envVars['FIRECRAWL_API_KEY']}
+          {envVars['FIRECRAWL_API_KEY'] && !editingSection.fetch && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
+                FIRECRAWL_API_KEY={envVars['FIRECRAWL_API_KEY']}
+              </div>
+              <button
+                onClick={() => setEditingSection(prev => ({ ...prev, fetch: true }))}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {t('settings.changeKey')}
+              </button>
             </div>
           )}
-          <div className="flex gap-2">
-            <input
-              type="password"
-              value={firecrawlApiKey}
-              onChange={e => setFirecrawlApiKey(e.target.value)}
-              placeholder="FIRECRAWL_API_KEY..."
-              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-            <button
-              onClick={() => handleSave('fetch', 'FIRECRAWL_API_KEY', firecrawlApiKey)}
-              disabled={!firecrawlApiKey.trim() || saving === 'fetch'}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-            >
-              {saving === 'fetch' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {t('common.save')}
-            </button>
-          </div>
+          {(!envVars['FIRECRAWL_API_KEY'] || editingSection.fetch) && (
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={firecrawlApiKey}
+                onChange={e => setFirecrawlApiKey(e.target.value)}
+                placeholder="FIRECRAWL_API_KEY..."
+                className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <button
+                onClick={() => handleSave('fetch', 'FIRECRAWL_API_KEY', firecrawlApiKey)}
+                disabled={!firecrawlApiKey.trim() || saving === 'fetch'}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                {saving === 'fetch' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {t('common.save')}
+              </button>
+              {editingSection.fetch && (
+                <button
+                  onClick={() => { setEditingSection(prev => ({ ...prev, fetch: false })); setFirecrawlApiKey('') }}
+                  className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-lg border border-border hover:border-primary/30 transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+              )}
+            </div>
+          )}
           {saveResult?.section === 'fetch' && (
             <div className={`text-xs px-3 py-2 rounded-lg ${saveResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
               {saveResult.message}
@@ -1286,28 +1324,46 @@ function OpenClawToolsTab() {
                   <Badge variant="muted">{t('settings.notConfigured')}</Badge>
                 )}
               </div>
-              {envVars[selectedEmbeddingProvider.envKey] && (
-                <div className="text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
-                  {selectedEmbeddingProvider.envKey}={envVars[selectedEmbeddingProvider.envKey]}
+              {envVars[selectedEmbeddingProvider.envKey] && !editingSection.embedding && (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
+                    {selectedEmbeddingProvider.envKey}={envVars[selectedEmbeddingProvider.envKey]}
+                  </div>
+                  <button
+                    onClick={() => setEditingSection(prev => ({ ...prev, embedding: true }))}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {t('settings.changeKey')}
+                  </button>
                 </div>
               )}
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={embeddingApiKey}
-                  onChange={e => setEmbeddingApiKey(e.target.value)}
-                  placeholder={`${selectedEmbeddingProvider.envKey}...`}
-                  className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                />
-                <button
-                  onClick={() => handleSave('embedding', selectedEmbeddingProvider.envKey, embeddingApiKey)}
-                  disabled={!embeddingApiKey.trim() || saving === 'embedding'}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {saving === 'embedding' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  {t('common.save')}
-                </button>
-              </div>
+              {(!envVars[selectedEmbeddingProvider.envKey] || editingSection.embedding) && (
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={embeddingApiKey}
+                    onChange={e => setEmbeddingApiKey(e.target.value)}
+                    placeholder={`${selectedEmbeddingProvider.envKey}...`}
+                    className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <button
+                    onClick={() => handleSave('embedding', selectedEmbeddingProvider.envKey, embeddingApiKey)}
+                    disabled={!embeddingApiKey.trim() || saving === 'embedding'}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {saving === 'embedding' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {t('common.save')}
+                  </button>
+                  {editingSection.embedding && (
+                    <button
+                      onClick={() => { setEditingSection(prev => ({ ...prev, embedding: false })); setEmbeddingApiKey('') }}
+                      className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-lg border border-border hover:border-primary/30 transition-colors"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                  )}
+                </div>
+              )}
               {saveResult?.section === 'embedding' && (
                 <div className={`text-xs px-3 py-2 rounded-lg ${saveResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                   {saveResult.message}

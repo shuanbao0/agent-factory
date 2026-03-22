@@ -341,6 +341,7 @@
     "keySaveSuccess": "API Key 保存成功",
     "keySaveFailed": "保存失败",
     "keyHint": "已保存到 .env，OpenClaw 立即生效",
+    "changeKey": "修改",
     "toolsConfigTitle": "工具配置",
     "toolsConfigDesc": "配置 OpenClaw 内置工具行为",
     "agentComm": "Agent 间通讯",
