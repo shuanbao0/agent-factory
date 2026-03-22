@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec as execCb } from 'child_process'
 import { promisify } from 'util'
-import { resolve } from 'path'
+import { resolve, dirname, join } from 'path'
+import { readFileSync, existsSync } from 'fs'
 import core from '@/lib/core-bridge'
 
 export const dynamic = 'force-dynamic'
@@ -11,8 +12,7 @@ const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 
 function getInstalledVersion(): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pkg = require(resolve(PROJECT_ROOT, 'package.json'))
+    const pkg = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'package.json'), 'utf-8'))
     return pkg.version || 'unknown'
   } catch {
     return 'unknown'
@@ -32,11 +32,23 @@ async function getLatestVersion(): Promise<string | null> {
   }
 }
 
+// Returns true if version a is strictly newer than version b (semver comparison)
+function isNewer(a: string, b: string): boolean {
+  const pa = a.replace(/^v/, '').split('.').map(Number)
+  const pb = b.replace(/^v/, '').split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0, nb = pb[i] || 0
+    if (na > nb) return true
+    if (na < nb) return false
+  }
+  return false
+}
+
 // GET: check current + latest version
 export async function GET() {
   const current = getInstalledVersion()
   const latest = await getLatestVersion()
-  const hasUpdate = !!(current && latest && current !== latest && current !== 'unknown')
+  const hasUpdate = !!(current && latest && current !== 'unknown' && isNewer(latest, current))
 
   return NextResponse.json({
     current,

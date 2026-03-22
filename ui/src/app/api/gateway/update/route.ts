@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { execFile as execFileCb, exec as execCb } from 'child_process'
 import { promisify } from 'util'
-import { resolve } from 'path'
-import { existsSync } from 'fs'
+import { dirname, join } from 'path'
+import { readFileSync, existsSync } from 'fs'
 import { restartGateway, getStatus } from '@/lib/gateway-manager'
 import core from '@/lib/core-bridge'
 
@@ -14,23 +14,19 @@ const execAsync = promisify(execCb)
 const PROJECT_ROOT = core.common.paths.PROJECT_ROOT
 
 async function getInstalledVersion(): Promise<string | null> {
-  try {
-    const openclawBin = resolve(PROJECT_ROOT, 'node_modules/.bin/openclaw')
-    if (!existsSync(openclawBin)) return null
-    const { stdout } = await execFileAsync(openclawBin, ['--version'], { cwd: PROJECT_ROOT, timeout: 10000 })
-    const ver = stdout.toString().trim()
-    return ver || 'unknown'
-  } catch {
-    // Fallback: use npm list to get version
-    try {
-      const { stdout } = await execFileAsync('npm', ['list', 'openclaw', '--depth=0', '--json'], {
-        cwd: PROJECT_ROOT,
-        timeout: 10000,
-      })
-      const info = JSON.parse(stdout.toString())
-      return info.dependencies?.openclaw?.version || null
-    } catch { return null }
+  // Walk up from PROJECT_ROOT to find node_modules/openclaw/package.json (handles monorepo hoisting)
+  let dir = PROJECT_ROOT
+  while (dir !== '/') {
+    const pkgPath = join(dir, 'node_modules', 'openclaw', 'package.json')
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+        return pkg.version || 'unknown'
+      } catch { break }
+    }
+    dir = dirname(dir)
   }
+  return null
 }
 
 async function getLatestVersion(): Promise<string | null> {
@@ -49,6 +45,18 @@ async function getAvailableVersions(): Promise<string[]> {
   } catch { return [] }
 }
 
+// Returns true if version a is strictly newer than version b
+function isNewer(a: string, b: string): boolean {
+  const pa = a.replace(/^v/, '').split('.').map(Number)
+  const pb = b.replace(/^v/, '').split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0, nb = pb[i] || 0
+    if (na > nb) return true
+    if (na < nb) return false
+  }
+  return false
+}
+
 // GET: check current + latest version + available versions
 export async function GET() {
   const [current, latest, versions] = await Promise.all([
@@ -56,7 +64,7 @@ export async function GET() {
     getLatestVersion(),
     getAvailableVersions(),
   ])
-  const hasUpdate = !!(current && latest && current !== latest && current !== 'unknown')
+  const hasUpdate = !!(current && latest && current !== 'unknown' && isNewer(latest, current))
 
   return NextResponse.json({
     current: current || 'unknown',
