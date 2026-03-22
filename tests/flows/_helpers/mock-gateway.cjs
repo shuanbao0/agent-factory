@@ -37,7 +37,7 @@ function createMockHooks() {
   const hooks = {
     onBaseRulesInject: () => { calls.baseRules++ },
     onSkillsSync: () => { calls.skillsSync++ },
-    onGatewayRestart: () => { calls.gateway++; return true },
+    onGatewaySync: () => { calls.gateway++; return true },
   }
   return { calls, hooks }
 }

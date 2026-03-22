@@ -113,10 +113,10 @@ describe('AgentService.updateAgent', () => {
     assert.ok(existsSync(join(AGENTS_DIR, TEST_AGENT_ID, 'TOOLS.md')))
   })
 
-  it('updates openclaw.json and restarts when model changes', async () => {
+  it('updates openclaw.json and syncs Gateway when model changes', async () => {
     const hooks = {
       onBaseRulesInject: () => { hookCalls.baseRules++ },
-      onGatewayRestart: () => { hookCalls.gateway++; return true },
+      onGatewaySync: () => { hookCalls.gateway++; return true },
     }
     const result = await service.updateAgent({
       id: TEST_AGENT_ID,

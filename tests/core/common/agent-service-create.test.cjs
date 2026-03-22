@@ -70,7 +70,7 @@ describe('AgentService.createAgent', () => {
     const hooks = {
       onBaseRulesInject: () => { hookCalls.baseRules++ },
       onSkillsSync: () => { hookCalls.skillsSync++ },
-      onGatewayRestart: () => { hookCalls.gateway++; return true },
+      onGatewaySync: () => { hookCalls.gateway++; return true },
     }
 
     const result = await service.createAgent({

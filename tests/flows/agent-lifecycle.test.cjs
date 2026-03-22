@@ -57,7 +57,7 @@ describe('Agent lifecycle — create → update → delete', () => {
     const hooks = {
       onBaseRulesInject: () => { hookCalls.baseRules++ },
       onSkillsSync: () => { hookCalls.skillsSync++ },
-      onGatewayRestart: () => { hookCalls.gateway++; return true },
+      onGatewaySync: () => { hookCalls.gateway++; return true },
     }
 
     // ── Create ──

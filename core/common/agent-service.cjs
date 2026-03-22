@@ -12,7 +12,7 @@
  * hooks 约定（参考 quality-orchestrator.cjs 的 DI 模式）:
  *   onBaseRulesInject(agentDir)  — 注入 base-rules
  *   onSkillsSync(agentId, skills) — symlink 技能
- *   onGatewayRestart()           — 重启 Gateway
+ *   onGatewaySync(action, id, agentDir, model) — 同步 Agent 到 Gateway（替代重启）
  */
 const { join } = require('path')
 const { existsSync, rmSync } = require('fs')
@@ -231,12 +231,12 @@ class AgentService {
       logger.debug('agent-service', 'Department synced', { id, department: finalDepartment })
     }
 
-    // 12. Restart Gateway
-    let restarted = false
-    if (hooks.onGatewayRestart) restarted = !!(await hooks.onGatewayRestart())
+    // 12. Sync to Gateway（内存同步，替代重启）
+    let synced = false
+    if (hooks.onGatewaySync) synced = !!(await hooks.onGatewaySync('create', id, agentDir, resolvedModel))
 
     logger.info('agent-service', 'Agent created', { id, templateId: body.templateId })
-    return { ok: true, id, deployed: true, restarted, hasIdentityFiles }
+    return { ok: true, id, deployed: true, restarted: synced, hasIdentityFiles }
   }
 
   // ── Update ─────────────────────────────────────────────────────
@@ -294,12 +294,12 @@ class AgentService {
       this._agentMetaRepo.writeAgentFile(id, 'TOOLS.md', this._generateToolsMd(id, finalSkills, agentDir))
     }
 
-    // Update openclaw.json and restart if model changed
+    // Update openclaw.json and sync to Gateway if model changed
     if (model !== undefined) {
       const resolvedModel = this._resolveModelRef(agentJson.model || '')
       this._configRepo.addAgent(id, agentDir, resolvedModel)
-      if (hooks.onGatewayRestart) await hooks.onGatewayRestart()
-      logger.info('agent-service', 'Model changed, Gateway restart triggered', { id, model: agentJson.model || '' })
+      if (hooks.onGatewaySync) await hooks.onGatewaySync('update', id, agentDir, resolvedModel)
+      logger.info('agent-service', 'Model changed, Gateway synced', { id, model: agentJson.model || '' })
     }
 
     // Department changes
