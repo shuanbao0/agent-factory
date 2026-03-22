@@ -73,6 +73,26 @@ const AgentChat = memo(function AgentChat({ agentId, t }: { agentId: string; t: 
   const inputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
+  // Load chat history from session JSONL on mount
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  useEffect(() => {
+    if (historyLoaded) return
+    const sessionKey = `agent:${agentId}:main`
+    fetch(`/api/agents/${agentId}/sessions?sessionKey=${encodeURIComponent(sessionKey)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.messages?.length) {
+          setMessages(data.messages.map((m: { role: string; content: string; timestamp?: string }) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            timestamp: m.timestamp || '',
+          })))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setHistoryLoaded(true))
+  }, [agentId, historyLoaded])
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamText])

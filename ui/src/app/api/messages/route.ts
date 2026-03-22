@@ -2,43 +2,34 @@ import { NextRequest, NextResponse } from 'next/server'
 import { gwCallAsync } from '@/lib/gateway-client'
 import { logError } from '@/lib/error-logger'
 import core from '@/lib/core-bridge'
+import { readFileSync, existsSync, readdirSync } from 'fs'
+import { join } from 'path'
 
 export const dynamic = 'force-dynamic'
 
-// Max subagent sessions to fetch chat.history for (parallel)
+const STATE_DIR = join(core.common.paths.DATA_DIR, 'openclaw-state')
+
+// Max subagent sessions to fetch history for
 const MAX_HISTORY_FETCH = 15
-// Max direct sessions to fetch chat.history for (to detect peer-send messages)
+// Max direct sessions to fetch history for (to detect peer-send messages)
 const MAX_DIRECT_HISTORY_FETCH = 20
 
 /** Regex to detect inter-agent messages sent via peer-send */
 const PEER_MSG_RE = /^\[Inter-Agent Message from:\s*(\S+)\s*(?:\([^)]*\))?\]/
 
-/**
- * In-memory cache for direct session chat.history results.
- * Prevents flickering when concurrent gwCallAsync calls timeout under load.
- * Cache entries expire after 60 seconds.
- */
-const directHistoryCache = new Map<string, { data: HistoryMessage[]; ts: number }>()
-const CACHE_TTL_MS = 60_000
-
-interface GatewaySession {
-  key: string
-  kind: string
-  displayName?: string
-  channel?: string
-  label?: string
-  updatedAt?: number
-  inputTokens?: number
-  outputTokens?: number
-  totalTokens?: number
-  model?: string
-  modelProvider?: string
+interface SessionEntry {
+  sessionId: string
+  updatedAt: number
+  sessionFile?: string
+  compactionCount?: number
+  chatType?: string
+  lastChannel?: string
 }
 
 interface HistoryMessage {
   role: string
-  content: Array<{ type: string; text?: string; thinking?: string }>
-  timestamp?: number
+  content: Array<{ type: string; text?: string; thinking?: string }> | string
+  timestamp?: string
 }
 
 interface AgentMessage {
@@ -49,6 +40,16 @@ interface AgentMessage {
   type: 'spawn' | 'send' | 'complete' | 'error' | 'log'
   content: string
   sessionKey: string
+}
+
+interface ParsedSession {
+  key: string
+  agentId: string
+  isSubagent: boolean
+  name: string
+  updatedAt: number
+  chatType?: string
+  sessionFile?: string
 }
 
 /** Parse session key → agentId + whether it's a subagent session */
@@ -64,13 +65,23 @@ function parseSessionKey(key: string): { agentId: string; isSubagent: boolean; n
   return { agentId: '', isSubagent: false, name: key }
 }
 
+/** Strip OpenClaw sender metadata + timestamp prefix from user messages */
+const SENDER_PREFIX_RE = /^(?:System:.*?\n)?Sender \(untrusted metadata\):\n```json\n\{[^}]*\}\n```\n\n(?:\[[^\]]*\]\s*)?/s
+
 /** Extract text from message content blocks, stripping protocol tags */
-function extractText(content: Array<{ type: string; text?: string }>): string {
-  return content
-    .filter(b => b.type === 'text' && b.text)
-    .map(b => b.text!.replace(/^<final>\s*/g, '').replace(/<\/final>\s*$/g, ''))
-    .join('\n')
-    .trim()
+function extractText(content: Array<{ type: string; text?: string }> | string, stripSender = false): string {
+  let text: string
+  if (typeof content === 'string') {
+    text = content
+  } else {
+    text = content
+      .filter(b => b.type === 'text' && b.text)
+      .map(b => b.text!.replace(/^<final>\s*/g, '').replace(/<\/final>\s*$/g, ''))
+      .join('\n')
+      .trim()
+  }
+  if (stripSender) text = text.replace(SENDER_PREFIX_RE, '').trim()
+  return text
 }
 
 /** Clean up subagent task text — strip [Subagent Context] prefix */
@@ -96,18 +107,6 @@ function loadAllowAgents(): Record<string, string[]> {
   return map
 }
 
-/** Build reverse map: targetAgent → [agents that can spawn it] */
-function buildReverseSpawners(allowMap: Record<string, string[]>): Record<string, string[]> {
-  const reverse: Record<string, string[]> = {}
-  for (const [parent, targets] of Object.entries(allowMap)) {
-    for (const target of targets) {
-      if (!reverse[target]) reverse[target] = []
-      reverse[target].push(parent)
-    }
-  }
-  return reverse
-}
-
 /** Load assignedAgents for a project from .project-meta.json */
 function loadProjectAgents(projectId: string): string[] {
   try {
@@ -119,13 +118,74 @@ function loadProjectAgents(projectId: string): string[] {
   }
 }
 
+/** Read all sessions across all agents from JSONL files */
+function readAllSessions(): ParsedSession[] {
+  const sessions: ParsedSession[] = []
+  const agentsDir = join(STATE_DIR, 'agents')
+  if (!existsSync(agentsDir)) return sessions
+
+  let agentDirs: string[]
+  try {
+    agentDirs = readdirSync(agentsDir)
+  } catch { return sessions }
+
+  for (const agentDir of agentDirs) {
+    const sessionsJsonPath = join(agentsDir, agentDir, 'sessions', 'sessions.json')
+    if (!existsSync(sessionsJsonPath)) continue
+
+    try {
+      const index = JSON.parse(readFileSync(sessionsJsonPath, 'utf-8')) as Record<string, SessionEntry>
+      for (const [key, entry] of Object.entries(index)) {
+        const parsed = parseSessionKey(key)
+        sessions.push({
+          key,
+          agentId: parsed.agentId || agentDir,
+          isSubagent: parsed.isSubagent,
+          name: parsed.name,
+          updatedAt: entry.updatedAt || 0,
+          chatType: entry.chatType,
+          sessionFile: entry.sessionFile,
+        })
+      }
+    } catch { /* skip corrupt files */ }
+  }
+
+  return sessions
+}
+
+/** Read messages from a session JSONL file */
+function readSessionHistory(sessionFile: string, limit: number): HistoryMessage[] {
+  if (!existsSync(sessionFile)) return []
+
+  try {
+    const lines = readFileSync(sessionFile, 'utf-8').split('\n').filter(Boolean)
+    const messages: HistoryMessage[] = []
+
+    for (const line of lines) {
+      try {
+        const obj = JSON.parse(line)
+        if (obj.type !== 'message' || !obj.message) continue
+        const { role, content } = obj.message
+        if (role !== 'user' && role !== 'assistant' && role !== 'toolResult') continue
+
+        messages.push({
+          role,
+          content,
+          timestamp: obj.timestamp,
+        })
+      } catch { /* skip malformed lines */ }
+    }
+
+    // Return last N messages
+    return messages.slice(-limit)
+  } catch { return [] }
+}
+
 /**
  * GET /api/messages
  *
- * Aggregates agent-to-agent communication with real message content:
- * 1. sessions.list → parse session keys for agent IDs and subagent spawns
- * 2. chat.history (parallel) → fetch actual task + response content
- * 3. allowAgents config → infer parent→child relationships
+ * Aggregates agent-to-agent communication with real message content by
+ * reading session JSONL files directly from openclaw-state/.
  *
  * Query params:
  *   agents=a,b     → filter messages where both fromAgent and toAgent are in the set
@@ -152,65 +212,39 @@ export async function GET(request: NextRequest) {
       agentFilter = new Set(agentsParam.split(',').map(s => s.trim()).filter(Boolean))
     }
 
-    const sessionsResult = await gwCallAsync('sessions.list', { limit: 100 }, 15000) as {
-      sessions?: GatewaySession[]
-    }
-
-    const sessions = sessionsResult.sessions || []
+    // Read all sessions from filesystem
+    const allSessions = readAllSessions()
     const messages: AgentMessage[] = []
     let msgIdx = 0
 
     const allowMap = loadAllowAgents()
-    const reverseSpawners = buildReverseSpawners(allowMap)
 
     // Separate direct and subagent sessions
-    const directSessions: Array<GatewaySession & { agentId: string }> = []
-    const subagentSessions: Array<GatewaySession & { agentId: string }> = []
+    const directSessions = allSessions.filter(s => !s.isSubagent)
+    const subagentSessions = allSessions.filter(s => s.isSubagent)
 
-    for (const session of sessions) {
-      const { agentId, isSubagent } = parseSessionKey(session.key)
-      if (!agentId) continue
-      if (isSubagent) {
-        subagentSessions.push({ ...session, agentId })
-      } else {
-        directSessions.push({ ...session, agentId })
-      }
-    }
-
-    // ── Fetch chat.history for subagent sessions in parallel ────
+    // ── Fetch history for subagent sessions ─────────────────────
     const recentSubs = subagentSessions
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, MAX_HISTORY_FETCH)
 
-    const historyResults = await Promise.allSettled(
-      recentSubs.map(s =>
-        gwCallAsync('chat.history', { sessionKey: s.key, limit: 5 })
-          .then(r => ({ key: s.key, data: r as { messages?: HistoryMessage[] } }))
-      )
-    )
-
-    // Build a map: sessionKey → { task, response }
     const historyMap = new Map<string, { task: string; response: string }>()
-    for (const result of historyResults) {
-      if (result.status !== 'fulfilled') continue
-      const { key, data } = result.value
-      const msgs = data.messages || []
-      // First user message = task, first assistant text = response
+    for (const sub of recentSubs) {
+      if (!sub.sessionFile) continue
+      const msgs = readSessionHistory(sub.sessionFile, 10)
       const userMsg = msgs.find(m => m.role === 'user')
-      const assistantMsg = msgs.find(m => m.role === 'assistant' && m.content?.some(b => b.type === 'text'))
-      historyMap.set(key, {
-        task: userMsg ? cleanTask(extractText(userMsg.content)) : '',
-        response: assistantMsg ? extractText(assistantMsg.content) : '',
+      const assistantMsg = msgs.find(m => m.role === 'assistant')
+      historyMap.set(sub.key, {
+        task: userMsg ? cleanTask(extractText(userMsg.content as Array<{ type: string; text?: string }>, true)) : '',
+        response: assistantMsg ? extractText(assistantMsg.content as Array<{ type: string; text?: string }>) : '',
       })
     }
 
     // ── Build messages for subagent sessions ────────────────────
-    // With allowAgents=[self], spawn is always self-spawn.
-    // parentId = agentId (the agent spawned itself for parallel task splitting).
     for (const sub of subagentSessions) {
       const parentId = sub.agentId
 
-      // Apply agent filter: both from and to must be in the set
+      // Apply agent filter
       if (agentFilter && !agentFilter.has(parentId) && !agentFilter.has(sub.agentId)) continue
 
       const ts = sub.updatedAt ? new Date(sub.updatedAt).toISOString() : new Date().toISOString()
@@ -226,13 +260,13 @@ export async function GET(request: NextRequest) {
           type: 'spawn',
           content: history?.task
             ? history.task.slice(0, contentLimit)
-            : (sub.label || `Spawned ${sub.agentId} subagent`),
+            : `Spawned ${sub.agentId} subagent`,
           sessionKey: sub.key,
         })
       }
 
-      // Response event: child → parent (with actual response)
-      if (sub.outputTokens && sub.outputTokens > 0) {
+      // Response event if there's a response
+      if (history?.response) {
         if (!agentFilter || (agentFilter.has(sub.agentId) || agentFilter.has(parentId))) {
           messages.push({
             id: `msg-${msgIdx++}`,
@@ -240,95 +274,55 @@ export async function GET(request: NextRequest) {
             fromAgent: sub.agentId,
             toAgent: parentId,
             type: 'send',
-            content: history?.response
-              ? history.response.slice(0, contentLimit)
-              : `Response completed (${sub.outputTokens} tokens)`,
+            content: history.response.slice(0, contentLimit),
             sessionKey: sub.key,
           })
         }
       }
     }
 
-    // ── Fetch chat.history for direct sessions to detect peer-send messages ──
+    // ── Fetch history for direct sessions to detect peer-send messages ──
     const activeDirect = directSessions
-      .filter(s => s.outputTokens && s.outputTokens > 0)
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, MAX_DIRECT_HISTORY_FETCH)
 
-    // Fetch in batches of 5 to avoid overloading the Gateway with concurrent calls
-    const BATCH_SIZE = 5
-    const directHistMap = new Map<string, { agentId: string; msgs: HistoryMessage[] }>()
-    const now = Date.now()
-
-    for (let batchStart = 0; batchStart < activeDirect.length; batchStart += BATCH_SIZE) {
-      const batch = activeDirect.slice(batchStart, batchStart + BATCH_SIZE)
-      const results = await Promise.allSettled(
-        batch.map(s => {
-          // Use cache if fresh enough
-          const cached = directHistoryCache.get(s.key)
-          if (cached && now - cached.ts < CACHE_TTL_MS) {
-            return Promise.resolve({ key: s.key, agentId: s.agentId, msgs: cached.data })
-          }
-          return gwCallAsync('chat.history', { sessionKey: s.key, limit: 50 })
-            .then(r => {
-              const msgs = (r as { messages?: HistoryMessage[] }).messages || []
-              directHistoryCache.set(s.key, { data: msgs, ts: Date.now() })
-              return { key: s.key, agentId: s.agentId, msgs }
-            })
-        })
-      )
-      for (const r of results) {
-        if (r.status === 'fulfilled') {
-          directHistMap.set(r.value.key, { agentId: r.value.agentId, msgs: r.value.msgs })
-        } else {
-          // On failure, use stale cache if available
-          const failedSession = batch.find(s => !directHistMap.has(s.key))
-          if (failedSession) {
-            const cached = directHistoryCache.get(failedSession.key)
-            if (cached) {
-              directHistMap.set(failedSession.key, { agentId: failedSession.agentId, msgs: cached.data })
-            }
-          }
-        }
-      }
-    }
-
-    // Extract peer-send messages from direct session histories
     const directSessionsWithPeerMsgs = new Set<string>()
-    for (const [key, { agentId, msgs: histMsgs }] of Array.from(directHistMap)) {
+    for (const session of activeDirect) {
+      if (!session.sessionFile) continue
+
+      const histMsgs = readSessionHistory(session.sessionFile, 50)
+
       for (let i = 0; i < histMsgs.length; i++) {
         const m = histMsgs[i]
         if (m.role !== 'user') continue
 
-        const text = extractText(m.content)
+        const text = extractText(m.content as Array<{ type: string; text?: string }>, true)
         const match = text.match(PEER_MSG_RE)
         if (!match) continue
 
-        // This is an inter-agent message received by this agent
         const senderId = match[1]
         const msgContent = text.replace(PEER_MSG_RE, '').trim()
         const ts = m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString()
 
-        // Apply agent filter
-        if (agentFilter && !agentFilter.has(senderId) && !agentFilter.has(agentId)) continue
+        if (agentFilter && !agentFilter.has(senderId) && !agentFilter.has(session.agentId)) continue
 
-        directSessionsWithPeerMsgs.add(key)
+        directSessionsWithPeerMsgs.add(session.key)
 
         // Incoming message: sender → this agent
         messages.push({
           id: `msg-${msgIdx++}`,
           timestamp: ts,
           fromAgent: senderId,
-          toAgent: agentId,
+          toAgent: session.agentId,
           type: 'send',
           content: msgContent.slice(0, contentLimit),
-          sessionKey: key,
+          sessionKey: session.key,
         })
 
-        // Look for the assistant response right after this user message
+        // Look for the assistant response right after
         const nextMsg = histMsgs[i + 1]
         if (nextMsg && nextMsg.role === 'assistant') {
-          const responseText = extractText(nextMsg.content)
+          const responseText = extractText(nextMsg.content as Array<{ type: string; text?: string }>)
           if (responseText) {
             const responseTs = nextMsg.timestamp
               ? new Date(nextMsg.timestamp).toISOString()
@@ -336,36 +330,31 @@ export async function GET(request: NextRequest) {
             messages.push({
               id: `msg-${msgIdx++}`,
               timestamp: responseTs,
-              fromAgent: agentId,
+              fromAgent: session.agentId,
               toAgent: senderId,
               type: 'send',
               content: responseText.slice(0, contentLimit),
-              sessionKey: key,
+              sessionKey: session.key,
             })
           }
         }
       }
     }
 
-    // ── Direct sessions with activity → log events ──────────────
+    // ── Direct sessions without peer msgs → log events ──────────
     for (const session of directSessions) {
-      if (!session.outputTokens || session.outputTokens === 0) continue
-
-      // Skip sessions that already have peer messages extracted (avoid duplicate noise)
+      if (session.updatedAt === 0) continue
       if (directSessionsWithPeerMsgs.has(session.key)) continue
-
-      // Apply agent filter
       if (agentFilter && !agentFilter.has(session.agentId)) continue
 
-      const ts = session.updatedAt ? new Date(session.updatedAt).toISOString() : new Date().toISOString()
-      const { name } = parseSessionKey(session.key)
+      const ts = new Date(session.updatedAt).toISOString()
       messages.push({
         id: `msg-${msgIdx++}`,
         timestamp: ts,
         fromAgent: 'user',
         toAgent: session.agentId,
         type: 'log',
-        content: `Session "${name}" — ${session.outputTokens} output tokens, model: ${session.model || 'default'}`,
+        content: `Session "${session.name}" active`,
         sessionKey: session.key,
       })
     }
@@ -409,7 +398,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       messages: messages.slice(0, 200),
-      source: 'gateway',
+      source: 'file',
     })
   } catch (e) {
     return NextResponse.json(
