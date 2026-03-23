@@ -16,6 +16,54 @@ const logger = require('../common/logger.cjs')
 
 const MAX_DOMAIN_KNOWLEDGE_CHARS = 3000
 
+/** Structured section labels used in Chief's output format */
+const STRUCTURED_SECTIONS = ['任务分配', '任务完成', '任务恢复', '进展汇报', '阻塞项']
+const SECTION_REGEX = new RegExp(`^\\[(?:${STRUCTURED_SECTIONS.join('|')})\\]`, 'm')
+
+/**
+ * Extract structured memory from a Chief/leader response.
+ * Chief responses follow a fixed format: free-form reasoning, then [任务分配], [任务完成], etc.
+ * @param {string} response
+ * @returns {{ reasoning: string, assignments: string, completions: string, progress: string, blockers: string }}
+ */
+function extractStructuredLeaderMemory(response) {
+  const result = { reasoning: '', assignments: '', completions: '', progress: '', blockers: '' }
+  if (!response) return result
+
+  // Find the first structured section marker
+  const firstMatch = response.match(SECTION_REGEX)
+  if (firstMatch) {
+    // Everything before the first marker is reasoning/analysis
+    result.reasoning = response.slice(0, firstMatch.index).trim()
+  }
+
+  // Extract each section
+  const sectionMap = {
+    '任务分配': 'assignments',
+    '任务完成': 'completions',
+    '任务恢复': 'completions', // merge with completions
+    '进展汇报': 'progress',
+    '阻塞项': 'blockers',
+  }
+  for (const [label, key] of Object.entries(sectionMap)) {
+    const regex = new RegExp(`\\[${label}\\]\\s*\\n([\\s\\S]*?)(?=\\n\\[(?:${STRUCTURED_SECTIONS.join('|')})\\]|$)`)
+    const m = response.match(regex)
+    if (m && m[1]) {
+      const content = m[1].trim()
+      if (content && content !== '无' && content !== '- 无') {
+        result[key] = result[key] ? result[key] + '\n' + content : content
+      }
+    }
+  }
+
+  // If no structured sections found, treat entire response as reasoning
+  if (!firstMatch) {
+    result.reasoning = response.trim()
+  }
+
+  return result
+}
+
 /**
  * Build structured memory context for an agent.
  * @param {string} agentId
@@ -39,23 +87,27 @@ function buildMemoryContext(agentId, cycleType) {
     }
   }
 
-  // Recent decisions (last 7 days)
-  if (cycleType === 'coordination' || cycleType === 'strategy') {
+  // Recent decisions — also included for 'department' type (stateless session continuity)
+  if (cycleType === 'coordination' || cycleType === 'strategy' || cycleType === 'department') {
+    const daysToInclude = cycleType === 'department' ? 3 : 7
+    const perFileLimit = cycleType === 'department' ? 1500 : 500
+    const totalLimit = cycleType === 'department' ? 4000 : 3000
+
     const entries = agentMetaRepo.listAgentDir(agentId, 'memory/decisions')
     const mdFiles = entries
       .filter(e => e.isFile && e.name.endsWith('.md'))
       .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(-7)
+      .slice(-daysToInclude)
 
     if (mdFiles.length > 0) {
       let decisions = ''
       for (const f of mdFiles) {
         const content = agentMetaRepo.readAgentFile(agentId, `memory/decisions/${f.name}`)
         if (content) {
-          decisions += `\n### ${f.name.replace('.md', '')}\n${content.slice(0, 500)}\n`
+          decisions += `\n### ${f.name.replace('.md', '')}\n${content.slice(0, perFileLimit)}\n`
         }
       }
-      if (decisions) result.recentDecisions = decisions.slice(0, 3000)
+      if (decisions) result.recentDecisions = decisions.slice(0, totalLimit)
     }
   }
 
@@ -99,20 +151,34 @@ function extractSummaryFromMemory(raw) {
   return summary || raw.slice(0, 2000)
 }
 
-/** Extract decision entry from response */
+/** Extract decision entry from response (structured extraction for leader, fallback for others) */
 function extractDecisionEntry(response, timestamp) {
   if (!response || response.length < 20) return null
-  const lines = response.split('\n').filter(l => l.trim())
-  const summary = lines.slice(0, 5).join('\n')
-  return `#### ${timestamp}\n${summary.slice(0, 500)}`
+  const structured = extractStructuredLeaderMemory(response)
+  const parts = []
+  if (structured.reasoning) parts.push(structured.reasoning.slice(0, 800))
+  if (structured.assignments) parts.push('分配: ' + structured.assignments.slice(0, 400))
+  if (structured.blockers) parts.push('阻塞: ' + structured.blockers.slice(0, 200))
+  // Fallback: if no structured sections found, use first lines
+  const content = parts.length > 1 || (parts.length === 1 && structured.assignments)
+    ? parts.join('\n')
+    : response.split('\n').filter(l => l.trim()).slice(0, 8).join('\n')
+  return `#### ${timestamp}\n${content.slice(0, 1500)}`
 }
 
-/** Build summary from response */
+/** Build summary from response (structured extraction for leader, fallback for others) */
 function buildSummaryFromResponse(response, date) {
   if (!response || response.length < 20) return null
-  const lines = response.split('\n').filter(l => l.trim())
-  const firstLines = lines.slice(0, 10).join('\n')
-  return `# Agent Memory Summary\n\nLast updated: ${date}\n\n## 最新状态\n${firstLines.slice(0, 1000)}\n`
+  const structured = extractStructuredLeaderMemory(response)
+  const parts = []
+  if (structured.reasoning) parts.push(structured.reasoning.slice(0, 800))
+  if (structured.progress) parts.push('进展: ' + structured.progress.slice(0, 400))
+  if (structured.blockers) parts.push('阻塞: ' + structured.blockers.slice(0, 200))
+  // Fallback: if no structured sections found, use first lines
+  const content = parts.length > 1 || (parts.length === 1 && structured.progress)
+    ? parts.join('\n')
+    : response.split('\n').filter(l => l.trim()).slice(0, 10).join('\n')
+  return `# Agent Memory Summary\n\nLast updated: ${date}\n\n## 最新状态\n${content.slice(0, 1500)}\n`
 }
 
 /**
@@ -335,6 +401,7 @@ module.exports = {
   compressMemory,
   compressMemoryByRole,
   extractSummaryFromMemory,
+  extractStructuredLeaderMemory,
   extractDecisionEntry,
   buildSummaryFromResponse,
   extractWorkOutput,

@@ -7,39 +7,7 @@ const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 
 describe('department-loop', () => {
-  describe('sessionResetCooldowns Map cleanup', () => {
-    it('removes expired cooldown entries', () => {
-      const sessionResetCooldowns = new Map()
-      const COOLDOWN_TTL = 3600_000 // 1h
-
-      sessionResetCooldowns.set('agent:test:main', Date.now() - 7200_000)
-      sessionResetCooldowns.set('agent:test:other', Date.now() - 30_000)
-
-      const now = Date.now()
-      for (const [key, ts] of sessionResetCooldowns) {
-        if (now - ts > COOLDOWN_TTL) sessionResetCooldowns.delete(key)
-      }
-
-      assert.equal(sessionResetCooldowns.size, 1)
-      assert.ok(sessionResetCooldowns.has('agent:test:other'))
-      assert.ok(!sessionResetCooldowns.has('agent:test:main'))
-    })
-
-    it('preserves all entries within TTL', () => {
-      const sessionResetCooldowns = new Map()
-      const COOLDOWN_TTL = 3600_000
-
-      sessionResetCooldowns.set('a', Date.now() - 1000)
-      sessionResetCooldowns.set('b', Date.now() - 2000)
-
-      const now = Date.now()
-      for (const [key, ts] of sessionResetCooldowns) {
-        if (now - ts > COOLDOWN_TTL) sessionResetCooldowns.delete(key)
-      }
-
-      assert.equal(sessionResetCooldowns.size, 2)
-    })
-  })
+  // sessionResetCooldowns removed — Chief sessions are now stateless (killed after each cycle)
 
   describe('gateErrorCounts Map cleanup', () => {
     it('removes stale error entries', () => {

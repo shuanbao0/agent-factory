@@ -397,7 +397,15 @@ function buildDepartmentDirective(deptId, config, state, transitions, statusQuer
   let memorySection = ''
   try {
     const memCtx = buildMemoryContext(config.head, 'department')
-    if (memCtx.summary) memorySection = `\n## 你的记忆\n${memCtx.summary}\n`
+    if (memCtx.summary || memCtx.recentDecisions) {
+      memorySection = '\n## 你的工作记忆\n'
+      if (memCtx.summary) {
+        memorySection += `### 状态摘要\n${memCtx.summary}\n\n`
+      }
+      if (memCtx.recentDecisions) {
+        memorySection += `### 近期决策\n以下是你最近几轮的决策记录，帮助你保持工作连续性：\n${memCtx.recentDecisions}\n`
+      }
+    }
   } catch {
     // No memory available
   }

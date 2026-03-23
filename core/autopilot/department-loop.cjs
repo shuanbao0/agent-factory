@@ -12,6 +12,7 @@ const {
   IDLE_COMPLETE_MINS, STALE_TASK_MINS,
   isDualSessionEnabled, STATUS_QUERY_TIMEOUT_MS, MAX_NO_RESPONSE_COUNT,
 } = require('./constants.cjs')
+// Note: SESSION_RESET_INPUT_TOKENS and SESSION_FORCE_COMPACT_TOKENS still used for member health checks
 const { deptConfigRepo } = require('../repo/dept-config.cjs')
 const { deptStateRepo } = require('../repo/dept-state.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
@@ -66,10 +67,6 @@ function getQualityGate() {
   }
   return _qualityGate
 }
-
-// Cooldown: skip session health check if recently reset
-const sessionResetCooldowns = new Map()  // sessionKey → timestamp
-const RESET_COOLDOWN_MS = 120_000
 
 // Quality gate error tracking: consecutive exceptions per task
 const gateErrorCounts = new Map()  // taskId → count
@@ -699,6 +696,14 @@ async function runDepartmentCycle(deptId) {
         logger.debug('dept-loop', `Memory compression failed for ${config.head}`, e)
       }
 
+      // Stateless: kill chief session after memory extraction (fresh context each cycle)
+      try {
+        await killSession(sessionKey)
+        logger.debug('dept-loop', `Killed chief session ${sessionKey} after cycle`)
+      } catch (e) {
+        logger.debug('dept-loop', `Failed to kill chief session after cycle`, e)
+      }
+
       // ── Fallback dispatch: triggered by token failure OR dispatch miss ──
       if (state.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || dispatchNeeded) {
         const reason = dispatchNeeded
@@ -706,25 +711,6 @@ async function runDepartmentCycle(deptId) {
           : `chief produced < ${MIN_EFFECTIVE_RESPONSE_LENGTH} chars for ${state.consecutiveFailures} cycles`
         logger.warn('dept-loop', `Department ${deptId} fallback dispatch triggered: ${reason}`)
         await fallbackDispatch(deptId, config)
-        // Reset session to clear bloated context that caused the failure (respect cooldown)
-        const lastResetAt = sessionResetCooldowns.get(sessionKey)
-        if (!lastResetAt || Date.now() - lastResetAt >= RESET_COOLDOWN_MS) {
-          // Best-effort memory extraction before kill
-          try {
-            const summary = await sendToAgent(config.head, sessionKey,
-              '[系统查询] 请用 3-5 句话总结本轮工作重点、关键决策和待跟进事项。', 15000)
-            if (summary.ok && summary.text) compressMemoryByRole(config.head, summary.text, 'leader')
-          } catch { /* chief already failing, skip */ }
-          try {
-            await killSession(sessionKey)
-            sessionResetCooldowns.set(sessionKey, Date.now())
-            logger.info('dept-loop', `Reset chief session ${sessionKey} after fallback dispatch`)
-          } catch (e) {
-            logger.debug('dept-loop', `Failed to reset chief session after fallback`, e)
-          }
-        } else {
-          logger.debug('dept-loop', `Skipping session reset after fallback (cooldown active)`)
-        }
         state.consecutiveFailures = 0
       }
 
@@ -771,6 +757,8 @@ async function runDepartmentCycle(deptId) {
       state.status = 'error'
       state.lastCycleResult = `Error: ${result.error}`
       deptStateRepo.save(deptId, state)
+      // Stateless: kill session on failure too
+      try { await killSession(sessionKey) } catch { /* best effort */ }
       // Emit cycle.end (failure)
       try {
         const { eventBus } = require('../observe/event-bus.cjs')
@@ -788,6 +776,8 @@ async function runDepartmentCycle(deptId) {
     state.status = 'error'
     state.lastCycleResult = `Error: ${err.message}`
     deptStateRepo.save(deptId, state)
+    // Stateless: kill session on exception
+    try { await killSession(sessionKey) } catch { /* best effort */ }
     // Emit cycle.end (error)
     try {
       const { eventBus } = require('../observe/event-bus.cjs')
@@ -800,48 +790,17 @@ async function runDepartmentCycle(deptId) {
 }
 
 /**
- * Ensure department head session is healthy before sending a directive.
- * Resets session if inputTokens exceed threshold, compacts if moderately bloated.
+ * Ensure department head session is clean before sending a directive.
+ * Stateless mode: session should have been killed at end of previous cycle.
+ * This is a crash-recovery safety net — if process crashed before post-cycle kill,
+ * clean up the stale session here.
  */
 async function ensureSessionHealth(headAgent, sessionKey, deptId) {
-  // Cooldown: skip check if recently reset
-  const lastReset = sessionResetCooldowns.get(sessionKey)
-  if (lastReset && Date.now() - lastReset < RESET_COOLDOWN_MS) {
-    logger.debug('dept-loop', `Session ${sessionKey} recently reset, skipping health check`)
-    return
-  }
-
   const sessInfo = sessionRepo.getSessionTokenInfo(headAgent, sessionKey)
-  if (!sessInfo) return
-
-  const inputTokens = sessInfo.totalTokens || 0
-
-  if (inputTokens > SESSION_RESET_INPUT_TOKENS) {
-    logger.warn('dept-loop', `Session ${sessionKey} bloated (${inputTokens} tokens > ${SESSION_RESET_INPUT_TOKENS}), resetting`)
-    // Extract chief memory before kill
-    try {
-      const summary = await sendToAgent(headAgent, sessionKey,
-        '[系统查询] 请用 3-5 句话总结本轮工作重点、关键决策和待跟进事项。', 30000)
-      if (summary.ok && summary.text) {
-        compressMemoryByRole(headAgent, summary.text, 'leader')
-        logger.info('dept-loop', `Extracted chief memory from ${sessionKey} before reset`)
-      }
-    } catch { logger.debug('dept-loop', `Chief memory extraction skipped for ${sessionKey}`) }
-    try {
-      await killSession(sessionKey)
-      sessionResetCooldowns.set(sessionKey, Date.now())
-      logger.info('dept-loop', `Reset session ${sessionKey} for ${deptId}`)
-    } catch (e) {
-      logger.error('dept-loop', `Failed to reset bloated session ${sessionKey}`, e)
-    }
-  } else if (inputTokens > SESSION_FORCE_COMPACT_TOKENS) {
-    logger.info('dept-loop', `Session ${sessionKey} moderately bloated (${inputTokens} tokens > ${SESSION_FORCE_COMPACT_TOKENS}), compacting`)
-    try {
-      await compactSession(sessionKey)
-      logger.info('dept-loop', `Compacted session ${sessionKey} for ${deptId}`)
-    } catch (e) {
-      logger.debug('dept-loop', `Failed to compact session ${sessionKey}`, e)
-    }
+  if (sessInfo && (sessInfo.totalTokens || 0) > 10000) {
+    // Stale session from previous crash — kill without memory extraction (already saved post-cycle)
+    try { await killSession(sessionKey) } catch { /* best effort */ }
+    logger.info('dept-loop', `Cleaned stale chief session ${sessionKey} (${sessInfo.totalTokens} tokens)`)
   }
 }
 
@@ -1025,23 +984,7 @@ async function runHealthCheck(deptId, config, headResponse) {
       }
     }
 
-    // Check dept-autopilot session for the head
-    if (agentId === config.head) {
-      const headKey = `agent:${agentId}:dept-autopilot`
-      const headInfo = sessionRepo.getSessionTokenInfo(agentId, headKey)
-      if (headInfo && headInfo.totalTokens > compactThreshold) {
-        try {
-          const res = await compactSession(headKey)
-          if (res.ok) {
-            logger.info('dept-loop', `Compacted ${headKey} (was ${headInfo.totalTokens} tokens)`)
-          } else {
-            logger.warn('dept-loop', `Compact failed for ${headKey}: ${res.error}`)
-          }
-        } catch (e) {
-          logger.debug('dept-loop', `Compact error for ${headKey}`, e)
-        }
-      }
-    }
+    // Chief's dept-autopilot session is stateless (killed after each cycle), skip health check
   }
 
   // Clean up stale sessions (inactive > 14 days, non-:main)
