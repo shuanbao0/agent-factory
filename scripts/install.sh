@@ -480,20 +480,23 @@ init_config() {
   # Copy default config files (only if not existing)
   local copied=0
 
-  if [[ -f "config/openclaw.default.json" && ! -f "config/openclaw.json" ]]; then
-    cp config/openclaw.default.json config/openclaw.json
-    success "Created config/openclaw.json"
+  # Runtime config goes to data/config/ (source defaults stay in config/)
+  mkdir -p "data/config"
+
+  if [[ -f "config/openclaw.default.json" && ! -f "data/config/openclaw.json" ]]; then
+    cp config/openclaw.default.json data/config/openclaw.json
+    success "Created data/config/openclaw.json"
     ((copied++)) || true
-  elif [[ -f "config/openclaw.json" ]]; then
-    info "config/openclaw.json already exists, skipping."
+  elif [[ -f "data/config/openclaw.json" ]]; then
+    info "data/config/openclaw.json already exists, skipping."
   fi
 
-  if [[ -f "config/models.default.json" && ! -f "config/models.json" ]]; then
-    cp config/models.default.json config/models.json
-    success "Created config/models.json"
+  if [[ -f "config/models.default.json" && ! -f "data/config/models.json" ]]; then
+    cp config/models.default.json data/config/models.json
+    success "Created data/config/models.json"
     ((copied++)) || true
-  elif [[ -f "config/models.json" ]]; then
-    info "config/models.json already exists, skipping."
+  elif [[ -f "data/config/models.json" ]]; then
+    info "data/config/models.json already exists, skipping."
   fi
 
   if [[ -f ".env.example" && ! -f ".env" ]]; then
@@ -504,12 +507,18 @@ init_config() {
     info ".env already exists, skipping."
   fi
 
-  # Create necessary directories
-  local dirs=("agents" "workspaces" "templates/custom" "projects")
+  if [[ -f "config/mission.default.md" && ! -f "data/config/mission.md" ]]; then
+    cp config/mission.default.md data/config/mission.md
+    success "Created data/config/mission.md"
+    ((copied++)) || true
+  fi
+
+  # Create necessary directories (unified data/ layout)
+  local dirs=("data/agents" "data/workspaces" "data/projects" "data/departments" "data/config" "data/logs" "data/openclaw-state" "data/templates/agents/custom" "data/templates/departments/custom")
   for dir in "${dirs[@]}"; do
     mkdir -p "$dir"
   done
-  info "Ensured directories: ${dirs[*]}"
+  info "Ensured data directories created."
 
   if [[ $copied -eq 0 ]]; then
     info "All config files already present."
@@ -760,7 +769,7 @@ start_services() {
   step "Starting Agent Factory"
   cd "$INSTALL_DIR"
 
-  local log_file="$INSTALL_DIR/.openclaw-state/startup.log"
+  local log_file="$INSTALL_DIR/data/logs/startup.log"
   mkdir -p "$(dirname "$log_file")"
 
   nohup npm start > "$log_file" 2>&1 &
