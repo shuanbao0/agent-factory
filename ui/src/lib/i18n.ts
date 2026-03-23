@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import zh from '@/locales/zh.json'
 import en from '@/locales/en.json'
 
@@ -36,7 +36,7 @@ export function useTranslation() {
 
   const activeLocale = hydrated ? locale : 'zh'
 
-  function t(key: string): string {
+  const t = useCallback((key: string): string => {
     const keys = key.split('.')
     let val: TranslationValue | undefined = messages[activeLocale]
     for (const k of keys) {
@@ -48,7 +48,7 @@ export function useTranslation() {
       }
     }
     return typeof val === 'string' ? val : key
-  }
+  }, [activeLocale])
 
   return { t, locale: activeLocale, setLocale }
 }
