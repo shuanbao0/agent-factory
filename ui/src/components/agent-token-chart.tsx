@@ -40,7 +40,7 @@ export const AgentTokenChart = React.memo(function AgentTokenChart() {
           contentStyle={{ background: 'hsl(224 30% 16%)', border: '1px solid hsl(216 34% 25%)', borderRadius: 8 }}
           itemStyle={{ color: '#e2e8f0' }}
           labelStyle={{ color: '#e2e8f0' }}
-          formatter={(value: number) => [`${value.toLocaleString()} tokens`]}
+          formatter={(value: number, name: string) => [`${value.toLocaleString()} tokens`, name]}
         />
       </PieChart>
     </ResponsiveContainer>
