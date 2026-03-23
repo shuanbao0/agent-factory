@@ -37,7 +37,9 @@ export const AgentTokenChart = React.memo(function AgentTokenChart() {
           ))}
         </Pie>
         <Tooltip
-          contentStyle={{ background: 'hsl(224 71% 6%)', border: '1px solid hsl(216 34% 17%)', borderRadius: 8, color: 'hsl(213 31% 91%)' }}
+          contentStyle={{ background: 'hsl(224 30% 16%)', border: '1px solid hsl(216 34% 25%)', borderRadius: 8 }}
+          itemStyle={{ color: '#e2e8f0' }}
+          labelStyle={{ color: '#e2e8f0' }}
           formatter={(value: number) => [`${value.toLocaleString()} tokens`]}
         />
       </PieChart>

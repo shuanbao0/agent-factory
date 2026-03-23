@@ -262,11 +262,84 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
   ) as Record<string, unknown>
   const data = { ...result, source: 'gateway' as const }
 
+  // Merge historical cost data from autopilot-costs.jsonl into daily aggregates
+  // Gateway only returns data for active sessions; historical sessions that were
+  // cleaned up would be missing. The JSONL file preserves all historical costs.
   if (!hasParams) {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const costResult = core.observe.queryCosts({ from: _last30dDate() })
+      if (costResult.entries.length > 0) {
+        // Aggregate JSONL entries by date
+        const costByDate: Record<string, { tokens: number; cost: number }> = {}
+        for (const e of costResult.entries) {
+          if (!e.date) continue
+          if (!costByDate[e.date]) costByDate[e.date] = { tokens: 0, cost: 0 }
+          costByDate[e.date].tokens += (e.inputTokens || 0) + (e.outputTokens || 0)
+          costByDate[e.date].cost += e.cost || 0
+        }
+
+        // Build gateway daily map (today's data from gateway is most accurate)
+        const gwDaily = ((data as Record<string, unknown>).aggregates as Record<string, unknown>)?.daily as Array<{
+          date: string; tokens: number; cost: number; messages: number; toolCalls: number; errors: number
+        }> || []
+        const gwDailyMap = new Map<string, typeof gwDaily[0]>()
+        for (const d of gwDaily) gwDailyMap.set(d.date, d)
+
+        // Merge: use gateway data for today, JSONL data for past days
+        const mergedDaily: Array<{ date: string; tokens: number; cost: number; messages: number; toolCalls: number; errors: number }> = []
+        const allDates = new Set(Object.keys(costByDate).concat(Array.from(gwDailyMap.keys())))
+        const sortedDates = Array.from(allDates).sort()
+        for (const date of sortedDates) {
+          const gw = gwDailyMap.get(date)
+          if (date === today && gw) {
+            // Today: prefer gateway (real-time), but take the higher value
+            mergedDaily.push({
+              ...gw,
+              tokens: Math.max(gw.tokens || 0, costByDate[date]?.tokens || 0),
+              cost: Math.max(gw.cost || 0, costByDate[date]?.cost || 0),
+            })
+          } else if (gw && !costByDate[date]) {
+            mergedDaily.push(gw)
+          } else {
+            // Past days or days only in JSONL: use JSONL data
+            const c = costByDate[date]
+            if (c) {
+              mergedDaily.push({
+                date,
+                tokens: c.tokens,
+                cost: Math.round(c.cost * 1_000_000) / 1_000_000,
+                messages: gw?.messages || 0,
+                toolCalls: gw?.toolCalls || 0,
+                errors: gw?.errors || 0,
+              })
+            }
+          }
+        }
+
+        // Patch aggregates.daily
+        const agg = (data as Record<string, unknown>).aggregates as Record<string, unknown> | undefined
+        if (agg) {
+          agg.daily = mergedDaily
+        } else {
+          ;(data as Record<string, unknown>).aggregates = { daily: mergedDaily, byAgent: [] }
+        }
+      }
+    } catch (e) {
+      core.common.logger.debug('data-fetchers', 'Historical cost merge failed', { error: String(e) })
+    }
+
     _usageCache = { data, ts: Date.now() }
   }
 
   return data
+}
+
+/** Returns YYYY-MM-DD for 30 days ago */
+function _last30dDate(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 30)
+  return d.toISOString().slice(0, 10)
 }
 
 // ── Tasks ───────────────────────────────────────────────────────

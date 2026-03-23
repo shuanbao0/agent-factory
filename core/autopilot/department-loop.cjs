@@ -22,6 +22,7 @@ const { sendToAgent, compactSession, killSession, queryAgentStatus } = require('
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole, extractTaskMemory } = require('../agent/memory.cjs')
 const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, reconcileBudget } = require('../observe/budget.cjs')
+const { trackCost } = require('../observe/cost-tracker.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
 const { parseTaskAssignments, parseTaskCompletions, parseTaskRecoveries } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
@@ -688,6 +689,14 @@ async function runDepartmentCycle(deptId) {
       // Reconcile budget: replace reserved with actual
       const actualTokens = result.usage?.totalTokens || result.usage?.total_tokens || 0
       reconcileBudget(deptId, reservation.reserved, actualTokens)
+
+      // Track cost to JSONL for historical reporting
+      trackCost({
+        model: result.usage?.model || config.model || 'unknown',
+        usage: { inputTokens: result.usage?.inputTokens || 0, outputTokens: result.usage?.outputTokens || 0 },
+        source: `dept:${deptId}`,
+        agentId: config.head,
+      })
 
       // Compress memory for department head (role-aware)
       try {
