@@ -10,7 +10,7 @@ const {
 } = require('../common/paths.cjs')
 
 // Timeouts
-const DEFAULT_AGENT_TIMEOUT_MS = 300000   // 5 minutes
+const DEFAULT_AGENT_TIMEOUT_MS = 600000   // 10 minutes
 const DEFAULT_INTERVAL_SEC = 1800          // 30 minutes
 const CEO_COORDINATION_INTERVAL_SEC = 1800
 const CEO_STRATEGY_INTERVAL_SEC = 86400
