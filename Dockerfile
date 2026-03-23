@@ -54,8 +54,8 @@ COPY templates/builtin/ ./templates/builtin/
 # Config defaults (entrypoint will initialize volume from these)
 COPY config/ ./config-defaults/
 
-# Ensure directories exist for volume mounts
-RUN mkdir -p config agents workspaces projects templates/custom .openclaw-state
+# Ensure directories exist for volume mounts (unified data/ layout)
+RUN mkdir -p data/config data/agents data/workspaces data/projects data/departments data/logs data/openclaw-state data/templates/agents/custom data/templates/departments/custom
 
 # Entrypoint
 COPY docker-entrypoint.sh ./

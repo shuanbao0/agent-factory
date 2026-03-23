@@ -163,7 +163,7 @@ function syncSkillSymlinks(agentId, enabledSlugs, builtinDir) {
 // ── Main ──
 
 if (!existsSync(AGENTS_DIR)) {
-  console.log('No agents/ directory found. Nothing to sync.');
+  console.log('No data/agents/ directory found. Nothing to sync.');
   process.exit(0);
 }
 

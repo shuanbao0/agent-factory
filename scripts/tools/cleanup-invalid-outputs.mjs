@@ -82,7 +82,7 @@ console.log(`🔍 扫描无效产出文件${dryRun ? ' (dry-run 模式，不会�
 console.log()
 
 if (!existsSync(WORKSPACES_DIR)) {
-  console.log('workspaces/ 目录不存在，无需清理')
+  console.log('data/workspaces/ 目录不存在，无需清理')
   process.exit(0)
 }
 

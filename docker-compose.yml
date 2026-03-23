@@ -10,12 +10,7 @@ services:
       - NODE_ENV=production
       - AGENT_FACTORY_DIR=/app
     volumes:
-      - af-agents:/app/agents
-      - af-workspaces:/app/workspaces
-      - af-projects:/app/projects
-      - af-state:/app/.openclaw-state
-      - af-config:/app/config
-      - af-custom-templates:/app/templates/custom
+      - af-data:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
@@ -26,9 +21,4 @@ services:
     stop_grace_period: 10s
 
 volumes:
-  af-agents:
-  af-workspaces:
-  af-projects:
-  af-state:
-  af-config:
-  af-custom-templates:
+  af-data:

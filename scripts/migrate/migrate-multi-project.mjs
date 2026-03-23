@@ -29,7 +29,7 @@ function getKnownDepartments() {
 
 function migrateProjects() {
   if (!existsSync(PROJECTS_DIR)) {
-    log('No projects/ directory, nothing to migrate.')
+    log('No data/projects/ directory, nothing to migrate.')
     return []
   }
 
