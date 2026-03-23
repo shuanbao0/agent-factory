@@ -130,6 +130,10 @@ npm start            # Start Agent Factory (Dashboard + Gateway)
 
 Open `http://localhost:3100` to access the Dashboard.
 
+### Upgrading from v0.x
+
+If you have an existing installation, see the [Migration Guide](docs/migration-v1.md) to upgrade to v1.0.
+
 ### Requirements
 
 - Node.js >= 22.0.0
