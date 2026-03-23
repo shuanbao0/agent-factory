@@ -199,6 +199,7 @@ function applyCompletionWorkflow(
     if (gate.escalate) {
       updates.status = 'failed'
       updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
+      updates.failureReason = `质量审核不通过且超过最大返工次数: ${gate.errors.join('; ')}`
       const merged = { ...currentTask, ...updates } as Task
       if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
       persistFn(merged)
@@ -238,12 +239,32 @@ export function updateTask(id: string, updates: Record<string, unknown>): Update
   if (updates.status === 'completed' && !updates.completedAt) {
     updates.completedAt = updates.updatedAt
   }
+  // Record failureReason when failing via API
+  if (updates.status === 'failed' && updates.failureReason === undefined) {
+    updates.failureReason = updates.failureReason || undefined
+  }
+
+  // Helper: recover failed task to completed (skip quality gate)
+  const recoverFailed = (currentTask: Task, persistFn: (merged: Task) => void): UpdateTaskResult => {
+    const merged = { ...currentTask, ...updates, failureReason: undefined, completedAt: updates.updatedAt } as Task
+    if (updates.assignees) merged.assignedAgent = (updates.assignees as string[])[0] || undefined
+    persistFn(merged)
+    return { task: merged, ok: true }
+  }
 
   // Try standalone tasks first
   const standalone = readStandaloneTasks()
   const sIdx = standalone.findIndex(t => t.id === id)
   if (sIdx !== -1) {
     const currentTask = standalone[sIdx]
+
+    // Recovery from failed → completed: skip quality gate
+    if (updates.status === 'completed' && currentTask.status === 'failed') {
+      return recoverFailed(currentTask, (merged) => {
+        standalone[sIdx] = merged
+        writeStandaloneTasks(standalone)
+      })
+    }
 
     if (updates.status === 'completed') {
       return applyCompletionWorkflow(currentTask, updates, (merged) => {
@@ -264,6 +285,13 @@ export function updateTask(id: string, updates: Record<string, unknown>): Update
   const projectTasks = readProjectTasks()
   const pt = projectTasks.find(t => t.id === id)
   if (pt && pt.projectId) {
+    // Recovery from failed → completed: skip quality gate
+    if (updates.status === 'completed' && pt.status === 'failed') {
+      return recoverFailed(pt, (merged) => {
+        updateProjectTask(pt.projectId!, id, merged)
+      })
+    }
+
     if (updates.status === 'completed') {
       return applyCompletionWorkflow(pt, updates, (merged) => {
         updateProjectTask(pt.projectId!, id, merged)

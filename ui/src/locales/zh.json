@@ -560,6 +560,8 @@
     "colReview": "审核",
     "colCompleted": "已完成",
     "colFailed": "失败",
+    "failureReason": "失败原因",
+    "recoverToCompleted": "恢复为已完成",
     "standalone": "独立任务",
     "allProjects": "全部项目",
     "allAgents": "全部智能体",

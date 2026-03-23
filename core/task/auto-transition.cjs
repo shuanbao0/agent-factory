@@ -72,6 +72,32 @@ function parseTaskCompletions(text) {
 }
 
 /**
+ * Parse task recovery decisions from chief's response.
+ * Chief marks failed tasks as 'completed' (recover) or 'reassign' (re-assign to idle agent).
+ * @param {string} text
+ * @returns {Array<{taskId: string, action: 'completed' | 'reassign'}>}
+ */
+function parseTaskRecoveries(text) {
+  if (!text) return []
+  const match = text.match(/[\[【]任务恢复[\]】]\s*\n([\s\S]*?)(?=\n[\[【]|$)/)
+  if (!match) return []
+
+  const recoveries = []
+  for (const line of match[1].split('\n')) {
+    const m = line.match(/(task-[a-z0-9-]+)/i)
+    if (!m) continue
+    if (/无/.test(line.trim()) && !/无需/.test(line.trim())) continue
+    const taskId = m[1]
+    if (/reassign|重新分配|重做|重新指派/i.test(line)) {
+      recoveries.push({ taskId, action: 'reassign' })
+    } else if (/completed|完成|已完成|恢复|recover/i.test(line)) {
+      recoveries.push({ taskId, action: 'completed' })
+    }
+  }
+  return recoveries
+}
+
+/**
  * Compute auto-transitions for department tasks.
  *
  * @param {object} opts
@@ -170,6 +196,7 @@ function computeTransitions(opts) {
 module.exports = {
   parseTaskAssignments,
   parseTaskCompletions,
+  parseTaskRecoveries,
   computeTransitions,
   IDLE_COMPLETE_MINS,
   STALE_TASK_MINS,

@@ -30,7 +30,7 @@ describe('TaskStateMachine', () => {
     assert.deepStrictEqual(getValidTransitions('review'), ['completed', 'rework', 'in_progress', 'failed'])
     assert.deepStrictEqual(getValidTransitions('rework'), ['in_progress', 'review', 'completed', 'failed'])
     assert.deepStrictEqual(getValidTransitions('completed'), [])
-    assert.deepStrictEqual(getValidTransitions('failed'), [])
+    assert.deepStrictEqual(getValidTransitions('failed'), ['completed'])
   })
 
   it('isTerminal: completed=true, in_progress=false', () => {
@@ -76,6 +76,25 @@ describe('TaskStateMachine', () => {
     assert.strictEqual(task._transitions[0].from, 'pending')
     assert.strictEqual(task._transitions[0].to, 'assigned')
     assert.strictEqual(task._transitions[0].actor, 'user')
+  })
+
+  it('transition() to failed sets failureReason from context.reason', () => {
+    const task = { id: 't1', status: 'in_progress' }
+    transition(task, 'failed', { reason: 'agent 空闲 30m 且进度 <50%' })
+    assert.strictEqual(task.failureReason, 'agent 空闲 30m 且进度 <50%')
+  })
+
+  it('transition() failed → completed clears failureReason', () => {
+    const task = { id: 't1', status: 'failed', failureReason: 'some reason' }
+    const result = transition(task, 'completed')
+    assert.ok(result.ok)
+    assert.strictEqual(task.status, 'completed')
+    assert.strictEqual(task.failureReason, undefined)
+    assert.ok(task.completedAt)
+  })
+
+  it('canTransition: failed → completed is valid (recovery)', () => {
+    assert.ok(canTransition('failed', 'completed'))
   })
 
   it('isValidStatus returns true for known statuses', () => {

@@ -107,6 +107,9 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
             </span>
           )}
         </div>
+        {task.status === 'failed' && task.failureReason && (
+          <p className="text-[10px] text-red-400/80 line-clamp-1">{task.failureReason}</p>
+        )}
       </div>
 
       {/* Assignees */}

@@ -114,13 +114,21 @@ describe('TaskStateMachine — lifecycle paths', () => {
       assert.equal(task.status, 'pending')
     })
 
-    it('failed → any status is rejected', () => {
-      const task = makeTask({ id: 'zzz-test-inv3', status: 'failed' })
-      for (const target of ['pending', 'assigned', 'in_progress', 'review', 'completed', 'rework']) {
-        const r = transition(task, target)
-        assert.equal(r.ok, false, `failed → ${target} should be rejected`)
+    it('failed → completed is allowed (recovery), other transitions rejected', () => {
+      const task = makeTask({ id: 'zzz-test-inv3', status: 'failed', failureReason: 'test reason' })
+      // Recovery: failed → completed is valid
+      const r = transition(task, 'completed')
+      assert.equal(r.ok, true, 'failed → completed should be allowed (recovery)')
+      assert.equal(task.status, 'completed')
+      assert.equal(task.failureReason, undefined, 'failureReason should be cleared on recovery')
+
+      // Other transitions from failed are still rejected
+      const task2 = makeTask({ id: 'zzz-test-inv3b', status: 'failed' })
+      for (const target of ['pending', 'assigned', 'in_progress', 'review', 'rework']) {
+        const r2 = transition(task2, target)
+        assert.equal(r2.ok, false, `failed → ${target} should be rejected`)
       }
-      assert.equal(task.status, 'failed')
+      assert.equal(task2.status, 'failed')
     })
   })
 
@@ -177,7 +185,7 @@ describe('TaskStateMachine — lifecycle paths', () => {
 
     it('getValidTransitions returns correct targets', () => {
       assert.deepEqual(getValidTransitions('completed'), [])
-      assert.deepEqual(getValidTransitions('failed'), [])
+      assert.deepEqual(getValidTransitions('failed'), ['completed'])
       assert.ok(getValidTransitions('pending').includes('assigned'))
       assert.ok(getValidTransitions('in_progress').includes('review'))
     })

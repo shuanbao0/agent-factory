@@ -599,6 +599,14 @@ function TaskDetailPanel({
               >
                 {t('tasks.colFailed')}
               </button>
+              {task.status === 'failed' && (
+                <button
+                  onClick={() => onStatusChange(task, 'completed')}
+                  className="px-2.5 py-1 rounded-md text-xs border transition-colors bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30"
+                >
+                  {t('tasks.recoverToCompleted')}
+                </button>
+              )}
             </div>
           </div>
 
@@ -687,6 +695,14 @@ function TaskDetailPanel({
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.reworkCount')}</label>
               <span className="text-xs text-amber-400">{task.reworkCount} / 3</span>
+            </div>
+          )}
+
+          {/* Failure reason */}
+          {task.status === 'failed' && task.failureReason && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">{t('tasks.failureReason')}</label>
+              <p className="text-xs text-red-400 whitespace-pre-wrap">{task.failureReason}</p>
             </div>
           )}
 

@@ -164,7 +164,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json()
-    let { agent, taskId, status, progress, output, quality, reworkCount } = body
+    let { agent, taskId, status, progress, output, quality, reworkCount, failureReason } = body
 
     if (!agent || !taskId) {
       return NextResponse.json({ error: 'agent and taskId are required' }, { status: 400 })
@@ -227,6 +227,21 @@ export async function PUT(req: NextRequest) {
     if (reworkCount !== undefined) {
       updates.reworkCount = reworkCount
     }
+    if (status === 'failed' && failureReason) {
+      updates.failureReason = failureReason
+    }
+
+    // Recovery from failed → completed: skip quality gate (user/system override)
+    if (status === 'completed' && found.task.status === 'failed') {
+      updates.completedAt = new Date().toISOString()
+      updates.failureReason = undefined
+      const updated = updateTaskInPlace(taskId, updates)
+      relayEvent('task.status_changed', {
+        taskId, taskName: found.task.name || '', agentId: agent,
+        department: found.task.projectId || '', from: 'failed', to: 'completed',
+      })
+      return NextResponse.json({ task: updated, ok: true })
+    }
 
     // Quality gate check on completion
     if (status === 'completed') {
@@ -238,6 +253,7 @@ export async function PUT(req: NextRequest) {
         if (gate.escalate) {
           updates.status = 'failed'
           updates.validationErrors = [...gate.errors, 'Max reworks exceeded']
+          updates.failureReason = `质量审核不通过且超过最大返工次数: ${gate.errors.join('; ')}`
           const updated = updateTaskInPlace(taskId, updates)
           relayEvent('task.status_changed', {
             taskId, taskName: found.task.name || '', agentId: agent,

@@ -45,7 +45,12 @@ function transition(task, to, context = {}) {
   task.updatedAt = new Date().toISOString()
 
   // 完成时记录完成时间
-  if (to === 'completed') task.completedAt = new Date().toISOString()
+  if (to === 'completed') {
+    task.completedAt = new Date().toISOString()
+    delete task.failureReason
+  }
+  // 失败时记录失败原因
+  if (to === 'failed' && context.reason) task.failureReason = context.reason
   // 合并额外字段
   if (context.extras) Object.assign(task, context.extras)
 

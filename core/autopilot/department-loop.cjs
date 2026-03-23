@@ -22,7 +22,7 @@ const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole, extractTaskMemory } = require('../agent/memory.cjs')
 const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, reconcileBudget } = require('../observe/budget.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
-const { parseTaskAssignments, parseTaskCompletions } = require('../task/auto-transition.cjs')
+const { parseTaskAssignments, parseTaskCompletions, parseTaskRecoveries } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
 const { buildTaskContext } = require('./task-prompt.cjs')
 const { inferTaskType } = require('../task/type-inference.cjs')
@@ -167,7 +167,8 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
 
   // Helper to record transition (extras: optional fields like quality, reworkCount)
   const transition = (task, assignee, from, to, reason, extras) => {
-    updateTaskStatus(assignee, task.id, to, extras)
+    const merged = to === 'failed' ? { ...extras, failureReason: reason } : extras
+    updateTaskStatus(assignee, task.id, to, merged)
     transitions.push({ taskId: task.id, taskName: task.name || '', agentId: assignee, from, to, reason })
 
     // Emit task status change event (fire-and-forget)
@@ -581,6 +582,57 @@ async function runDepartmentCycle(deptId) {
         }
       } catch (e) {
         logger.warn('dept-loop', `Auto-transition error for ${deptId}`, e)
+      }
+
+      // ── Process failed task recoveries (chief decides: recover or reassign) ──
+      try {
+        const recoveries = parseTaskRecoveries(result.text)
+        if (recoveries.length > 0) {
+          const projects = taskRepo.readProjectsWithTasks()
+          const standalone = taskRepo.readStandaloneTasks()
+          const allRecoverableTasks = [...standalone, ...projects.flatMap(p => p.tasks || [])]
+
+          for (const { taskId, action } of recoveries) {
+            const task = allRecoverableTasks.find(t => t.id === taskId && t.status === 'failed')
+            if (!task) continue
+            const assignee = task.assignedAgent || (task.assignees && task.assignees[0])
+            if (!assignee) continue
+
+            if (action === 'completed') {
+              updateTaskStatus(assignee, taskId, 'completed', { failureReason: undefined })
+              logger.info('dept-loop', `Recovered failed task ${taskId} → completed (chief decision)`, { deptId })
+              try {
+                const { eventBus } = require('../observe/event-bus.cjs')
+                eventBus.fire('task.status_changed', { taskId, taskName: task.name || '', agentId: assignee, department: deptId, from: 'failed', to: 'completed' })
+              } catch { /* event bus not available */ }
+            } else if (action === 'reassign') {
+              // Find an idle agent to reassign
+              const activitySnap = sessionRepo.readAgentActivity()
+              const idleAgent = workers.find(id => {
+                if (id === assignee) return false
+                const a = activitySnap[id]
+                return !a || a.idleMins >= 5
+              }) || assignee // fallback to same agent
+
+              const taskType = inferTaskType(task.name || '', agentMetaRepo.readMeta(idleAgent))
+              const projectId = task.projectId || getDefaultProjectForDept(deptId)
+              try {
+                const newTaskId = await createWorkTask(idleAgent, task.name || 'Reassigned task', deptId, {
+                  type: taskType, projectId,
+                  description: `重新分配自失败任务 ${taskId}。${task.failureReason ? '原因: ' + task.failureReason : ''}`,
+                })
+                if (newTaskId) {
+                  updateTaskStatus(idleAgent, newTaskId, 'in_progress')
+                  logger.info('dept-loop', `Reassigned failed task ${taskId} → new task ${newTaskId} for ${idleAgent}`, { deptId })
+                }
+              } catch (e) {
+                logger.warn('dept-loop', `Failed to reassign task ${taskId}`, e)
+              }
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('dept-loop', `Task recovery processing error for ${deptId}`, e)
       }
 
       // ── Response validation: token check ──
@@ -1031,4 +1083,4 @@ async function cleanStaleSessions(maxDays = 14) {
   }
 }
 
-module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, autoTransitionTasks, agentHasActiveTasks }
+module.exports = { runDepartmentCycle, generateDepartmentReport, ensureSessionHealth, fallbackDispatch, parseTaskAssignments, parseTaskCompletions, parseTaskRecoveries, autoTransitionTasks, agentHasActiveTasks }

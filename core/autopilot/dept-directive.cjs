@@ -128,6 +128,13 @@ function buildDeptTasks(deptId, config, projects) {
       }
     }
 
+    // Helper to render failed tasks
+    const renderFailed = (taskList) => {
+      const failed = taskList.filter(t => t.status === 'failed')
+      if (failed.length === 0) return ''
+      return `  ❌ 失败(${failed.length}): ${failed.map(t => `[${t.id}] ${t.name} → ${t.assignedAgent || '?'}${t.failureReason ? ` (${t.failureReason})` : ''}`).join(', ')}\n`
+    }
+
     const typeKeys = Object.keys(byType)
     if (typeKeys.length > 0) {
       for (const type of typeKeys) {
@@ -136,13 +143,15 @@ function buildDeptTasks(deptId, config, projects) {
         const review = typeTasks.filter(t => t.status === 'review')
         const pending = typeTasks.filter(t => t.status === 'pending' || t.status === 'assigned')
         const completed = typeTasks.filter(t => t.status === 'completed')
-        result += `**[${type}]** 进行中: ${running.length}, 待确认: ${review.length}, 待办: ${pending.length}, 完成: ${completed.length}/${typeTasks.length}\n`
+        const failed = typeTasks.filter(t => t.status === 'failed')
+        result += `**[${type}]** 进行中: ${running.length}, 待确认: ${review.length}, 待办: ${pending.length}, 失败: ${failed.length}, 完成: ${completed.length}/${typeTasks.length}\n`
         if (running.length > 0) {
           result += `  进行中: ${running.map(t => `[${t.id}] ${t.name} (${t.progress || 0}%)`).join(', ')}\n`
         }
         if (review.length > 0) {
           result += `  ⏳ 待确认: ${review.map(t => `[${t.id}] ${t.name} → ${t.assignedAgent || (t.assignees && t.assignees[0]) || '?'}`).join(', ')}\n`
         }
+        result += renderFailed(typeTasks)
       }
     }
 
@@ -160,6 +169,7 @@ function buildDeptTasks(deptId, config, projects) {
       if (pending.length > 0) {
         result += `待办: ${pending.map(t => `[${t.id}] ${t.name}`).join(', ')}\n`
       }
+      result += renderFailed(untyped)
       result += `完成: ${completed.length}/${untyped.length}\n`
     }
   }
@@ -542,12 +552,17 @@ peer-send 消息中引用任务 ID：\`[Task: task-xxx] 具体指令...\`
 node skills/peer-status/scripts/peer-send.mjs --from ${config.head} --to <agent-id> --message "[Task: task-xxx] 请修改：<具体修改意见>" --no-wait
 \`\`\`
 
+### 🔧 审查失败任务
+如果「部门任务」中有 ❌ 失败的任务，你**必须**逐个审查并决策：
+1. **检查产出** — 查看 workspaces/{agent-id}/ 中是否有该任务的实际产出
+2. **判断是否已完成** — 如果产出存在且质量合格（或已有替代任务完成了相同工作），在 [任务恢复] 中标记为 completed
+3. **判断是否需要重做** — 如果产出不存在或质量不合格，在 [任务恢复] 中标记为 reassign，系统会重新分配给空闲 agent
+
 ### 其他行动
 1. **检查进行中任务的产出质量** — 确保输出符合标准
-2. **处理失败的任务** — 如果有任务被系统标记为失败，决定是否重新分配给其他 agent
-3. **向 CEO 汇报关键进展** — 将重要信息写入部门报告
-4. **更新你的 MEMORY.md** — 记录本轮做了什么
-5. **如果部门方向、工作重点发生变化，更新部门使命文件** — 写入 config/departments/${deptId}/mission.md
+2. **向 CEO 汇报关键进展** — 将重要信息写入部门报告
+3. **更新你的 MEMORY.md** — 记录本轮做了什么
+4. **如果部门方向、工作重点发生变化，更新部门使命文件** — 写入 config/departments/${deptId}/mission.md
 
 ## 行动原则
 ${buildDeptStandardsSection(deptId)}
@@ -559,6 +574,8 @@ ${buildDeptStandardsSection(deptId)}
 - <agent-id>: <分配的任务摘要> [project: <项目ID>] (peer-send 已发送/无需分配)
 [任务完成]
 - <task-id>: <完成情况> 或 "无"
+[任务恢复]
+- <task-id>: completed (产出已存在/已有替代任务完成) 或 reassign (需要重做) 或 "无"
 [进展汇报]
 - <关键进展>
 [阻塞项]

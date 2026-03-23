@@ -10,7 +10,7 @@ const TRANSITIONS = {
   review:      ['completed', 'rework', 'in_progress', 'failed'],
   rework:      ['in_progress', 'review', 'completed', 'failed'],
   completed:   [],
-  failed:      [],
+  failed:      ['completed'],
 }
 
 const TERMINAL = new Set(['completed', 'failed'])

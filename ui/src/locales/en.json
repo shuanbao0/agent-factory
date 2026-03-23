@@ -560,6 +560,8 @@
     "colReview": "Review",
     "colCompleted": "Done",
     "colFailed": "Failed",
+    "failureReason": "Failure Reason",
+    "recoverToCompleted": "Recover to Completed",
     "standalone": "Standalone",
     "allProjects": "All Projects",
     "allAgents": "All Agents",

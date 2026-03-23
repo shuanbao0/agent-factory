@@ -13,7 +13,7 @@ export const TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   review:      ['completed', 'rework', 'in_progress', 'failed'],
   rework:      ['in_progress', 'review', 'completed', 'failed'],
   completed:   [],
-  failed:      [],
+  failed:      ['completed'],
 }
 
 export const TERMINAL: ReadonlySet<TaskStatus> = new Set(['completed', 'failed'] as const)
@@ -83,6 +83,7 @@ export interface Task {
   reworkCount?: number
   reworkFromId?: string
   validationErrors?: string[]
+  failureReason?: string
   createdAt: string
   updatedAt: string
   completedAt?: string

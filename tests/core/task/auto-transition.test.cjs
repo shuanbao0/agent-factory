@@ -1,7 +1,7 @@
 'use strict'
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { parseTaskAssignments, parseTaskCompletions, computeTransitions } = require('../../../core/task/auto-transition.cjs')
+const { parseTaskAssignments, parseTaskCompletions, parseTaskRecoveries, computeTransitions } = require('../../../core/task/auto-transition.cjs')
 
 describe('AutoTransition', () => {
   describe('parseTaskAssignments', () => {
@@ -226,6 +226,68 @@ describe('AutoTransition', () => {
       assert.equal(result[1].agentId, 'writer-b')
       assert.equal(result[1].summary, '写第二章')
       assert.equal(result[1].projectId, undefined)
+    })
+  })
+
+  describe('parseTaskRecoveries', () => {
+    it('returns empty for null', () => {
+      assert.deepEqual(parseTaskRecoveries(null), [])
+    })
+
+    it('returns empty when no section', () => {
+      assert.deepEqual(parseTaskRecoveries('[任务分配]\n- writer: 写'), [])
+    })
+
+    it('parses completed recovery', () => {
+      const text = '[任务恢复]\n- task-abc123: completed (产出已存在)'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 1)
+      assert.equal(result[0].taskId, 'task-abc123')
+      assert.equal(result[0].action, 'completed')
+    })
+
+    it('parses Chinese completed keywords', () => {
+      const text = '[任务恢复]\n- task-abc123: 已完成，产出质量合格'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 1)
+      assert.equal(result[0].action, 'completed')
+    })
+
+    it('parses reassign recovery', () => {
+      const text = '[任务恢复]\n- task-xyz789: reassign (产出不存在)'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 1)
+      assert.equal(result[0].taskId, 'task-xyz789')
+      assert.equal(result[0].action, 'reassign')
+    })
+
+    it('parses Chinese reassign keywords', () => {
+      const text = '[任务恢复]\n- task-xyz789: 重新分配给其他 agent'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 1)
+      assert.equal(result[0].action, 'reassign')
+    })
+
+    it('parses mixed recoveries', () => {
+      const text = '[任务恢复]\n- task-aaa: completed\n- task-bbb: reassign\n- task-ccc: 已完成'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 3)
+      assert.equal(result[0].action, 'completed')
+      assert.equal(result[1].action, 'reassign')
+      assert.equal(result[2].action, 'completed')
+    })
+
+    it('skips 无', () => {
+      const text = '[任务恢复]\n- 无'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 0)
+    })
+
+    it('parses fullwidth brackets【任务恢复】', () => {
+      const text = '【任务恢复】\n- task-abc: 恢复为已完成'
+      const result = parseTaskRecoveries(text)
+      assert.equal(result.length, 1)
+      assert.equal(result[0].action, 'completed')
     })
   })
 
