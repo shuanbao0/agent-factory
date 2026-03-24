@@ -21,4 +21,5 @@ module.exports = {
   phaseDeliverables: require('./phase-deliverables.cjs'),
   skillSymlinks: require('./skill-symlinks.cjs'),
   eventRelay: require('./event-relay.cjs'),
+  pluginCatalog: require('./plugin-catalog.cjs'),
 }

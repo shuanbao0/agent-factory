@@ -4,9 +4,11 @@ import { useAppStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Settings, Wifi, Key, Cpu, Server, Globe, Plus, Trash2, Star, Check, Activity, RefreshCw, Play, Square, Loader2, AlertCircle, Shield, Link, Download, CheckCircle2, ArrowUpCircle, Wrench, Search, Save, Users, Eye, Terminal, FolderLock, Brain } from 'lucide-react'
+import { Settings, Wifi, Key, Cpu, Server, Globe, Plus, Trash2, Star, Check, Activity, RefreshCw, Play, Square, Loader2, AlertCircle, Shield, Link, Download, CheckCircle2, ArrowUpCircle, Wrench, Save, Users, Eye, Terminal, FolderLock, Brain } from 'lucide-react'
 import { PROVIDERS, CatalogModel } from '@/lib/providers'
 import { logError } from '@/lib/error-logger'
+import PluginsTab from '@/components/plugins-tab'
+import { Puzzle } from 'lucide-react'
 
 function Input({ label, value, onChange, type = 'text', placeholder = '' }: {
   label: string; value: string | number; onChange: (v: string) => void; type?: string; placeholder?: string
@@ -959,22 +961,8 @@ function PlatformUpdateCard() {
 }
 
 // ── OpenClaw Tools Tab ──────────────────────────────────────────────
-type SettingsTab = 'general' | 'providers' | 'tools'
+type SettingsTab = 'general' | 'providers' | 'tools' | 'plugins'
 
-const WEB_SEARCH_PROVIDERS = [
-  { id: 'brave', name: 'Brave Search', envKey: 'BRAVE_API_KEY', icon: '🔍' },
-  { id: 'perplexity', name: 'Perplexity', envKey: 'PERPLEXITY_API_KEY', icon: '🟣' },
-  { id: 'grok', name: 'Grok (xAI)', envKey: 'XAI_API_KEY', icon: '𝕏' },
-  { id: 'gemini', name: 'Gemini', envKey: 'GEMINI_API_KEY', icon: '💎' },
-  { id: 'kimi', name: 'Kimi / Moonshot', envKey: 'KIMI_API_KEY', icon: '🌙' },
-]
-
-const EMBEDDING_PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', envKey: 'OPENAI_API_KEY', icon: '🤖' },
-  { id: 'gemini', name: 'Gemini', envKey: 'GEMINI_API_KEY', icon: '💎' },
-  { id: 'voyage', name: 'Voyage AI', envKey: 'VOYAGE_API_KEY', icon: '🚀' },
-  { id: 'mistral', name: 'Mistral', envKey: 'MISTRAL_API_KEY', icon: '🌬️' },
-]
 
 interface ToolsConfig {
   agentToAgent?: { enabled?: boolean; allow?: string[] }
@@ -987,16 +975,6 @@ interface ToolsConfig {
 
 function OpenClawToolsTab() {
   const { t } = useTranslation()
-  const [envVars, setEnvVars] = useState<Record<string, string>>({})
-  const [searchProvider, setSearchProvider] = useState('')
-  const [searchApiKey, setSearchApiKey] = useState('')
-  const [firecrawlApiKey, setFirecrawlApiKey] = useState('')
-  const [embeddingProvider, setEmbeddingProvider] = useState('')
-  const [embeddingApiKey, setEmbeddingApiKey] = useState('')
-  const [saving, setSaving] = useState<string | null>(null)
-  const [saveResult, setSaveResult] = useState<{ section: string; ok: boolean; message: string } | null>(null)
-  const [editingSection, setEditingSection] = useState<Record<string, boolean>>({})
-
   // Tools config state
   const [toolsConfig, setToolsConfig] = useState<ToolsConfig>({})
   const [toolsSaving, setToolsSaving] = useState<string | null>(null)
@@ -1009,14 +987,6 @@ function OpenClawToolsTab() {
   }>({})
   const [memorySaving, setMemorySaving] = useState(false)
   const [memorySaveResult, setMemorySaveResult] = useState<{ ok: boolean; message: string } | null>(null)
-
-  const fetchEnv = useCallback(async () => {
-    try {
-      const res = await fetch('/api/env')
-      const data = await res.json()
-      setEnvVars(data.vars || {})
-    } catch (err) { logError('settings/fetchEnv', err) }
-  }, [])
 
   const fetchTools = useCallback(async () => {
     try {
@@ -1033,49 +1003,7 @@ function OpenClawToolsTab() {
     } catch (err) { logError('settings/fetchMemoryConfig', err) }
   }, [])
 
-  useEffect(() => { fetchEnv(); fetchTools(); fetchMemoryConfig() }, [fetchEnv, fetchTools, fetchMemoryConfig])
-
-  // Auto-select first configured provider
-  useEffect(() => {
-    if (!searchProvider) {
-      const found = WEB_SEARCH_PROVIDERS.find(p => envVars[p.envKey])
-      if (found) setSearchProvider(found.id)
-    }
-    if (!embeddingProvider) {
-      const found = EMBEDDING_PROVIDERS.find(p => envVars[p.envKey])
-      if (found) setEmbeddingProvider(found.id)
-    }
-  }, [envVars, searchProvider, embeddingProvider])
-
-  const handleSave = async (section: string, envKey: string, value: string) => {
-    if (!value.trim()) return
-    setSaving(section)
-    setSaveResult(null)
-    try {
-      const res = await fetch('/api/env', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries: [{ key: envKey, value: value.trim() }] }),
-      })
-      const data = await res.json()
-      if (data.ok) {
-        setSaveResult({ section, ok: true, message: t('settings.keySaveSuccess') })
-        if (section === 'search') setSearchApiKey('')
-        if (section === 'fetch') setFirecrawlApiKey('')
-        if (section === 'embedding') setEmbeddingApiKey('')
-        setEditingSection(prev => ({ ...prev, [section]: false }))
-        await fetchEnv()
-        // Restart Gateway so it picks up the new env var
-        try { await fetch('/api/gateway/restart', { method: 'POST' }) } catch {}
-      } else {
-        setSaveResult({ section, ok: false, message: data.error || t('settings.keySaveFailed') })
-      }
-    } catch {
-      setSaveResult({ section, ok: false, message: t('settings.keySaveFailed') })
-    } finally {
-      setSaving(null)
-    }
-  }
+  useEffect(() => { fetchTools(); fetchMemoryConfig() }, [fetchTools, fetchMemoryConfig])
 
   const handleToolsSave = async (section: string, toolKey: string, value: unknown) => {
     setToolsSaving(section)
@@ -1114,9 +1042,6 @@ function OpenClawToolsTab() {
     finally { setMemorySaving(false) }
   }
 
-  const selectedSearchProvider = WEB_SEARCH_PROVIDERS.find(p => p.id === searchProvider)
-  const selectedEmbeddingProvider = EMBEDDING_PROVIDERS.find(p => p.id === embeddingProvider)
-
   // Derived tools state with defaults
   const agentToAgent = toolsConfig.agentToAgent || { enabled: true, allow: ['*'] }
   const sessions = toolsConfig.sessions || { visibility: 'self' }
@@ -1126,259 +1051,6 @@ function OpenClawToolsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Web Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Search className="w-4 h-4" /> {t('settings.webSearch')}
-          </CardTitle>
-          <CardDescription>{t('settings.webSearchDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">{t('settings.toolProvider')}</label>
-            <div className="flex flex-wrap gap-2">
-              {WEB_SEARCH_PROVIDERS.map(p => {
-                const isConfigured = !!envVars[p.envKey]
-                const isSelected = searchProvider === p.id
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setSearchProvider(p.id)}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                      isSelected ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/30'
-                    }`}
-                  >
-                    <span>{p.icon}</span>
-                    <span>{p.name}</span>
-                    {isConfigured && <Check className="w-3 h-3 text-emerald-400" />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {selectedSearchProvider && (
-            <div className="space-y-3 border border-border rounded-lg p-4 bg-muted/20">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{selectedSearchProvider.name}</span>
-                {envVars[selectedSearchProvider.envKey] ? (
-                  <Badge variant="success">{t('settings.configured')}</Badge>
-                ) : (
-                  <Badge variant="muted">{t('settings.notConfigured')}</Badge>
-                )}
-              </div>
-              {envVars[selectedSearchProvider.envKey] && !editingSection.search && (
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
-                    {selectedSearchProvider.envKey}={envVars[selectedSearchProvider.envKey]}
-                  </div>
-                  <button
-                    onClick={() => setEditingSection(prev => ({ ...prev, search: true }))}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {t('settings.changeKey')}
-                  </button>
-                </div>
-              )}
-              {(!envVars[selectedSearchProvider.envKey] || editingSection.search) && (
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={searchApiKey}
-                    onChange={e => setSearchApiKey(e.target.value)}
-                    placeholder={`${selectedSearchProvider.envKey}...`}
-                    className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                  <button
-                    onClick={() => handleSave('search', selectedSearchProvider.envKey, searchApiKey)}
-                    disabled={!searchApiKey.trim() || saving === 'search'}
-                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {saving === 'search' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    {t('common.save')}
-                  </button>
-                  {editingSection.search && (
-                    <button
-                      onClick={() => { setEditingSection(prev => ({ ...prev, search: false })); setSearchApiKey('') }}
-                      className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-lg border border-border hover:border-primary/30 transition-colors"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                  )}
-                </div>
-              )}
-              {saveResult?.section === 'search' && (
-                <div className={`text-xs px-3 py-2 rounded-lg ${saveResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {saveResult.message}
-                  {saveResult.ok && <span className="ml-2 text-muted-foreground">{t('settings.keyHint')}</span>}
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Web Fetch (Firecrawl) */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Globe className="w-4 h-4" /> {t('settings.webFetch')}
-              </CardTitle>
-              <CardDescription>{t('settings.webFetchDesc')}</CardDescription>
-            </div>
-            {envVars['FIRECRAWL_API_KEY'] ? (
-              <Badge variant="success">{t('settings.configured')}</Badge>
-            ) : (
-              <Badge variant="muted">{t('settings.notConfigured')}</Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {envVars['FIRECRAWL_API_KEY'] && !editingSection.fetch && (
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex-1 text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
-                FIRECRAWL_API_KEY={envVars['FIRECRAWL_API_KEY']}
-              </div>
-              <button
-                onClick={() => setEditingSection(prev => ({ ...prev, fetch: true }))}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {t('settings.changeKey')}
-              </button>
-            </div>
-          )}
-          {(!envVars['FIRECRAWL_API_KEY'] || editingSection.fetch) && (
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={firecrawlApiKey}
-                onChange={e => setFirecrawlApiKey(e.target.value)}
-                placeholder="FIRECRAWL_API_KEY..."
-                className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-              <button
-                onClick={() => handleSave('fetch', 'FIRECRAWL_API_KEY', firecrawlApiKey)}
-                disabled={!firecrawlApiKey.trim() || saving === 'fetch'}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-              >
-                {saving === 'fetch' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {t('common.save')}
-              </button>
-              {editingSection.fetch && (
-                <button
-                  onClick={() => { setEditingSection(prev => ({ ...prev, fetch: false })); setFirecrawlApiKey('') }}
-                  className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-lg border border-border hover:border-primary/30 transition-colors"
-                >
-                  {t('common.cancel')}
-                </button>
-              )}
-            </div>
-          )}
-          {saveResult?.section === 'fetch' && (
-            <div className={`text-xs px-3 py-2 rounded-lg ${saveResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-              {saveResult.message}
-              {saveResult.ok && <span className="ml-2 text-muted-foreground">{t('settings.keyHint')}</span>}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Embedding / Memory */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Cpu className="w-4 h-4" /> {t('settings.embedding')}
-          </CardTitle>
-          <CardDescription>{t('settings.embeddingDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">{t('settings.toolProvider')}</label>
-            <div className="flex flex-wrap gap-2">
-              {EMBEDDING_PROVIDERS.map(p => {
-                const isConfigured = !!envVars[p.envKey]
-                const isSelected = embeddingProvider === p.id
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setEmbeddingProvider(p.id)}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
-                      isSelected ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/30'
-                    }`}
-                  >
-                    <span>{p.icon}</span>
-                    <span>{p.name}</span>
-                    {isConfigured && <Check className="w-3 h-3 text-emerald-400" />}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {selectedEmbeddingProvider && (
-            <div className="space-y-3 border border-border rounded-lg p-4 bg-muted/20">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{selectedEmbeddingProvider.name}</span>
-                {envVars[selectedEmbeddingProvider.envKey] ? (
-                  <Badge variant="success">{t('settings.configured')}</Badge>
-                ) : (
-                  <Badge variant="muted">{t('settings.notConfigured')}</Badge>
-                )}
-              </div>
-              {envVars[selectedEmbeddingProvider.envKey] && !editingSection.embedding && (
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 text-xs text-muted-foreground font-mono bg-muted rounded px-2 py-1">
-                    {selectedEmbeddingProvider.envKey}={envVars[selectedEmbeddingProvider.envKey]}
-                  </div>
-                  <button
-                    onClick={() => setEditingSection(prev => ({ ...prev, embedding: true }))}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {t('settings.changeKey')}
-                  </button>
-                </div>
-              )}
-              {(!envVars[selectedEmbeddingProvider.envKey] || editingSection.embedding) && (
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={embeddingApiKey}
-                    onChange={e => setEmbeddingApiKey(e.target.value)}
-                    placeholder={`${selectedEmbeddingProvider.envKey}...`}
-                    className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                  <button
-                    onClick={() => handleSave('embedding', selectedEmbeddingProvider.envKey, embeddingApiKey)}
-                    disabled={!embeddingApiKey.trim() || saving === 'embedding'}
-                    className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {saving === 'embedding' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    {t('common.save')}
-                  </button>
-                  {editingSection.embedding && (
-                    <button
-                      onClick={() => { setEditingSection(prev => ({ ...prev, embedding: false })); setEmbeddingApiKey('') }}
-                      className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-lg border border-border hover:border-primary/30 transition-colors"
-                    >
-                      {t('common.cancel')}
-                    </button>
-                  )}
-                </div>
-              )}
-              {saveResult?.section === 'embedding' && (
-                <div className={`text-xs px-3 py-2 rounded-lg ${saveResult.ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {saveResult.message}
-                  {saveResult.ok && <span className="ml-2 text-muted-foreground">{t('settings.keyHint')}</span>}
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Memory Configuration */}
       <Card>
         <CardHeader>
@@ -1812,6 +1484,7 @@ export default function SettingsPage() {
     { key: 'general', label: t('settings.tabGeneral'), icon: Settings },
     { key: 'providers', label: t('settings.tabProviders'), icon: Cpu },
     { key: 'tools', label: t('settings.tabTools'), icon: Wrench },
+    { key: 'plugins', label: t('settings.tabPlugins'), icon: Puzzle },
   ]
 
   const handleAddProvider = async (p: { name: string; entries: { key: string; value: string }[]; baseUrl?: string }) => {
@@ -2046,6 +1719,9 @@ export default function SettingsPage() {
 
       {/* Tools tab */}
       {tab === 'tools' && <OpenClawToolsTab />}
+
+      {/* Plugins tab */}
+      {tab === 'plugins' && <PluginsTab />}
 
       {showAddProvider && <AddProviderDialog onAdd={handleAddProvider} onClose={() => setShowAddProvider(false)} />}
       {addModelTo && <AddModelDialog provider={addModelTo} onAdd={handleAddModel} onClose={() => setAddModelTo(null)} />}

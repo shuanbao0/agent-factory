@@ -280,5 +280,23 @@ export default _core as {
     eventRelay: {
       relayEvent(eventType: string, payload: Record<string, unknown>): void
     }
+    pluginCatalog: {
+      getPluginCatalog(): {
+        categories: Array<{
+          id: string
+          plugins: Array<{
+            id: string; name: string; description: string; version: string
+            kind: string | null; enabled: boolean; status: string; category: string
+            configJsonSchema: Record<string, unknown> | null
+            configUiHints: Record<string, { label?: string; help?: string; sensitive?: boolean; placeholder?: string; advanced?: boolean }> | null
+            providerIds: string[]; channelIds: string[]
+            webSearchProviderIds: string[]; speechProviderIds: string[]; imageGenerationProviderIds: string[]
+            envVars: string[]
+          }>
+        }>
+        plugins: Array<Record<string, unknown>>
+      }
+      invalidateCache(): void
+    }
   }
 }
