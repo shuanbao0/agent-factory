@@ -699,8 +699,10 @@ function OpenClawUpdateCard() {
             ? `${t('settings.updateSuccess')}: ${data.previousVersion} → ${data.currentVersion}${data.restarted ? '. Gateway ' + t('settings.restarted') : '. ' + t('settings.restartRequired')}`
             : t('settings.upToDate'),
         })
+        setCurrent(data.currentVersion)
         if (data.updated) {
-          setCurrent(data.currentVersion)
+          setHasUpdate(false)
+        } else {
           setHasUpdate(false)
         }
       } else {

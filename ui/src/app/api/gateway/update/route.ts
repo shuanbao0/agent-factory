@@ -47,8 +47,8 @@ async function getAvailableVersions(): Promise<string[]> {
 
 // Returns true if version a is strictly newer than version b
 function isNewer(a: string, b: string): boolean {
-  const pa = a.replace(/^v/, '').split('.').map(Number)
-  const pb = b.replace(/^v/, '').split('.').map(Number)
+  const pa = a.replace(/^v/, '').split('.').map(s => parseInt(s, 10) || 0)
+  const pb = b.replace(/^v/, '').split('.').map(s => parseInt(s, 10) || 0)
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const na = pa[i] || 0, nb = pb[i] || 0
     if (na > nb) return true
