@@ -27,16 +27,50 @@ const WEB_IDS = new Set(['firecrawl'])
 const VOICE_IDS = new Set(['elevenlabs', 'deepgram', 'voice-call', 'talk-voice'])
 const IMAGE_IDS = new Set(['fal'])
 
+// Plugins that run locally / don't need API keys
+const NO_KEY_NEEDED = new Set([
+  'ollama', 'vllm', 'sglang', 'opencode', 'opencode-go',
+  'copilot-proxy', 'duckduckgo', 'memory-core',
+])
+
 // Known env var fallbacks for plugins that need API keys
 const KNOWN_ENV_VARS = {
+  // LLM providers
+  anthropic: ['ANTHROPIC_API_KEY'],
+  openai: ['OPENAI_API_KEY'],
+  deepseek: ['DEEPSEEK_API_KEY'],
+  google: ['GOOGLE_API_KEY', 'GEMINI_API_KEY'],
+  minimax: ['MINIMAX_API_KEY'],
+  'minimax-portal-auth': ['MINIMAX_API_KEY'],
+  kimi: ['MOONSHOT_API_KEY', 'KIMI_CODE_API_KEY'],
+  moonshot: ['MOONSHOT_API_KEY'],
+  byteplus: ['BYTEPLUS_API_KEY'],
+  chutes: ['CHUTES_API_KEY'],
+  huggingface: ['HF_TOKEN'],
+  kilocode: ['KILOCODE_API_KEY'],
+  qwen: ['QWEN_API_KEY'],
+  zhipu: ['ZAI_API_KEY'],
+  qianfan: ['QIANFAN_API_KEY'],
+  xiaomi: ['XIAOMI_API_KEY'],
+  venice: ['VENICE_API_KEY'],
+  // Gateways / aggregators
+  openrouter: ['OPENROUTER_API_KEY'],
+  together: ['TOGETHER_API_KEY'],
+  nvidia: ['NVIDIA_API_KEY'],
+  synthetic: ['SYNTHETIC_API_KEY'],
+  'cloudflare-ai-gateway': ['CLOUDFLARE_API_KEY'],
+  'amazon-bedrock': ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
+  // Search / web / voice
   brave: ['BRAVE_API_KEY'],
   firecrawl: ['FIRECRAWL_API_KEY'],
   tavily: ['TAVILY_API_KEY'],
   exa: ['EXA_API_KEY'],
   elevenlabs: ['ELEVENLABS_API_KEY'],
   deepgram: ['DEEPGRAM_API_KEY'],
-  'memory-lancedb': ['OPENAI_API_KEY'],
   perplexity: ['PERPLEXITY_API_KEY'],
+  fal: ['FAL_API_KEY'],
+  // Memory
+  'memory-lancedb': ['OPENAI_API_KEY'],
 }
 
 /** Extract env var names from uiHints help text (e.g. "fallback: BRAVE_API_KEY env var") */
@@ -175,6 +209,10 @@ function mapPlugin(raw) {
       ...new Set([
         ...(KNOWN_ENV_VARS[id] || []),
         ...extractEnvVarsFromHints(uiHints),
+        // Auto-infer API key env var for provider/gateway plugins without explicit mapping
+        ...(!KNOWN_ENV_VARS[id] && !NO_KEY_NEEDED.has(id) && (providerIds.length > 0 || GATEWAY_IDS.has(id))
+          ? [`${id.toUpperCase().replace(/-/g, '_')}_API_KEY`]
+          : []),
       ]),
     ],
   }

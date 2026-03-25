@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import PluginConfigForm from '@/components/plugin-config-form'
 import {
   Puzzle, Brain, Search, Globe, Mic, ImageIcon, Cpu, Network, MessageSquare, Wrench,
-  ChevronDown, ChevronRight, Save, Loader2, Settings2, ChevronsUpDown, Info, Check, KeyRound,
+  ChevronDown, ChevronRight, Save, Loader2, Settings2, ChevronsUpDown, Info, Check, KeyRound, AlertTriangle, Eye, EyeOff,
+  Plus, Trash2, Star, X,
 } from 'lucide-react'
 
 // --- Types ---
@@ -31,6 +32,11 @@ type PluginEntry = { enabled?: boolean; config?: Record<string, unknown> }
 type PluginsConfig = {
   slots: Record<string, string | null>
   entries: Record<string, PluginEntry>
+}
+
+type ProviderModels = {
+  models: Record<string, string>  // alias → modelId
+  hasApiKey: boolean
 }
 
 // --- Category metadata ---
@@ -65,6 +71,15 @@ export default function PluginsTab() {
   const [editedConfigs, setEditedConfigs] = useState<Record<string, Record<string, unknown>>>({})
   // Track whether any plugin was toggled/changed (needs Gateway restart)
   const [dirty, setDirty] = useState(false)
+  // Env key editing: pluginId → { envVarName → value }
+  const [editingEnvKeys, setEditingEnvKeys] = useState<Record<string, Record<string, string>>>({})
+  // Which env key inputs are visible (password toggle)
+  const [visibleEnvKeys, setVisibleEnvKeys] = useState<Set<string>>(new Set())
+  // Models data from /api/models
+  const [modelsProviders, setModelsProviders] = useState<Record<string, ProviderModels>>({})
+  const [defaultModel, setDefaultModelState] = useState('')
+  // Add model form: pluginId → { alias, modelId }
+  const [addingModel, setAddingModel] = useState<Record<string, { alias: string; modelId: string }>>({})
 
   const fetchPlugins = useCallback(async () => {
     try {
@@ -77,7 +92,16 @@ export default function PluginsTab() {
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { fetchPlugins() }, [fetchPlugins])
+  const fetchModels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/models')
+      const data = await res.json()
+      setModelsProviders(data.providers || {})
+      setDefaultModelState(data.default || '')
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { fetchPlugins(); fetchModels() }, [fetchPlugins, fetchModels])
 
   // --- Helpers ---
 
@@ -159,6 +183,89 @@ export default function PluginsTab() {
     } catch {
       setSaveResult({ id: 'memory-slot', ok: false, message: t('settings.pluginSaveFailed') })
     } finally { setSaving(null) }
+  }
+
+  async function saveEnvKeys(pluginId: string) {
+    const keys = editingEnvKeys[pluginId]
+    if (!keys) return
+    const entries = Object.entries(keys).filter(([, v]) => v.trim()).map(([key, value]) => ({ key, value: value.trim() }))
+    if (entries.length === 0) return
+    setSaving(pluginId + '-env')
+    setSaveResult(null)
+    try {
+      const res = await fetch('/api/env', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setSaveResult({ id: pluginId, ok: true, message: t('settings.keySaveSuccess') })
+        setEditingEnvKeys(prev => { const n = { ...prev }; delete n[pluginId]; return n })
+        setDirty(true)
+        await fetchPlugins()
+      } else {
+        setSaveResult({ id: pluginId, ok: false, message: data.error || t('settings.keySaveFailed') })
+      }
+    } catch {
+      setSaveResult({ id: pluginId, ok: false, message: t('settings.keySaveFailed') })
+    } finally { setSaving(null) }
+  }
+
+  async function addModel(provider: string) {
+    const form = addingModel[provider]
+    if (!form?.alias?.trim() || !form?.modelId?.trim()) return
+    setSaving(provider + '-model')
+    try {
+      await fetch('/api/models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'addModel', provider, alias: form.alias.trim(), modelId: form.modelId.trim() }),
+      })
+      setAddingModel(prev => { const n = { ...prev }; delete n[provider]; return n })
+      setDirty(true)
+      await fetchModels()
+    } catch { /* ignore */ }
+    finally { setSaving(null) }
+  }
+
+  async function deleteModel(provider: string, alias: string) {
+    setSaving(provider + '-model')
+    try {
+      await fetch('/api/models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteModel', provider, alias }),
+      })
+      setDirty(true)
+      await fetchModels()
+    } catch { /* ignore */ }
+    finally { setSaving(null) }
+  }
+
+  async function setDefaultModel(ref: string) {
+    setSaving('default-model')
+    try {
+      await fetch('/api/models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'setDefault', ref }),
+      })
+      setDirty(true)
+      await fetchModels()
+    } catch { /* ignore */ }
+    finally { setSaving(null) }
+  }
+
+  function toggleEnvKeyEdit(pluginId: string, envVars: string[]) {
+    setEditingEnvKeys(prev => {
+      if (prev[pluginId]) {
+        const n = { ...prev }; delete n[pluginId]; return n
+      }
+      const init: Record<string, string> = {}
+      for (const v of envVars) init[v] = ''
+      return { ...prev, [pluginId]: init }
+    })
   }
 
   // --- Toggle expand ---
@@ -316,10 +423,24 @@ export default function PluginsTab() {
                               {plugin.version && <span className="text-xs text-muted-foreground">{plugin.version}</span>}
                               {(() => {
                                 const es = getPluginEnvStatus(plugin)
-                                if (es.configured.length > 0) return (
-                                  <span className="flex items-center gap-1 text-xs text-emerald-400" title={es.configured.join(', ')}>
+                                if (es.configured.length > 0 && es.missing.length === 0) return (
+                                  <button
+                                    onClick={e => { e.preventDefault(); toggleEnvKeyEdit(plugin.id, plugin.envVars) }}
+                                    className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                                    title={es.configured.join(', ') + ' — ' + t('settings.changeKey')}
+                                  >
                                     <KeyRound className="w-3 h-3" /><Check className="w-3 h-3" />
-                                  </span>
+                                  </button>
+                                )
+                                if (es.missing.length > 0) return (
+                                  <button
+                                    onClick={e => { e.preventDefault(); toggleEnvKeyEdit(plugin.id, plugin.envVars) }}
+                                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                                    title={es.missing.join(', ')}
+                                  >
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {t('settings.pluginConfigureKey')}
+                                  </button>
                                 )
                                 return null
                               })()}
@@ -335,6 +456,54 @@ export default function PluginsTab() {
                             </button>
                           )}
                         </label>
+                        {/* Env key input panel (memory) */}
+                        {editingEnvKeys[plugin.id] && (
+                          <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-2">
+                            {Object.entries(editingEnvKeys[plugin.id]).map(([envKey, val]) => (
+                              <div key={envKey} className="space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground">{envKey}</label>
+                                <div className="flex gap-2">
+                                  <input
+                                    type={visibleEnvKeys.has(envKey) ? 'text' : 'password'}
+                                    value={val}
+                                    onChange={e => setEditingEnvKeys(prev => ({
+                                      ...prev, [plugin.id]: { ...prev[plugin.id], [envKey]: e.target.value }
+                                    }))}
+                                    placeholder={`${envKey}...`}
+                                    className="flex-1 px-2.5 py-1.5 text-xs font-mono bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                  />
+                                  <button
+                                    onClick={() => setVisibleEnvKeys(prev => {
+                                      const n = new Set(prev); n.has(envKey) ? n.delete(envKey) : n.add(envKey); return n
+                                    })}
+                                    className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground"
+                                  >
+                                    {visibleEnvKeys.has(envKey) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                onClick={() => saveEnvKeys(plugin.id)}
+                                disabled={saving === plugin.id + '-env' || !Object.values(editingEnvKeys[plugin.id] || {}).some(v => v.trim())}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+                              >
+                                {saving === plugin.id + '-env' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                {t('common.save')}
+                              </button>
+                              <button
+                                onClick={() => setEditingEnvKeys(prev => { const n = { ...prev }; delete n[plugin.id]; return n })}
+                                className="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-muted transition-colors"
+                              >
+                                {t('common.cancel')}
+                              </button>
+                              {saveResult?.id === plugin.id && (
+                                <span className={`text-xs ${saveResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>{saveResult.message}</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         {/* Plugin config panel */}
                         {expandedPlugins.has(plugin.id) && plugin.configJsonSchema && (
                           <div className="px-4 pb-3 pt-1 border-t border-border/50 space-y-3">
@@ -393,10 +562,24 @@ export default function PluginsTab() {
                                 {saving === plugin.id && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                                 {(() => {
                                   const es = getPluginEnvStatus(plugin)
-                                  if (es.configured.length > 0) return (
-                                    <span className="flex items-center gap-1 text-xs text-emerald-400" title={es.configured.join(', ')}>
+                                  if (es.configured.length > 0 && es.missing.length === 0) return (
+                                    <button
+                                      onClick={() => toggleEnvKeyEdit(plugin.id, plugin.envVars)}
+                                      className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                                      title={es.configured.join(', ') + ' — ' + t('settings.changeKey')}
+                                    >
                                       <KeyRound className="w-3 h-3" /><Check className="w-3 h-3" />
-                                    </span>
+                                    </button>
+                                  )
+                                  if (es.missing.length > 0) return (
+                                    <button
+                                      onClick={() => toggleEnvKeyEdit(plugin.id, plugin.envVars)}
+                                      className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                                      title={es.missing.join(', ')}
+                                    >
+                                      <AlertTriangle className="w-3 h-3" />
+                                      {t('settings.pluginConfigureKey')}
+                                    </button>
                                   )
                                   return null
                                 })()}
@@ -418,6 +601,55 @@ export default function PluginsTab() {
                             )}
                           </div>
 
+                          {/* Env key input panel */}
+                          {editingEnvKeys[plugin.id] && (
+                            <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-2">
+                              {Object.entries(editingEnvKeys[plugin.id]).map(([envKey, val]) => (
+                                <div key={envKey} className="space-y-1">
+                                  <label className="text-xs font-medium text-muted-foreground">{envKey}</label>
+                                  <div className="flex gap-2">
+                                    <input
+                                      type={visibleEnvKeys.has(envKey) ? 'text' : 'password'}
+                                      value={val}
+                                      onChange={e => setEditingEnvKeys(prev => ({
+                                        ...prev, [plugin.id]: { ...prev[plugin.id], [envKey]: e.target.value }
+                                      }))}
+                                      placeholder={`${envKey}...`}
+                                      className="flex-1 px-2.5 py-1.5 text-xs font-mono bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                    />
+                                    <button
+                                      onClick={() => setVisibleEnvKeys(prev => {
+                                        const n = new Set(prev); n.has(envKey) ? n.delete(envKey) : n.add(envKey); return n
+                                      })}
+                                      className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground"
+                                    >
+                                      {visibleEnvKeys.has(envKey) ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  onClick={() => saveEnvKeys(plugin.id)}
+                                  disabled={saving === plugin.id + '-env' || !Object.values(editingEnvKeys[plugin.id] || {}).some(v => v.trim())}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                  {saving === plugin.id + '-env' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                  {t('common.save')}
+                                </button>
+                                <button
+                                  onClick={() => setEditingEnvKeys(prev => { const n = { ...prev }; delete n[plugin.id]; return n })}
+                                  className="px-3 py-1.5 text-xs border border-border rounded-md hover:bg-muted transition-colors"
+                                >
+                                  {t('common.cancel')}
+                                </button>
+                                {saveResult?.id === plugin.id && (
+                                  <span className={`text-xs ${saveResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>{saveResult.message}</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Config panel */}
                           {isOpen && plugin.configJsonSchema && (
                             <div className="px-4 pb-3 pt-1 border-t border-border/50 space-y-3">
@@ -437,6 +669,84 @@ export default function PluginsTab() {
                               </button>
                             </div>
                           )}
+
+                          {/* Models section — only for provider/gateway plugins with models configured */}
+                          {(cat.id === 'providers' || cat.id === 'gateway') && (() => {
+                            const pm = modelsProviders[plugin.id]
+                            const models = pm?.models || {}
+                            const modelEntries = Object.entries(models)
+                            const isAdding = !!addingModel[plugin.id]
+                            return (
+                              <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-medium text-muted-foreground">{t('settings.pluginModels')}</span>
+                                  <button
+                                    onClick={() => setAddingModel(prev => prev[plugin.id]
+                                      ? (() => { const n = { ...prev }; delete n[plugin.id]; return n })()
+                                      : { ...prev, [plugin.id]: { alias: '', modelId: '' } }
+                                    )}
+                                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                                  >
+                                    {isAdding ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                    {isAdding ? t('common.cancel') : t('settings.pluginAddModel')}
+                                  </button>
+                                </div>
+                                {modelEntries.map(([alias, modelId]) => {
+                                  const ref = `${plugin.id}/${alias}`
+                                  const isDefault = ref === defaultModel
+                                  return (
+                                    <div key={alias} className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs ${isDefault ? 'bg-primary/10' : 'bg-muted/50'}`}>
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        {isDefault && <Star className="w-3 h-3 text-primary fill-primary shrink-0" />}
+                                        <span className="font-medium">{alias}</span>
+                                        <span className="text-muted-foreground truncate">{modelId}</span>
+                                      </div>
+                                      <div className="flex items-center gap-0.5 shrink-0">
+                                        {!isDefault && (
+                                          <button onClick={() => setDefaultModel(ref)} title={t('settings.pluginSetDefault')} className="p-1 text-muted-foreground hover:text-primary">
+                                            <Star className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                        <button onClick={() => deleteModel(plugin.id, alias)} className="p-1 text-muted-foreground hover:text-destructive">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                                {/* Add model form */}
+                                {isAdding && (
+                                  <div className="flex gap-2 items-end pt-1">
+                                    <div className="flex-1 space-y-1">
+                                      <input
+                                        type="text"
+                                        value={addingModel[plugin.id]?.alias || ''}
+                                        onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { ...prev[plugin.id], alias: e.target.value } }))}
+                                        placeholder={t('settings.pluginModelAlias')}
+                                        className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                      />
+                                    </div>
+                                    <div className="flex-[2] space-y-1">
+                                      <input
+                                        type="text"
+                                        value={addingModel[plugin.id]?.modelId || ''}
+                                        onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { ...prev[plugin.id], modelId: e.target.value } }))}
+                                        placeholder={t('settings.pluginModelId')}
+                                        className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={() => addModel(plugin.id)}
+                                      disabled={!addingModel[plugin.id]?.alias?.trim() || !addingModel[plugin.id]?.modelId?.trim() || saving === plugin.id + '-model'}
+                                      className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 shrink-0"
+                                    >
+                                      {saving === plugin.id + '-model' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('common.add')}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </div>
                       )
                     })}
