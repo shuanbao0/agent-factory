@@ -50,13 +50,45 @@ export async function GET() {
   const models = core.common.modelsService.buildModelsListForApi(config, envVars)
   const providers = core.common.modelsService.buildProvidersForApi(config, authProfiles, envVars)
 
+  // Enrich builtin providers (anthropic, openai, etc.) that aren't in models.json
+  // but may have auth profiles or env keys configured
+  for (const def of PROVIDERS) {
+    if (def.builtin && !providers[def.id]) {
+      const profile = authProfiles[def.id]
+      const envKeyMethod = def.authMethods.find(m => m.type === 'apiKey')
+      const envKey = envKeyMethod && 'envKey' in envKeyMethod ? envKeyMethod.envKey : null
+      const hasEnvKey = envKey ? !!envVars[envKey] : false
+      const hasToken = !!(profile && profile.hasToken)
+
+      let authMode: string = 'none'
+      let authDetail: string | undefined
+      if (hasToken) {
+        authMode = profile!.type === 'oauth' ? 'oauth' : 'setup-token'
+        authDetail = profile!.tokenPreview
+      } else if (hasEnvKey && envKey) {
+        authMode = 'env-var'
+        authDetail = envKey
+      }
+
+      providers[def.id] = {
+        models: {},
+        hasApiKey: authMode !== 'none',
+        authMode,
+        authDetail,
+        hasSetupToken: hasToken,
+        setupTokenPreview: (profile && profile.tokenPreview) || null,
+        setupTokenProfileId: (profile && profile.profileId) || null,
+      }
+    }
+  }
+
   return NextResponse.json({
     providers,
     models,
     default: config.default,
     orphanAuthProfiles: Object.fromEntries(
       Object.entries(authProfiles)
-        .filter(([provider]) => !config.providers[provider])
+        .filter(([provider]) => !config.providers[provider] && !PROVIDERS.some(p => p.builtin && p.id === provider))
         .map(([provider, info]) => [provider, {
           profileId: info.profileId,
           type: info.type,

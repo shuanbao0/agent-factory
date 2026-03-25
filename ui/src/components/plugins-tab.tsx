@@ -5,10 +5,13 @@ import { useTranslation } from '@/lib/i18n'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import PluginConfigForm from '@/components/plugin-config-form'
+import ProviderAuthPanel, { hasProviderDef } from '@/components/provider-auth-panel'
+import type { ProviderAuthData } from '@/components/provider-auth-panel'
+import { PROVIDERS } from '@/lib/providers'
 import {
   Puzzle, Brain, Search, Globe, Mic, ImageIcon, Cpu, Network, MessageSquare, Wrench,
   ChevronDown, ChevronRight, Save, Loader2, Settings2, ChevronsUpDown, Info, Check, KeyRound, AlertTriangle, Eye, EyeOff,
-  Plus, Trash2, Star, X,
+  Plus, Trash2, Star, X, Shield,
 } from 'lucide-react'
 
 // --- Types ---
@@ -37,6 +40,11 @@ type PluginsConfig = {
 type ProviderModels = {
   models: Record<string, string>  // alias → modelId
   hasApiKey: boolean
+  authMode?: 'setup-token' | 'oauth' | 'env-var' | 'config' | 'none'
+  authDetail?: string
+  hasSetupToken?: boolean
+  setupTokenPreview?: string | null
+  setupTokenProfileId?: string | null
 }
 
 // --- Category metadata ---
@@ -80,6 +88,8 @@ export default function PluginsTab() {
   const [defaultModel, setDefaultModelState] = useState('')
   // Add model form: pluginId → { alias, modelId }
   const [addingModel, setAddingModel] = useState<Record<string, { alias: string; modelId: string }>>({})
+  // Which provider auth panels are open
+  const [editingAuth, setEditingAuth] = useState<Set<string>>(new Set())
 
   const fetchPlugins = useCallback(async () => {
     try {
@@ -266,6 +276,32 @@ export default function PluginsTab() {
       for (const v of envVars) init[v] = ''
       return { ...prev, [pluginId]: init }
     })
+  }
+
+  function toggleAuthEdit(pluginId: string) {
+    setEditingAuth(prev => {
+      const n = new Set(prev)
+      n.has(pluginId) ? n.delete(pluginId) : n.add(pluginId)
+      return n
+    })
+  }
+
+  function getProviderAuthData(pluginId: string): ProviderAuthData | null {
+    const pm = modelsProviders[pluginId]
+    if (!pm || !pm.authMode) return null
+    return {
+      authMode: pm.authMode,
+      authDetail: pm.authDetail,
+      hasSetupToken: pm.hasSetupToken ?? false,
+      setupTokenPreview: pm.setupTokenPreview ?? null,
+      setupTokenProfileId: pm.setupTokenProfileId ?? null,
+    }
+  }
+
+  async function handleAuthSaved(pluginId: string) {
+    setDirty(true)
+    await Promise.all([fetchPlugins(), fetchModels()])
+    setEditingAuth(prev => { const n = new Set(prev); n.delete(pluginId); return n })
   }
 
   // --- Toggle expand ---
@@ -561,6 +597,39 @@ export default function PluginsTab() {
                                 {plugin.version && <span className="text-xs text-muted-foreground">{plugin.version}</span>}
                                 {saving === plugin.id && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                                 {(() => {
+                                  const isProvider = hasProviderDef(plugin.id)
+                                  if (isProvider) {
+                                    const pm = modelsProviders[plugin.id]
+                                    const mode = pm?.authMode || 'none'
+                                    if (mode === 'setup-token') return (
+                                      <button
+                                        onClick={() => toggleAuthEdit(plugin.id)}
+                                        className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                                        title={`Setup Token — ${pm?.setupTokenPreview || ''}`}
+                                      >
+                                        <Shield className="w-3 h-3" /><Check className="w-3 h-3" />
+                                      </button>
+                                    )
+                                    if (mode === 'env-var' || mode === 'config' || mode === 'oauth') return (
+                                      <button
+                                        onClick={() => toggleAuthEdit(plugin.id)}
+                                        className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                                        title={pm?.authDetail || t('settings.authConfigured')}
+                                      >
+                                        <KeyRound className="w-3 h-3" /><Check className="w-3 h-3" />
+                                      </button>
+                                    )
+                                    return (
+                                      <button
+                                        onClick={() => toggleAuthEdit(plugin.id)}
+                                        className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
+                                      >
+                                        <AlertTriangle className="w-3 h-3" />
+                                        {t('settings.pluginConfigureKey')}
+                                      </button>
+                                    )
+                                  }
+                                  // Fallback: generic env-key badge for non-provider plugins
                                   const es = getPluginEnvStatus(plugin)
                                   if (es.configured.length > 0 && es.missing.length === 0) return (
                                     <button
@@ -601,8 +670,18 @@ export default function PluginsTab() {
                             )}
                           </div>
 
-                          {/* Env key input panel */}
-                          {editingEnvKeys[plugin.id] && (
+                          {/* Provider auth panel (for plugins matching a known provider) */}
+                          {hasProviderDef(plugin.id) && editingAuth.has(plugin.id) && (
+                            <ProviderAuthPanel
+                              pluginId={plugin.id}
+                              providerData={getProviderAuthData(plugin.id)}
+                              onSaved={() => handleAuthSaved(plugin.id)}
+                              onCancel={() => toggleAuthEdit(plugin.id)}
+                            />
+                          )}
+
+                          {/* Generic env key input panel (for non-provider plugins) */}
+                          {!hasProviderDef(plugin.id) && editingEnvKeys[plugin.id] && (
                             <div className="px-4 pb-3 pt-2 border-t border-border/50 space-y-2">
                               {Object.entries(editingEnvKeys[plugin.id]).map(([envKey, val]) => (
                                 <div key={envKey} className="space-y-1">
@@ -715,35 +794,100 @@ export default function PluginsTab() {
                                   )
                                 })}
                                 {/* Add model form */}
-                                {isAdding && (
-                                  <div className="flex gap-2 items-end pt-1">
-                                    <div className="flex-1 space-y-1">
-                                      <input
-                                        type="text"
-                                        value={addingModel[plugin.id]?.alias || ''}
-                                        onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { ...prev[plugin.id], alias: e.target.value } }))}
-                                        placeholder={t('settings.pluginModelAlias')}
-                                        className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
-                                      />
+                                {isAdding && (() => {
+                                  const provDef = PROVIDERS.find(p => p.id === plugin.id)
+                                  const catalog = provDef?.catalogModels || []
+                                  // Filter out models already added
+                                  const existingAliases = new Set(Object.keys(models))
+                                  const available = catalog.filter(m => !existingAliases.has(m.alias))
+                                  const form = addingModel[plugin.id]
+                                  const isCustom = form?.alias === '__custom__'
+
+                                  return (
+                                    <div className="space-y-2 pt-1">
+                                      {/* Catalog model selector */}
+                                      {available.length > 0 && !isCustom && (
+                                        <div className="space-y-1.5">
+                                          <p className="text-[11px] text-muted-foreground">{t('settings.pluginClickToAdd')}</p>
+                                          <div className="grid grid-cols-1 gap-1">
+                                            {available.map(cm => (
+                                              <button
+                                                key={cm.id}
+                                                onClick={async () => {
+                                                  setSaving(plugin.id + '-model')
+                                                  try {
+                                                    await fetch('/api/models', {
+                                                      method: 'PUT',
+                                                      headers: { 'Content-Type': 'application/json' },
+                                                      body: JSON.stringify({ action: 'addModel', provider: plugin.id, alias: cm.alias, modelId: cm.id }),
+                                                    })
+                                                    setDirty(true)
+                                                    await fetchModels()
+                                                  } catch { /* ignore */ }
+                                                  finally { setSaving(null) }
+                                                }}
+                                                disabled={saving === plugin.id + '-model'}
+                                                className="group flex items-center justify-between px-2.5 py-2 text-xs rounded-md border border-dashed border-border/60 hover:border-primary/50 hover:bg-primary/5 transition-colors text-left"
+                                              >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                  <Plus className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                                                  <span className="font-medium">{cm.name}</span>
+                                                  <span className="text-muted-foreground text-[11px]">{cm.alias}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px] text-muted-foreground shrink-0">
+                                                  {cm.reasoning && <span className="px-1 py-0.5 rounded bg-blue-500/10 text-blue-400">reasoning</span>}
+                                                  {cm.contextWindow && <span>{Math.round(cm.contextWindow / 1000)}k ctx</span>}
+                                                </div>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {/* Custom model input (shown when no catalog or user clicks custom) */}
+                                      {(available.length === 0 || isCustom) && (
+                                        <div className="flex gap-2 items-end">
+                                          <div className="flex-1">
+                                            <input
+                                              type="text"
+                                              value={isCustom ? '' : (form?.alias || '')}
+                                              onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { alias: e.target.value, modelId: prev[plugin.id]?.modelId || '' } }))}
+                                              placeholder={t('settings.pluginModelAlias')}
+                                              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                            />
+                                          </div>
+                                          <div className="flex-[2]">
+                                            <input
+                                              type="text"
+                                              value={form?.modelId || ''}
+                                              onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { alias: prev[plugin.id]?.alias || '', modelId: e.target.value } }))}
+                                              placeholder={t('settings.pluginModelId')}
+                                              className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                            />
+                                          </div>
+                                          <button
+                                            onClick={() => addModel(plugin.id)}
+                                            disabled={!form?.alias?.trim() || form?.alias === '__custom__' || !form?.modelId?.trim() || saving === plugin.id + '-model'}
+                                            className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 shrink-0"
+                                          >
+                                            {saving === plugin.id + '-model' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('common.add')}
+                                          </button>
+                                        </div>
+                                      )}
+                                      {/* Toggle to custom input */}
+                                      {available.length > 0 && (
+                                        <button
+                                          onClick={() => setAddingModel(prev => ({
+                                            ...prev,
+                                            [plugin.id]: isCustom ? { alias: '', modelId: '' } : { alias: '__custom__', modelId: '' }
+                                          }))}
+                                          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                                        >
+                                          {isCustom ? t('settings.pluginSelectFromCatalog') : t('settings.pluginCustomModel')}
+                                        </button>
+                                      )}
                                     </div>
-                                    <div className="flex-[2] space-y-1">
-                                      <input
-                                        type="text"
-                                        value={addingModel[plugin.id]?.modelId || ''}
-                                        onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { ...prev[plugin.id], modelId: e.target.value } }))}
-                                        placeholder={t('settings.pluginModelId')}
-                                        className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
-                                      />
-                                    </div>
-                                    <button
-                                      onClick={() => addModel(plugin.id)}
-                                      disabled={!addingModel[plugin.id]?.alias?.trim() || !addingModel[plugin.id]?.modelId?.trim() || saving === plugin.id + '-model'}
-                                      className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 shrink-0"
-                                    >
-                                      {saving === plugin.id + '-model' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('common.add')}
-                                    </button>
-                                  </div>
-                                )}
+                                  )
+                                })()}
                               </div>
                             )
                           })()}

@@ -284,9 +284,10 @@ function applyMutation(config, body) {
     }
   } else if (body.action === 'addModel') {
     const { provider, alias, modelId } = body
-    if (config.providers[provider]) {
-      config.providers[provider].models[alias] = modelId
+    if (!config.providers[provider]) {
+      config.providers[provider] = { apiKey: `\${${provider.toUpperCase()}_API_KEY}`, models: {} }
     }
+    config.providers[provider].models[alias] = modelId
   } else if (body.action === 'deleteModel') {
     const { provider, alias } = body
     if (config.providers[provider]) {

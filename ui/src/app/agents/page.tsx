@@ -173,6 +173,10 @@ export default function AgentsPage() {
   const [tab, setTab] = useState<AgentsTab>('agents')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
+  // Model change restart hint
+  const [modelDirty, setModelDirty] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+
   // Department management state
   const [showDeptForm, setShowDeptForm] = useState(false)
   const [editDept, setEditDept] = useState<Department | undefined>(undefined)
@@ -710,6 +714,26 @@ export default function AgentsPage() {
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Cpu className="w-5 h-5" /> {t('agents.modelAssignment')}
               </h2>
+              {modelDirty && (
+                <div className="flex items-center gap-3 mb-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm">
+                  <span className="text-amber-400">{t('agents.modelRestartHint')}</span>
+                  <button
+                    onClick={async () => {
+                      setRestarting(true)
+                      try {
+                        await fetch('/api/gateway/restart', { method: 'POST' })
+                        setModelDirty(false)
+                      } catch { /* ignore */ }
+                      finally { setRestarting(false) }
+                    }}
+                    disabled={restarting}
+                    className="flex items-center gap-1.5 px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 shrink-0"
+                  >
+                    {restarting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    {t('agents.restartGateway')}
+                  </button>
+                </div>
+              )}
               <div className="border border-border rounded-xl overflow-hidden overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -735,7 +759,7 @@ export default function AgentsPage() {
                           <td className="px-4 py-3">
                             <select
                               value={agentModels[a.id] || ''}
-                              onChange={e => setAgentModel(a.id, e.target.value)}
+                              onChange={e => { setAgentModel(a.id, e.target.value); setModelDirty(true) }}
                               className="bg-muted border border-border rounded-lg px-2 py-1 text-sm min-w-[200px] focus:outline-none focus:ring-2 focus:ring-primary/50"
                             >
                               <option value="">Default ({defaultModel})</option>
