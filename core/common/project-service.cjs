@@ -25,9 +25,14 @@ function listProjects() {
   const seenTopLevel = new Set()
 
   for (const { projectId, meta } of allProjects) {
-    const assigned = meta.assignedAgents || []
-    if (assigned.length > 0) {
-      meta.tokensUsed = assigned.reduce((sum, aid) => sum + (tokensByAgent[aid] || 0), 0)
+    // Collect agents from assignedAgents + task assignees/assignedAgent
+    const agentSet = new Set(meta.assignedAgents || [])
+    for (const task of (meta.tasks || [])) {
+      if (task.assignedAgent) agentSet.add(task.assignedAgent)
+      for (const a of (task.assignees || [])) agentSet.add(a)
+    }
+    if (agentSet.size > 0) {
+      meta.tokensUsed = [...agentSet].reduce((sum, aid) => sum + (tokensByAgent[aid] || 0), 0)
     }
 
     const isSubProject = projectId.includes('/')
