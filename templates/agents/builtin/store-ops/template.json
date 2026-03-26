@@ -1,0 +1,27 @@
+{
+  "id": "store-ops",
+  "name": "Store Operations",
+  "description": "店铺运营专家，负责市场调研、选品评估、商品上架、店铺装修、转化优化与促销管理",
+  "emoji": "🏪",
+  "category": "builtin",
+  "group": "ecommerce",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "summarize",
+      "document-pro",
+      "blogwatcher",
+      "session-logs"
+    ],
+    "peers": [
+      "ecommerce-chief",
+      "content-marketer",
+      "supply-chain-ops",
+      "marketing",
+      "growth-ops"
+    ]
+  }
+}

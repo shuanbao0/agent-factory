@@ -1,0 +1,26 @@
+{
+  "id": "supply-chain-ops",
+  "name": "Supply Chain Operations",
+  "description": "供应链运营专家，负责供应商寻源与谈判、采购管理、库存调度、跨境物流协调与代发货管理",
+  "emoji": "📦",
+  "category": "builtin",
+  "group": "ecommerce",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "summarize",
+      "document-pro",
+      "session-logs"
+    ],
+    "peers": [
+      "ecommerce-chief",
+      "store-ops",
+      "trade-compliance-ops",
+      "cfo",
+      "cost-analyst"
+    ]
+  }
+}

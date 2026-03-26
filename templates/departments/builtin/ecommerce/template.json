@@ -1,0 +1,48 @@
+{
+  "id": "ecommerce",
+  "name": "跨境电商部",
+  "nameEn": "Cross-Border E-Commerce",
+  "description": "管理跨境电商全链路运营，从市场分析、选品上架到供应链履约与合规，驱动全球销售增长",
+  "descriptionEn": "End-to-end cross-border e-commerce: market analysis, product listing, supply chain, compliance",
+  "emoji": "🌐",
+  "category": "builtin",
+  "recommendedAgents": ["ecommerce-chief", "store-ops", "supply-chain-ops", "content-marketer", "trade-compliance-ops"],
+  "defaults": {
+    "head": "ecommerce-chief",
+    "interval": 600,
+    "budget": { "dailyTokenLimit": 600000, "alertThreshold": 0.8 },
+    "kpis": {},
+    "workflow": {
+      "phases": [
+        { "key": "research", "labelZh": "调研", "labelEn": "Research" },
+        { "key": "sourcing", "labelZh": "选品", "labelEn": "Sourcing" },
+        { "key": "listing", "labelZh": "上架", "labelEn": "Listing" },
+        { "key": "operation", "labelZh": "运营", "labelEn": "Operation" },
+        { "key": "fulfillment", "labelZh": "履约", "labelEn": "Fulfillment" },
+        { "key": "review", "labelZh": "复盘", "labelEn": "Review" }
+      ],
+      "taskTypes": [
+        { "value": "research", "labelZh": "调研", "labelEn": "Research", "color": "blue" },
+        { "value": "sourcing", "labelZh": "选品", "labelEn": "Sourcing", "color": "cyan" },
+        { "value": "listing", "labelZh": "上架", "labelEn": "Listing", "color": "purple" },
+        { "value": "operation", "labelZh": "运营", "labelEn": "Operation", "color": "green" },
+        { "value": "fulfillment", "labelZh": "履约", "labelEn": "Fulfillment", "color": "amber" },
+        { "value": "compliance", "labelZh": "合规", "labelEn": "Compliance", "color": "red" },
+        { "value": "review", "labelZh": "复盘", "labelEn": "Review", "color": "pink" }
+      ],
+      "directories": ["research", "products", "listings", "operations", "orders", "compliance", "reports"],
+      "pipeline": [
+        { "from": "listing", "to": "operation", "qualityGate": { "minScore": 75, "requireSelfCheck": true, "maxReworks": 3, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } },
+        { "from": "compliance", "to": "review", "qualityGate": { "minScore": 85, "requireSelfCheck": true, "requirePeerReview": true, "maxReworks": 2, "validators": ["similarity"], "validatorConfig": { "similarity": { "maxRepeatRatio": 0.3, "minBlockSize": 100 } } } }
+      ]
+    },
+    "floorColor": { "h": 180, "s": 30, "b": 14, "c": 0 },
+    "furniture": [
+      { "type": "desk", "count": 4 },
+      { "type": "whiteboard", "count": 1 },
+      { "type": "plant", "count": 1 },
+      { "type": "lamp", "count": 1 }
+    ],
+    "order": 13
+  }
+}

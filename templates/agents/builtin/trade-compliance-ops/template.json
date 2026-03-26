@@ -1,0 +1,26 @@
+{
+  "id": "trade-compliance-ops",
+  "name": "Trade Compliance Operations",
+  "description": "合规财务专家，负责海关申报、HS 编码分类、VAT/GST 税务管理、贸易政策研究、产品认证与风险防控",
+  "emoji": "⚖️",
+  "category": "builtin",
+  "group": "ecommerce",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "summarize",
+      "document-pro",
+      "session-logs"
+    ],
+    "peers": [
+      "ecommerce-chief",
+      "supply-chain-ops",
+      "legal-director",
+      "accountant",
+      "cfo"
+    ]
+  }
+}

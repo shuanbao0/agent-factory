@@ -1,0 +1,29 @@
+{
+  "id": "content-marketer",
+  "name": "Content Marketer",
+  "description": "内容营销专家，负责商品 Listing 文案、多语言本地化、广告创意、社交媒体运营与 SEO 优化",
+  "emoji": "✍️",
+  "category": "builtin",
+  "group": "ecommerce",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "summarize",
+      "document-pro",
+      "wechat-mp-cn",
+      "blogwatcher",
+      "session-logs"
+    ],
+    "peers": [
+      "ecommerce-chief",
+      "store-ops",
+      "brand-director",
+      "content-creator",
+      "content-ops",
+      "growth-ops"
+    ]
+  }
+}

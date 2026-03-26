@@ -1,0 +1,31 @@
+{
+  "id": "ecommerce-chief",
+  "name": "E-Commerce Chief",
+  "description": "跨境电商运营总监，统筹市场分析、店铺运营、供应链履约、内容营销与贸易合规全链路",
+  "emoji": "🌐",
+  "category": "builtin",
+  "group": "ecommerce",
+  "defaults": {
+    "model": "minimax/MiniMax-M2.5",
+    "skills": [
+      "peer-status",
+      "task-api",
+      "project-api",
+      "project-init",
+      "find-skills",
+      "summarize",
+      "document-pro",
+      "session-logs"
+    ],
+    "peers": [
+      "store-ops",
+      "supply-chain-ops",
+      "content-marketer",
+      "trade-compliance-ops",
+      "ceo",
+      "cfo",
+      "marketing",
+      "brand-director"
+    ]
+  }
+}
