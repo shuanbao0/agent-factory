@@ -485,13 +485,22 @@ export interface CostsResult {
   source: 'filesystem'
 }
 
-export async function fetchCostsData(): Promise<CostsResult> {
+export async function fetchCostsData(): Promise<CostsResult & { summary?: unknown; totalInputTokens?: number; totalOutputTokens?: number }> {
   try {
     const result = core.observe.queryCosts()
     // Return only the last 200 entries for consistency
     const entries = result.entries.slice(-200)
     const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0)
-    return { entries, totalCost, source: 'filesystem' }
+    // Include daily summary for SSE consumers (store expects data.summary)
+    const summary = core.observe.getDailySummary(30)
+    return {
+      entries,
+      totalCost,
+      summary,
+      totalInputTokens: result.totalInputTokens || 0,
+      totalOutputTokens: result.totalOutputTokens || 0,
+      source: 'filesystem',
+    }
   } catch (e) { core.common.logger.debug('data-fetchers', 'Costs data read failed', { error: String(e) }) }
   return { entries: [], totalCost: 0, source: 'filesystem' }
 }

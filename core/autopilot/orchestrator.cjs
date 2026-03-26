@@ -120,8 +120,8 @@ async function runCycle(options = {}) {
 
       // Track cost to JSONL for historical reporting
       trackCost({
-        model: result.usage?.model || 'unknown',
-        usage: { inputTokens: result.usage?.inputTokens || 0, outputTokens: result.usage?.outputTokens || 0 },
+        model: result.model || result.usage?.model || 'unknown',
+        usage: { inputTokens: result.usage?.input || result.usage?.inputTokens || 0, outputTokens: result.usage?.output || result.usage?.outputTokens || 0 },
         source: 'ceo',
         agentId: 'ceo',
       })
@@ -262,8 +262,8 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
 
       // Track cost to JSONL for historical reporting
       trackCost({
-        model: result.usage?.model || 'unknown',
-        usage: { inputTokens: result.usage?.inputTokens || 0, outputTokens: result.usage?.outputTokens || 0 },
+        model: result.model || result.usage?.model || 'unknown',
+        usage: { inputTokens: result.usage?.input || result.usage?.inputTokens || 0, outputTokens: result.usage?.output || result.usage?.outputTokens || 0 },
         source: 'ceo',
         agentId: 'ceo',
       })

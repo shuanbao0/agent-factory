@@ -687,13 +687,13 @@ async function runDepartmentCycle(deptId) {
       generateDepartmentReport(deptId, result.text)
 
       // Reconcile budget: replace reserved with actual
-      const actualTokens = result.usage?.totalTokens || result.usage?.total_tokens || 0
+      const actualTokens = result.usage?.totalTokens || result.usage?.total_tokens || ((result.usage?.input || 0) + (result.usage?.output || 0)) || 0
       reconcileBudget(deptId, reservation.reserved, actualTokens)
 
       // Track cost to JSONL for historical reporting
       trackCost({
-        model: result.usage?.model || config.model || 'unknown',
-        usage: { inputTokens: result.usage?.inputTokens || 0, outputTokens: result.usage?.outputTokens || 0 },
+        model: result.model || result.usage?.model || config.model || 'unknown',
+        usage: { inputTokens: result.usage?.input || result.usage?.inputTokens || 0, outputTokens: result.usage?.output || result.usage?.outputTokens || 0 },
         source: `dept:${deptId}`,
         agentId: config.head,
       })

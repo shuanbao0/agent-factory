@@ -281,10 +281,10 @@ class GatewayConnectionPool {
             // 重试后仍为空 → 返回错误
             if (!text.trim() && retried) {
               this._log('error', `Empty response from ${agentId} after retry`)
-              finish({ ok: false, error: 'Empty response after session reset retry', usage: p.usage })
+              finish({ ok: false, error: 'Empty response after session reset retry', usage: p.message?.usage, model: p.message?.model })
               return
             }
-            finish({ ok: true, text, usage: p.usage })
+            finish({ ok: true, text, usage: p.message?.usage, model: p.message?.model })
           } else if (p.state === 'error') {
             finish({ ok: false, error: p.errorMessage || 'Agent error' })
           } else if (p.state === 'aborted') {

@@ -50,8 +50,7 @@ function createMockServer() {
                   sessionKey: frame.params.sessionKey,
                   runId,
                   state: 'final',
-                  message: { content: [{ type: 'text', text: 'Hello from mock' }] },
-                  usage: { totalTokens: 100 },
+                  message: { content: [{ type: 'text', text: 'Hello from mock' }], usage: { input: 50, output: 50, totalTokens: 100 }, model: 'test-model' },
                 }
               }))
             }, 10)
@@ -198,14 +197,14 @@ describe('GatewayConnectionPool', () => {
                 ws.send(JSON.stringify({
                   type: 'event', event: 'chat',
                   payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
-                    message: { content: [{ type: 'text', text: '' }] }, usage: { totalTokens: 10 } }
+                    message: { content: [{ type: 'text', text: '' }], usage: { totalTokens: 10 } } }
                 }))
               } else {
                 // Second (retry): real content
                 ws.send(JSON.stringify({
                   type: 'event', event: 'chat',
                   payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
-                    message: { content: [{ type: 'text', text: 'Retry success' }] }, usage: { totalTokens: 200 } }
+                    message: { content: [{ type: 'text', text: 'Retry success' }], usage: { totalTokens: 200 } } }
                 }))
               }
               return
@@ -256,7 +255,7 @@ describe('GatewayConnectionPool', () => {
                 ws.send(JSON.stringify({
                   type: 'event', event: 'chat',
                   payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
-                    message: { content: [{ type: 'text', text: '' }] }, usage: { totalTokens: 10 } }
+                    message: { content: [{ type: 'text', text: '' }], usage: { totalTokens: 10 } } }
                 }))
               } else {
                 // After retry: send old runId delta (should be discarded), then new final
@@ -269,7 +268,7 @@ describe('GatewayConnectionPool', () => {
                   ws.send(JSON.stringify({
                     type: 'event', event: 'chat',
                     payload: { sessionKey: frame.params.sessionKey, runId, state: 'final',
-                      message: { content: [{ type: 'text', text: 'Clean retry' }] }, usage: { totalTokens: 100 } }
+                      message: { content: [{ type: 'text', text: 'Clean retry' }], usage: { totalTokens: 100 } } }
                   }))
                 }, 10)
               }
