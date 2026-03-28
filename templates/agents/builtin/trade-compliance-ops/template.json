@@ -13,6 +13,7 @@
       "project-api",
       "summarize",
       "document-pro",
+      "nano-pdf",
       "session-logs"
     ],
     "peers": [
