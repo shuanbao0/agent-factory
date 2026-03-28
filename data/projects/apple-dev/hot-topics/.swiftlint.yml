@@ -1,0 +1,48 @@
+included:
+  - src
+
+excluded:
+  - src/WidgetExtension
+
+line_length:
+  warning: 120
+  error: 150
+
+file_length:
+  warning: 300
+  error: 400
+
+function_body_length:
+  warning: 60
+  error: 80
+
+type_body_length:
+  warning: 250
+  error: 350
+
+identifier_name:
+  min_length: 2
+  max_length: 50
+  allowed_symbols:
+    - _
+
+nesting:
+  type_level: 2
+  function_level: 3
+
+disabled_rules:
+  - trailing_comma
+  - todo
+  - opening_brace
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - contains_over_filter_count
+  - discouraged_optional_boolean
+  - empty_string
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - last_where
+  - sorted_first_last
