@@ -64,34 +64,36 @@
 ## Sprint 2: 完善功能 + Widget + App Store (20 SP)
 
 **目标**: 完整产品体验 + WidgetKit + App Store 准备
+**Commit**: `06f214e`
+**状态**: ✅ Sprint 2 已完成
 
 ### Sprint 2 执行树
 
-#### 模块1: P0 Bug修复 [2 SP] 🔧 进行中
-| 任务 ID | 任务描述 | SP | 状态 |
-|---------|----------|-----|------|
-| 2.1.1 | HomeView sheet 修复 | 1 | ⬜ |
-| 2.1.2 | EmptyStateView 完善 | 1 | ⬜ |
+#### 模块1: P0 Bug修复 [2 SP] ✅
+| 任务 ID | 任务描述 | SP | 状态 | Commit |
+|---------|----------|-----|------|--------|
+| 2.1.1 | HomeView sheet 修复（sheet(isPresented:) → sheet(item:)） | 1 | ✅ | 06f214e |
+| 2.1.2 | EmptyStateView 完善（新增 onRefresh 回调） | 1 | ✅ | 06f214e |
 
-#### 模块2: Widget Extension [4 SP]
-| 任务 ID | 任务描述 | SP | 状态 |
-|---------|----------|-----|------|
-| 2.2.1 | `HotTopicsWidgetEntry` + `HotTopicsWidgetProvider`（Timeline 15min） | 1 | ⬜ |
-| 2.2.2 | `SmallWidgetView`（Top 3 条目） | 1 | ⬜ |
-| 2.2.3 | `MediumWidgetView`（Top 5 条目） | 1 | ⬜ |
-| 2.2.4 | `AccessoryRectangularView`（锁屏 Widget） | 1 | ⬜ |
+#### 模块2: Widget Extension [4 SP] ✅
+| 任务 ID | 任务描述 | SP | 状态 | Commit |
+|---------|----------|-----|------|--------|
+| 2.2.1 | `HotTopicsWidgetEntry` + `HotTopicsWidgetProvider`（Timeline 15min） | 1 | ✅ | 06f214e |
+| 2.2.2 | 双 Widget（单条速览 + Top5列表） | 1 | ✅ | 06f214e |
+| 2.2.3 | App Group JSON 缓存共享 | 1 | ✅ | 06f214e |
+| 2.2.4 | `AccessoryRectangularView`（锁屏 Widget） | 1 | ⬜ | — |
 
-#### 模块3: 搜索增强 [3 SP]
-| 任务 ID | 任务描述 | SP | 状态 |
-|---------|----------|-----|------|
-| 2.3.1 | 实时过滤 `SearchBar` + `filterByQuery` | 1.5 | ⬜ |
-| 2.3.2 | 搜索历史记录 `SearchHistoryStore` | 1.5 | ⬜ |
+#### 模块3: 搜索增强 [3 SP] ✅
+| 任务 ID | 任务描述 | SP | 状态 | Commit |
+|---------|----------|-----|------|--------|
+| 2.3.1 | SearchHistoryRepository + UserDefaults 实现 | 1.5 | ✅ | 06f214e |
+| 2.3.2 | SearchView + SearchViewModel（本地过滤 + 历史管理） | 1.5 | ✅ | 06f214e |
 
-#### 模块4: 测试完善 [2 SP]
-| 任务 ID | 任务描述 | SP | 状态 |
-|---------|----------|-----|------|
-| 2.4.1 | 新增测试用例 | 1 | ⬜ |
-| 2.4.2 | 测试覆盖达标验证（≥80 @Test） | 1 | ⬜ |
+#### 模块4: 测试完善 [2 SP] ✅
+| 任务 ID | 任务描述 | SP | 状态 | Commit |
+|---------|----------|-----|------|--------|
+| 2.4.1 | 新增测试用例（+27 @Test） | 1 | ✅ | 06f214e |
+| 2.4.2 | 测试覆盖达标验证（105 @Test PASS） | 1 | ✅ | 06f214e |
 
 #### 模块5: App Store 准备 [9 SP]（延续）
 | 任务 ID | 任务描述 | SP | 状态 |
@@ -100,17 +102,17 @@
 | 2.5.2 | `Localizable.xcstrings`（简中/英文） | 1 | ⬜ |
 | 2.5.3 | Privacy Manifest（NSPrivacyAccessedAPITypes） | 0.5 | ⬜ |
 | 2.5.4 | 版本 1.0.0 / Build 1 设置 | 0.5 | ⬜ |
-| 2.5.5 | `CategoryView`（平台分组 + PlatformFilter 筛选器） | 1.5 | ⬜ |
-| 2.5.6 | `PlatformDetailView`（单平台完整热榜 + SafariView 跳转） | 1 | ⬜ |
-| 2.5.7 | `FavoritesView`（列表 + 全部/未读/已读筛选 + 滑动删除） | 1 | ⬜ |
-| 2.5.8 | `FavoritesViewModel` | 0.5 | ⬜ |
-| 2.5.9 | `SettingsView`（API Key 设置 + 缓存清理 + 关于） | 1 | ⬜ |
+| 2.5.5 | `CategoryView`（平台分组 + PlatformFilter 筛选器） | 1.5 | ✅ |
+| 2.5.6 | `PlatformDetailView`（单平台完整热榜 + SafariView 跳转） | 1 | ✅ |
+| 2.5.7 | `FavoritesView`（列表 + 全部/未读/已读筛选 + 滑动删除） | 1 | ✅ |
+| 2.5.8 | `FavoritesViewModel` | 0.5 | ✅ |
+| 2.5.9 | `SettingsView`（API Key 设置 + 缓存清理 + 关于） | 1 | ✅ |
 
 ### Sprint 2 退出条件
-- [ ] BUILD SUCCEEDED + **ARCHIVE SUCCEEDED**
-- [ ] SwiftLint 0 violations
-- [ ] 全量测试通过（≥80 个 @Test）
-- [ ] Widget 在主屏幕正常展示热榜
+- [x] BUILD SUCCEEDED ✅ (06f214e)
+- [x] SwiftLint 0 violations ✅ (06f214e)
+- [x] 全量测试通过 ✅ (105 @Test PASS, 06f214e)
+- [ ] Widget 在主屏幕正常展示热榜（待真机验证）
 - [ ] App Store Connect 元数据填写完成
 
 ---

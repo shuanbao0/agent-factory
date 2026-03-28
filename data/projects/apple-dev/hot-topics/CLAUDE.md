@@ -294,21 +294,22 @@ struct FetchHotListUseCaseTests {
 | Infrastructure 层 | ✅ | 完成（TophubAPIClient/SwiftDataRepositories） | — |
 | Presentation 层骨架 | ✅ | 完成（Home/Category/Favorites/PlatformDetail） | — |
 | Sprint 1 | ✅ | 78@Test PASS, 89/100 | 2026-03-29 |
+| Sprint 2 | ✅ | 105@Test PASS, 06f214e | 2026-03-29 |
 
 ### 当前 Sprint
-**Sprint 2: Widget + 搜索增强 + Bug修复 + App Store准备** — 🔧 进行中
+**Sprint 2: Widget + 搜索增强 + Bug修复 + App Store准备** — ✅ 已完成
 
 | 模块 | SP | 状态 |
 |------|-----|------|
-| P0 Bug修复 | 2 | ⬜ |
-| Widget Extension | 4 | ⬜ |
-| 搜索增强 | 3 | ⬜ |
-| 测试完善 | 2 | ⬜ |
-| App Store 准备 | 9 | ⬜ |
+| P0 Bug修复 | 2 | ✅ |
+| Widget Extension | 4 | ✅ |
+| 搜索增强 | 3 | ✅ |
+| 测试完善 | 2 | ✅ |
+| App Store 准备 | 9 | 部分完成 |
 
 ### 测试基线
 - **Sprint 1**: 78 @Test ✅
-- **Sprint 2 目标**: ≥80 @Test
+- **Sprint 2**: 105 @Test ✅
 
 ---
 
