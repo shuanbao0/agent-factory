@@ -6,12 +6,17 @@ import Foundation
 @Observable @MainActor
 final class HotListViewModel {
 
+    // MARK: - Constants
+
+    static let debounceMs: Int = 500
+
     // MARK: - State
 
     var isLoading = false
     var showError = false
     var errorMessage = ""
     private var hotItems: [String: [HotItem]] = [:]
+    private var refreshTask: Task<Void, Never>?
 
     // MARK: - Computed Properties
 
@@ -34,8 +39,13 @@ final class HotListViewModel {
         await loadAllPlatforms()
     }
 
-    func refresh() async {
-        await loadAllPlatforms()
+    func refresh() {
+        refreshTask?.cancel()
+        refreshTask = Task {
+            try? await Task.sleep(for: .milliseconds(Self.debounceMs))
+            guard !Task.isCancelled else { return }
+            await loadAllPlatforms()
+        }
     }
 
     func items(for platformId: String) -> [HotItem] {
@@ -51,9 +61,12 @@ final class HotListViewModel {
 
         for platform in Platform.available {
             do {
-                let items = try await fetchUseCase.execute(platform: platform)
+                let items = try await fetchUseCase.execute(
+                    platform: platform
+                )
                 hotItems[platform.id] = items
-            } catch let error as HotTopicsError where !error.shouldShowToUser {
+            } catch let error as HotTopicsError
+                where !error.shouldShowToUser {
                 continue
             } catch {
                 errorMessage = error.localizedDescription

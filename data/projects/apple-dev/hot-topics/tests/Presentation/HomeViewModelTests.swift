@@ -55,10 +55,10 @@ struct HomeViewModelTests {
         let useCase = FetchHotListUseCase(repository: mockRepo)
         viewModel.inject(fetchUseCase: useCase)
 
-        // First load some data by manually setting
-        await viewModel.refresh()
+        // First load some data
+        await viewModel.onAppear()
 
-        // onAppear should skip if hasData
+        // Reset and re-invoke — should skip if hasData
         await viewModel.onAppear()
 
         // No error means it worked
@@ -76,7 +76,7 @@ struct HomeViewModelTests {
         let useCase = FetchHotListUseCase(repository: mockRepo)
         viewModel.inject(fetchUseCase: useCase)
 
-        await viewModel.refresh()
+        await viewModel.onAppear()
 
         #expect(viewModel.showError || !viewModel.errorMessage.isEmpty || !viewModel.isLoading)
     }

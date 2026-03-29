@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - FavoritesView
 
-/// 收藏列表视图
+/// 收藏列表视图（支持按平台筛选）
 struct FavoritesView: View {
 
     // MARK: - Dependencies
@@ -10,6 +10,22 @@ struct FavoritesView: View {
     @Environment(AppDependencies.self) private var deps
     @State private var viewModel = FavoritesViewModel()
     @State private var showSafariURL: URL?
+    @State private var selectedPlatformId: String?
+
+    // MARK: - Computed
+
+    private var filteredFavorites: [FavoriteItem] {
+        guard let pid = selectedPlatformId else {
+            return viewModel.favorites
+        }
+        return viewModel.favorites.filter { $0.platformId == pid }
+    }
+
+    private var platformIds: [String] {
+        Array(
+            Set(viewModel.favorites.map(\.platformId))
+        ).sorted()
+    }
 
     // MARK: - Body
 
@@ -27,8 +43,15 @@ struct FavoritesView: View {
                 }
             }
             .navigationTitle("收藏")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    platformFilterMenu
+                }
+            }
             .task {
-                viewModel.inject(useCase: deps.manageFavoritesUseCase)
+                viewModel.inject(
+                    useCase: deps.manageFavoritesUseCase
+                )
                 await viewModel.load()
             }
         }
@@ -40,46 +63,92 @@ struct FavoritesView: View {
 
     // MARK: - Subviews
 
+    private var platformFilterMenu: some View {
+        Menu {
+            Button("全部") { selectedPlatformId = nil }
+            ForEach(platformIds, id: \.self) { pid in
+                let name = platformName(for: pid)
+                Button(name) { selectedPlatformId = pid }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease")
+                if let pid = selectedPlatformId {
+                    Text(platformName(for: pid))
+                        .font(.caption)
+                }
+            }
+        }
+    }
+
     private var favoritesList: some View {
         List {
-            ForEach(viewModel.favorites) { item in
+            ForEach(filteredFavorites) { item in
                 Button {
                     showSafariURL = item.url
                 } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(.subheadline)
-                            .lineLimit(2)
-                            .foregroundStyle(.primary)
-                        HStack {
-                            Text(item.platformName)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.orange.opacity(0.15), in: Capsule())
-                                .foregroundStyle(.orange)
-                            Spacer()
-                            if !item.isRead {
-                                Circle()
-                                    .fill(.orange)
-                                    .frame(width: 8, height: 8)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
+                    favoriteRow(item)
                 }
                 .buttonStyle(.plain)
             }
             .onDelete { indexSet in
                 Task {
                     for index in indexSet {
-                        let id = viewModel.favorites[index].id
+                        let id = filteredFavorites[index].id
                         await viewModel.remove(id: id)
                     }
                 }
             }
         }
         .listStyle(.plain)
+    }
+
+    private func favoriteRow(_ item: FavoriteItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.title)
+                .font(.subheadline)
+                .lineLimit(2)
+                .foregroundStyle(.primary)
+            HStack {
+                platformBadge(for: item)
+                Spacer()
+                if !item.isRead {
+                    Circle()
+                        .fill(.orange)
+                        .frame(width: 8, height: 8)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    // MARK: - Helpers
+
+    private func platformBadge(
+        for item: FavoriteItem
+    ) -> some View {
+        let platform = Platform.all.first {
+            $0.id == item.platformId
+        }
+        return Group {
+            if let platform {
+                PlatformBadge(platform: platform)
+            } else {
+                Text(item.platformName)
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Color.secondary.opacity(0.15),
+                        in: Capsule()
+                    )
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func platformName(for id: String) -> String {
+        Platform.all.first { $0.id == id }?.name ?? id
     }
 }
 

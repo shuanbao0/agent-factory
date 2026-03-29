@@ -9,6 +9,7 @@ struct HotListView: View {
 
     @Environment(AppDependencies.self) private var deps
     @State private var viewModel = HotListViewModel()
+    @State private var toastMessage: ToastMessage?
 
     // MARK: - Body
 
@@ -17,7 +18,10 @@ struct HotListView: View {
             Group {
                 if viewModel.isLoading && !viewModel.hasData {
                     ProgressView("加载中...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
                 } else if viewModel.hasData {
                     platformList
                 } else {
@@ -32,19 +36,31 @@ struct HotListView: View {
             .safeAreaInset(edge: .top) {
                 if viewModel.showError {
                     ErrorBanner(message: viewModel.errorMessage) {
-                        Task { await viewModel.refresh() }
+                        viewModel.refresh()
                     }
                     .padding(.top, 4)
                 }
             }
             .refreshable {
-                await viewModel.refresh()
+                viewModel.refresh()
             }
             .task {
-                viewModel.inject(fetchUseCase: deps.fetchHotListUseCase)
+                viewModel.inject(
+                    fetchUseCase: deps.fetchHotListUseCase
+                )
                 await viewModel.onAppear()
             }
+            .onChange(of: viewModel.showError) { _, show in
+                if show {
+                    toastMessage = ToastMessage(
+                        text: viewModel.errorMessage,
+                        icon: "exclamationmark.triangle",
+                        style: .error
+                    )
+                }
+            }
         }
+        .toast(message: $toastMessage)
     }
 
     // MARK: - Subviews
@@ -62,7 +78,9 @@ struct HotListView: View {
                             HotItemRowView(item: item)
                         }
                         NavigationLink {
-                            PlatformDetailView(platform: platform)
+                            PlatformDetailView(
+                                platform: platform
+                            )
                         } label: {
                             Text("查看全部")
                                 .font(.footnote)
@@ -70,8 +88,11 @@ struct HotListView: View {
                         }
                     }
                 } header: {
-                    Label(platform.name, systemImage: platform.iconName)
-                        .font(.headline)
+                    Label(
+                        platform.name,
+                        systemImage: platform.iconName
+                    )
+                    .font(.headline)
                 }
             }
         }

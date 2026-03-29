@@ -19,12 +19,20 @@ struct HotTopicsApp: App {
             FavoriteItemEntity.self,
             PlatformEntity.self,
         ])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false
+        )
         // swiftlint:disable:next force_try
-        let container = try! ModelContainer(for: schema, configurations: [config])
+        let container = try! ModelContainer(
+            for: schema, configurations: [config]
+        )
         self.modelContainer = container
         let context = ModelContext(container)
-        self._dependencies = State(initialValue: AppDependencies(modelContext: context))
+        self._dependencies = State(
+            initialValue: AppDependencies(modelContext: context)
+        )
+        BackgroundRefreshManager.registerBackgroundTask()
     }
 
     // MARK: - Body
@@ -35,8 +43,11 @@ struct HotTopicsApp: App {
                 .environment(dependencies)
                 .modelContainer(modelContainer)
                 .task {
-                    try? await dependencies.hotListRepository.seedPlatformsIfNeeded()
-                    try? await dependencies.hotListRepository.purgeExpired()
+                    try? await dependencies
+                        .hotListRepository.seedPlatformsIfNeeded()
+                    try? await dependencies
+                        .hotListRepository.purgeExpired()
+                    BackgroundRefreshManager.scheduleNextRefresh()
                 }
         }
     }

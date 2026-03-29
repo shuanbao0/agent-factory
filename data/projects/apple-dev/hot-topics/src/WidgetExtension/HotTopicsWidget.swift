@@ -37,7 +37,7 @@ struct HotTopicsTimelineProvider: TimelineProvider {
         completion: @escaping (Timeline<HotTopicsEntry>) -> Void
     ) {
         let entry = loadEntry()
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
     }
