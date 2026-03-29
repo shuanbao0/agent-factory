@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+#### Sprint 3 (性能优化 + 后台刷新 + RC准备) — ✅ 已完成
+
+**Commit**: `0e2d5d5`
+
+- **性能优化**
+  - CachedAsyncImage NSCache 内存缓存
+  - HotListViewModel 500ms 防抖优化
+  - Widget Timeline 30min 刷新优化
+
+- **后台刷新**
+  - BGAppRefreshTask 后台刷新支持
+
+- **测试覆盖**: 105 → **127 @Test** (+22), BUILD SUCCEEDED, SwiftLint 0
+
+---
+
 #### Sprint 2 (Widget + 搜索增强 + Bug修复 + Category完善) — ✅ 已完成
 
 **Commit**: `06f214e`

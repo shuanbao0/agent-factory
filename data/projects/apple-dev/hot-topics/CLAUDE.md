@@ -295,21 +295,19 @@ struct FetchHotListUseCaseTests {
 | Presentation 层骨架 | ✅ | 完成（Home/Category/Favorites/PlatformDetail） | — |
 | Sprint 1 | ✅ | 78@Test PASS, 89/100 | 2026-03-29 |
 | Sprint 2 | ✅ | 105@Test PASS, 06f214e | 2026-03-29 |
+| Sprint 3 | ✅ | 127@Test PASS, 0e2d5d5 | 2026-03-29 |
 
-### 当前 Sprint
-**Sprint 2: Widget + 搜索增强 + Bug修复 + App Store准备** — ✅ 已完成
+### 当前状态
+**v1.0 正式版** — Sprint 3 已完成，待 App Store 提交
 
-| 模块 | SP | 状态 |
-|------|-----|------|
-| P0 Bug修复 | 2 | ✅ |
-| Widget Extension | 4 | ✅ |
-| 搜索增强 | 3 | ✅ |
-| 测试完善 | 2 | ✅ |
-| App Store 准备 | 9 | 部分完成 |
+| Sprint | 测试 | Commit |
+|--------|------|--------|
+| Sprint 1 | 78 @Test ✅ | 350d586 |
+| Sprint 2 | 105 @Test ✅ | 06f214e |
+| Sprint 3 | 127 @Test ✅ | 0e2d5d5 |
 
 ### 测试基线
-- **Sprint 1**: 78 @Test ✅
-- **Sprint 2**: 105 @Test ✅
+- **v1.0 总量**: 127 @Test
 
 ---
 
