@@ -1,6 +1,6 @@
 # PLAN.md — Hot Topics v1.0 执行树
 
-> 版本: v1.5（更新：Sprint 3 完成，v1.0 正式版）
+> 版本: v1.6（更新：Sprint 3 ✅，v1.0 正式版完成）
 > 日期: 2026-03-29
 > 项目: apple-dev/hot-topics
 > 总 SP: ~40 SP / 3 Sprint
