@@ -8,5 +8,6 @@ module.exports = {
   ...require('./scheduler.cjs'),
   ...require('./signal-watcher.cjs'),
   ...require('./adaptive-timer.cjs'),
+  ...require('./worker-tracker.cjs'),
   reactors: require('./reactors/index.cjs'),
 }

@@ -103,25 +103,53 @@ function trackTokenUsage(deptId, usage) {
 
 /**
  * Get budget summary across all departments.
+ * 使用 DB 查询替代目录遍历：dept_config 表 + cost_entries 聚合。
  */
 function getBudgetSummary() {
   const companyBudget = loadCompanyBudget()
   const departments = {}
   let totalUsed = 0
+  const today = new Date().toISOString().slice(0, 10)
 
-  if (existsSync(DEPARTMENTS_DIR)) {
-    try {
-      const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true })
-        .filter(d => d.isDirectory())
-      for (const dir of dirs) {
-        const config = getDeptConfigRepo().load(dir.name)
-        const state = getDeptStateRepo().load(dir.name)
-        const limit = config?.budget?.dailyTokenLimit || 0
-        const used = state.tokensUsedToday || 0
-        departments[dir.name] = { limit, used, ratio: limit > 0 ? used / limit : 0 }
-        totalUsed += used
-      }
-    } catch { /* skip */ }
+  try {
+    // 1 条 SQL: 所有部门配置
+    const { findAllDeptConfigs } = require('../db/queries/dept-config-queries.cjs')
+    const allConfigs = findAllDeptConfigs()
+
+    // 1 条 SQL: 今日各部门 token 消耗（从 cost_entries 聚合）
+    const { getDb } = require('../db/connection.cjs')
+    const db = getDb()
+    const rows = db.prepare(`
+      SELECT source, SUM(input_tokens + output_tokens) AS tokens
+      FROM cost_entries WHERE date = ? AND source LIKE 'dept:%'
+      GROUP BY source
+    `).all(today)
+    const tokensByDept = {}
+    for (const r of rows) {
+      tokensByDept[r.source.replace('dept:', '')] = r.tokens
+    }
+
+    for (const config of allConfigs) {
+      const limit = config.budget?.dailyTokenLimit || 0
+      const used = tokensByDept[config.id] || 0
+      departments[config.id] = { limit, used, ratio: limit > 0 ? used / limit : 0 }
+      totalUsed += used
+    }
+  } catch {
+    // Fallback: 目录扫描
+    if (existsSync(DEPARTMENTS_DIR)) {
+      try {
+        const dirs = readdirSync(DEPARTMENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory())
+        for (const dir of dirs) {
+          const config = getDeptConfigRepo().load(dir.name)
+          const state = getDeptStateRepo().load(dir.name)
+          const limit = config?.budget?.dailyTokenLimit || 0
+          const used = state.tokensUsedToday || 0
+          departments[dir.name] = { limit, used, ratio: limit > 0 ? used / limit : 0 }
+          totalUsed += used
+        }
+      } catch { /* skip */ }
+    }
   }
 
   return {

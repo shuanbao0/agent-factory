@@ -42,7 +42,7 @@ describe('ProjectMetaRepository', () => {
     assert.equal(loaded.name, 'Test Project')
     assert.equal(loaded.department, 'test-dept')
     assert.equal(loaded.status, 'active')
-    assert.ok(Array.isArray(loaded.tasks))
+    // tasks are stored in separate tasks table, not in project metadata
   })
 
   it('updateMeta applies mutator', () => {

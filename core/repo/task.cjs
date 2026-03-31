@@ -1,20 +1,24 @@
 'use strict'
 /**
- * TaskRepository — 任务 CRUD（统一 project tasks + standalone tasks）
+ * TaskRepository — 任务 CRUD（DB 为主 + .project-meta.json 兼容写入）
  *
- * 数据源：
- * - config/tasks.json — 独立任务
- * - projects/{projectId}/.project-meta.json — 项目任务
+ * 数据源：SQLite tasks 表（唯一读取源）
+ * 兼容写入：projects/{projectId}/.project-meta.json（Gateway/Agent 读取项目元数据）
  *
- * 架构说明：TaskRepository 管理双数据源（config/tasks.json + projects/{id}/.project-meta.json），
- * 每个源有不同的 JSON 结构和字段标准化逻辑。这种复杂性使继承 BaseRepository 的 read/write
- * 不可行，因此直接使用 readFileSync/writeFileSync。这是经过审查的架构例外。
+ * 架构说明：
+ * - 读操作全部走 DB（索引查询，支持过滤和分页）
+ * - 写操作写 DB + 同步更新 .project-meta.json 中的 tasks 数组（保持 autopilot 兼容）
+ * - 独立任务（无 projectId）只写 DB，不再写 config/tasks.json
  */
 const { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync } = require('fs')
 const { join, resolve, dirname } = require('path')
 const { BaseRepository } = require('./base.cjs')
-const { PROJECT_ROOT, PROJECTS_DIR, TASKS_FILE } = require('../common/paths.cjs')
+const { PROJECT_ROOT, PROJECTS_DIR } = require('../common/paths.cjs')
 const logger = require('../common/logger.cjs')
+const {
+  upsertTask, upsertTasksBatch, findAllTasksFromDb, findTaskByIdFromDb,
+  deleteTaskFromDb, deleteProjectTasksNotIn, replaceStandaloneTasks,
+} = require('../db/queries/task-queries.cjs')
 
 /** Atomic write: tmp + rename to avoid partial writes */
 function atomicWrite(filePath, content) {
@@ -31,7 +35,7 @@ function atomicWrite(filePath, content) {
 }
 
 class TaskRepository extends BaseRepository {
-  /** Normalize legacy task fields (e.g. 'running' → 'in_progress') */
+  /** Normalize legacy task fields (e.g. 'running' -> 'in_progress') */
   normalizeTask(raw, projectId) {
     const assignees = Array.isArray(raw.assignees)
       ? raw.assignees
@@ -69,24 +73,18 @@ class TaskRepository extends BaseRepository {
     }
   }
 
-  /** Read standalone tasks from config/tasks.json */
+  /** Read standalone tasks from DB (tasks without projectId) */
   readStandaloneTasks() {
-    try {
-      if (!existsSync(TASKS_FILE)) return []
-      const data = JSON.parse(readFileSync(TASKS_FILE, 'utf-8'))
-      return (data.tasks || []).map(t => this.normalizeTask(t))
-    } catch (err) {
-      logger.warn('task-repo', 'failed to parse standalone tasks', { file: TASKS_FILE, error: err.message })
-      return []
-    }
+    return findAllTasksFromDb().filter(t => !t.projectId)
   }
 
-  /** Write standalone tasks to config/tasks.json */
+  /** Write standalone tasks to DB */
   writeStandaloneTasks(tasks) {
-    atomicWrite(TASKS_FILE, JSON.stringify({ tasks, lastUpdated: new Date().toISOString() }, null, 2) + '\n')
+    const normalized = tasks.map(t => this.normalizeTask(t))
+    replaceStandaloneTasks(normalized)
   }
 
-  /** Read project meta */
+  /** Read project meta from file (non-task fields still in file) */
   readProjectMeta(projectId) {
     const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
     if (!existsSync(metaPath)) return null
@@ -98,15 +96,23 @@ class TaskRepository extends BaseRepository {
     }
   }
 
-  /** Write project meta */
+  /** Write project meta to file + sync tasks to DB */
   writeProjectMeta(projectId, meta) {
     const metaPath = join(PROJECTS_DIR, projectId, '.project-meta.json')
     atomicWrite(metaPath, JSON.stringify(meta, null, 2) + '\n')
+
+    // 同步 tasks 到 DB
+    if (Array.isArray(meta.tasks)) {
+      const normalized = meta.tasks.map(t => this.normalizeTask(t, projectId))
+      upsertTasksBatch(normalized)
+      deleteProjectTasksNotIn(projectId, normalized.map(t => t.id))
+    }
   }
 
   /**
    * Read all project tasks (with normalization).
    * Returns raw project objects with tasks array (for autopilot compatibility).
+   * Tasks are read from DB but merged with project meta from file.
    * @returns {Array<{id: string, tasks: Array, ...meta}>}
    */
   readProjectsWithTasks() {
@@ -120,12 +126,12 @@ class TaskRepository extends BaseRepository {
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-            // Normalize task statuses in-place
-            if (Array.isArray(meta.tasks)) {
-              for (const t of meta.tasks) {
-                if (t.status === 'running') t.status = 'in_progress'
-              }
-            }
+            // Tasks from DB instead of file
+            const dbTasks = findAllTasksFromDb({ projectId: dir.name })
+            meta.tasks = dbTasks.length > 0 ? dbTasks : (meta.tasks || []).map(t => {
+              if (t.status === 'running') t.status = 'in_progress'
+              return t
+            })
             results.push({ id: dir.name, ...meta })
           } catch (err) {
             logger.warn('task-repo', 'failed to parse project meta', { project: dir.name, error: err.message })
@@ -141,14 +147,14 @@ class TaskRepository extends BaseRepository {
               try {
                 const subId = `${dir.name}/${sd.name}`
                 const meta = JSON.parse(readFileSync(subMetaPath, 'utf-8'))
-                if (Array.isArray(meta.tasks)) {
-                  for (const t of meta.tasks) {
-                    if (t.status === 'running') t.status = 'in_progress'
-                  }
-                }
+                const dbTasks = findAllTasksFromDb({ projectId: subId })
+                meta.tasks = dbTasks.length > 0 ? dbTasks : (meta.tasks || []).map(t => {
+                  if (t.status === 'running') t.status = 'in_progress'
+                  return t
+                })
                 results.push({ id: subId, ...meta })
               } catch (err) {
-                logger.warn('task-repo', 'failed to parse sub-project meta', { project: subId, error: err.message })
+                logger.warn('task-repo', 'failed to parse sub-project meta', { error: err.message })
               }
             }
           }
@@ -162,35 +168,25 @@ class TaskRepository extends BaseRepository {
     return results
   }
 
-  /** Read all project tasks as flat array */
+  /** Read all project tasks as flat array from DB */
   readProjectTasks() {
-    const tasks = []
-    const projects = this.readProjectsWithTasks()
-    for (const proj of projects) {
-      for (const t of (proj.tasks || [])) {
-        tasks.push(this.normalizeTask(t, proj.id))
-      }
-    }
-    return tasks
+    return findAllTasksFromDb().filter(t => t.projectId)
   }
 
-  /** Find all tasks (standalone + project) */
-  findAllTasks() {
-    return [...this.readProjectTasks(), ...this.readStandaloneTasks()]
+  /** Find all tasks (standalone + project) from DB */
+  findAllTasks(opts) {
+    return findAllTasksFromDb(opts)
   }
 
-  /** Find a task by ID, returns task and its source */
+  /** Find a task by ID from DB, returns task and its source */
   findTaskById(taskId) {
-    const standalone = this.readStandaloneTasks()
-    const st = standalone.find(t => t.id === taskId)
-    if (st) return { task: st, source: 'standalone' }
-    const projectTasks = this.readProjectTasks()
-    const pt = projectTasks.find(t => t.id === taskId)
-    if (pt && pt.projectId) return { task: pt, source: pt.projectId }
-    return null
+    const task = findTaskByIdFromDb(taskId)
+    if (!task) return null
+    const source = task.projectId || 'standalone'
+    return { task, source }
   }
 
-  /** Update a task in a project */
+  /** Update a task in a project (file + DB) */
   updateProjectTask(projectId, taskId, updates) {
     const meta = this.readProjectMeta(projectId)
     if (!meta) return false
@@ -203,11 +199,12 @@ class TaskRepository extends BaseRepository {
     }
     tasks[idx] = merged
     meta.tasks = tasks
+    // writeProjectMeta handles both file + DB sync
     this.writeProjectMeta(projectId, meta)
     return true
   }
 
-  /** Delete a task from a project */
+  /** Delete a task from a project (file + DB) */
   deleteProjectTask(projectId, taskId) {
     const meta = this.readProjectMeta(projectId)
     if (!meta) return false
@@ -216,7 +213,9 @@ class TaskRepository extends BaseRepository {
     if (idx === -1) return false
     tasks.splice(idx, 1)
     meta.tasks = tasks
+    // writeProjectMeta handles both file + DB sync
     this.writeProjectMeta(projectId, meta)
+    deleteTaskFromDb(taskId)
     return true
   }
 
@@ -237,24 +236,34 @@ class TaskRepository extends BaseRepository {
     }
   }
 
-  /** Update a task in-place (finds it wherever it is) */
+  /** Update a task in-place via DB + sync to file if project task */
   updateTaskInPlace(taskId, updates) {
-    const standalone = this.readStandaloneTasks()
-    const sIdx = standalone.findIndex(t => t.id === taskId)
-    if (sIdx !== -1) {
-      const merged = { ...standalone[sIdx], ...updates, updatedAt: new Date().toISOString() }
-      if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
-      standalone[sIdx] = merged
-      this.writeStandaloneTasks(standalone)
-      return merged
+    const found = this.findTaskById(taskId)
+    if (!found) return null
+
+    const { task, source } = found
+    const merged = { ...task, ...updates, updatedAt: new Date().toISOString() }
+    if (updates.assignees) merged.assignedAgent = updates.assignees[0] || undefined
+
+    // Update DB
+    upsertTask(merged)
+
+    // If project task, also update .project-meta.json
+    if (source !== 'standalone' && merged.projectId) {
+      const meta = this.readProjectMeta(merged.projectId)
+      if (meta && Array.isArray(meta.tasks)) {
+        const idx = meta.tasks.findIndex(t => t.id === taskId)
+        if (idx !== -1) {
+          meta.tasks[idx] = merged
+        } else {
+          meta.tasks.push(merged)
+        }
+        const metaPath = join(PROJECTS_DIR, merged.projectId, '.project-meta.json')
+        atomicWrite(metaPath, JSON.stringify(meta, null, 2) + '\n')
+      }
     }
-    const projectTasks = this.readProjectTasks()
-    const pt = projectTasks.find(t => t.id === taskId)
-    if (pt && pt.projectId) {
-      const success = this.updateProjectTask(pt.projectId, taskId, updates)
-      if (success) return { ...pt, ...updates, updatedAt: new Date().toISOString() }
-    }
-    return null
+
+    return merged
   }
 }
 

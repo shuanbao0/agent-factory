@@ -1,10 +1,10 @@
 'use strict'
 const { describe, it, beforeEach, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
-const { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, statSync, truncateSync } = require('fs')
+const { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } = require('fs')
 const { join } = require('path')
-const { BUDGET_FILE, EVENTS_FILE, DEPARTMENTS_DIR: DEPTS_DIR } = require('../../core/common/paths.cjs')
-const { calculateCost, trackCost, queryCosts, COSTS_FILE } = require('../../core/observe/cost-tracker.cjs')
+const { BUDGET_FILE, DEPARTMENTS_DIR: DEPTS_DIR } = require('../../core/common/paths.cjs')
+const { calculateCost, trackCost, queryCosts } = require('../../core/observe/cost-tracker.cjs')
 const { shouldResetDaily, loadCompanyBudget, saveCompanyBudget } = require('../../core/observe/budget.cjs')
 const { deptConfigRepo } = require('../../core/repo/dept-config.cjs')
 const { deptStateRepo } = require('../../core/repo/dept-state.cjs')
@@ -13,28 +13,14 @@ const TEST_DEPT_ID = 'zzz-test-budget-' + process.pid
 const TEST_SOURCE = 'zzz-test-cost-' + process.pid + '-' + Date.now()
 
 describe('Cost tracking and budget', () => {
-  let originalCostsSize
-  let originalEventsSize
   let originalBudget
 
   beforeEach(() => {
-    // Record JSONL file sizes before test
-    originalCostsSize = existsSync(COSTS_FILE) ? statSync(COSTS_FILE).size : -1
-    originalEventsSize = existsSync(EVENTS_FILE) ? statSync(EVENTS_FILE).size : -1
-
     // Backup budget.json
     originalBudget = existsSync(BUDGET_FILE) ? readFileSync(BUDGET_FILE, 'utf-8') : null
   })
 
   afterEach(() => {
-    // Truncate JSONL files back to original size
-    if (originalCostsSize >= 0 && existsSync(COSTS_FILE)) {
-      truncateSync(COSTS_FILE, originalCostsSize)
-    }
-    if (originalEventsSize >= 0 && existsSync(EVENTS_FILE)) {
-      truncateSync(EVENTS_FILE, originalEventsSize)
-    }
-
     // Restore budget.json
     if (originalBudget !== null) {
       writeFileSync(BUDGET_FILE, originalBudget)

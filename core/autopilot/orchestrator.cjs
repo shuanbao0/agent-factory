@@ -23,7 +23,6 @@ const { buildMemoryContext, compressMemory } = require('../agent/memory.cjs')
 const { runDepartmentCycle, autoTransitionTasks } = require('./department-loop.cjs')
 const { createCycleTask, completeCycleTask, updateTaskStatus } = require('../common/task-bridge.cjs')
 const logger = require('../common/logger.cjs')
-const { trackCost } = require('../observe/cost-tracker.cjs')
 
 const MAX_HISTORY = 50
 
@@ -118,13 +117,7 @@ async function runCycle(options = {}) {
       const ceoTokens = sessionTokens.byAgent['ceo'] || 0
       console.log(`📊 Tokens: CEO=${ceoTokens} Total=${sessionTokens.all}`)
 
-      // Track cost to JSONL for historical reporting
-      trackCost({
-        model: result.model || result.usage?.model || 'unknown',
-        usage: { inputTokens: result.usage?.input || result.usage?.inputTokens || 0, outputTokens: result.usage?.output || result.usage?.outputTokens || 0 },
-        source: 'ceo',
-        agentId: 'ceo',
-      })
+      // Cost tracking is handled automatically by gateway-client interceptor
 
       // Update state
       state.status = isLoop ? 'running' : 'stopped'
@@ -260,13 +253,7 @@ async function runCeoCycleForAll(cycleType = 'coordination') {
     if (result.ok) {
       logger.info('main', `CEO cycle #${cycleNum} completed in ${elapsed}s`)
 
-      // Track cost to JSONL for historical reporting
-      trackCost({
-        model: result.model || result.usage?.model || 'unknown',
-        usage: { inputTokens: result.usage?.input || result.usage?.inputTokens || 0, outputTokens: result.usage?.output || result.usage?.outputTokens || 0 },
-        source: 'ceo',
-        agentId: 'ceo',
-      })
+      // Cost tracking is handled automatically by gateway-client interceptor
 
       const sessionTokens = sessionRepo.fetchSessionTokens()
 

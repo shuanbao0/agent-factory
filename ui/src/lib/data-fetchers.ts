@@ -360,7 +360,14 @@ export interface AgentMessage {
   timestamp: string
   fromAgent: string
   toAgent: string
-  type: 'spawn' | 'send' | 'error' | 'log'
+  type: 'spawn' | 'send' | 'error' | 'log' | string
+  messageType?: string
+  direction?: string
+  channel?: string
+  content?: string
+  inputTokens?: number
+  outputTokens?: number
+  cost?: number
 }
 
 export interface MessagesResult {
@@ -371,20 +378,6 @@ export interface MessagesResult {
   source: 'gateway'
 }
 
-function loadAllowAgentsMap(): Record<string, string[]> {
-  const map: Record<string, string[]> = {}
-  try {
-    const config = core.repo.configRepo.getConfig()
-    const list = config.agents?.list || []
-    for (const agent of list) {
-      const allowed = agent.subagents?.allowAgents
-      if (Array.isArray(allowed)) {
-        map[agent.id] = allowed
-      }
-    }
-  } catch (e) { core.common.logger.debug('data-fetchers', 'AllowAgents map read failed', { error: String(e) }) }
-  return map
-}
 
 export async function fetchMessagesData(): Promise<MessagesResult> {
   const messages: AgentMessage[] = []
@@ -393,86 +386,57 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
   const activePairs: Array<{ from: string; to: string; type: 'spawn' | 'send' }> = []
 
   try {
-    const sessResult = await gwCallAsync('sessions.list', { limit: 100 }, 20000) as {
-      sessions?: Array<{
-        key: string
-        updatedAt?: number
-        outputTokens?: number
+    const result = core.db.messageQueries.queryMessages({ limit: 200 }) as {
+      messages: Array<{
+        ts: string; agentId: string; messageType: string; direction: string
+        channel: string; fromAgent: string | null; ok: number | null
+        inputTokens: number; outputTokens: number; cost: number; content: string | null
       }>
     }
-    const sessions = sessResult.sessions || []
-    const now = Date.now()
-    const recentThreshold = 300_000 // 5 minutes
 
-    for (const session of sessions) {
-      const parts = session.key.split(':')
-      if (parts[0] !== 'agent' || parts.length < 3) continue
-      const agentId = parts[1]
-      const isSubagent = parts[2] === 'subagent'
-      const ts = session.updatedAt || 0
+    const recentThreshold = Date.now() - 300_000 // 5 minutes
+
+    for (const row of result.messages) {
+      const fromAgent = row.direction === 'request'
+        ? (row.fromAgent || 'system')
+        : row.agentId
+      const toAgent = row.direction === 'request'
+        ? row.agentId
+        : (row.fromAgent || 'system')
+
+      const ts = new Date(row.ts).getTime()
 
       // Track last activity
-      if (ts > (lastActivity[agentId] || 0)) {
-        lastActivity[agentId] = ts
+      if (ts > (lastActivity[row.agentId] || 0)) {
+        lastActivity[row.agentId] = ts
       }
 
-      // Only consider recent sessions for active pairs
-      if (now - ts > recentThreshold) continue
-
-      if (isSubagent) {
-        // With allowAgents=[self], spawn is always self-spawn
-        const parentId = agentId
-
-        const msg: AgentMessage = {
-          timestamp: new Date(ts).toISOString(),
-          fromAgent: parentId,
-          toAgent: agentId,
-          type: 'spawn',
-        }
-        messages.push(msg)
-        activePairs.push({ from: parentId, to: agentId, type: 'spawn' })
-
-        if (session.outputTokens && session.outputTokens > 0) {
-          messages.push({
-            timestamp: new Date(ts).toISOString(),
-            fromAgent: agentId,
-            toAgent: parentId,
-            type: 'send',
-          })
-          activePairs.push({ from: agentId, to: parentId, type: 'send' })
-        }
+      // Track errors
+      if (row.ok === 0 && ts > (agentErrors[row.agentId] || 0)) {
+        agentErrors[row.agentId] = ts
       }
+
+      // Active pairs from recent responses
+      if (row.direction === 'response' && ts > recentThreshold) {
+        activePairs.push({ from: fromAgent, to: toAgent, type: 'send' })
+      }
+
+      messages.push({
+        timestamp: row.ts,
+        fromAgent,
+        toAgent,
+        type: row.ok === 0 ? 'error' : 'send',
+        messageType: row.messageType,
+        direction: row.direction,
+        channel: row.channel,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        cost: row.cost,
+      })
     }
-
-    // Parse gateway logs for errors
-    try {
-      const raw = await gwCallAsync('logs.tail', undefined, 20000) as { lines?: string[] }
-      const lines = raw.lines || []
-      for (const line of lines.slice(-50)) {
-        try {
-          const entry = JSON.parse(line)
-          if (entry._meta?.logLevelName === 'ERROR') {
-            const time = entry.time || entry._meta?.date
-            if (!time) continue
-            const errTs = new Date(time).getTime()
-            // Try to identify which agent the error relates to
-            const msg = String(entry['1'] || '')
-            for (const [aid, ts] of Object.entries(lastActivity)) {
-              if (msg.includes(aid) && errTs > (agentErrors[aid] || 0)) {
-                agentErrors[aid] = errTs
-              }
-            }
-            messages.push({
-              timestamp: new Date(errTs).toISOString(),
-              fromAgent: 'gateway',
-              toAgent: 'system',
-              type: 'error',
-            })
-          }
-        } catch { /* skip */ }
-      }
-    } catch (e) { core.common.logger.debug('data-fetchers', 'logs.tail fetch failed (messages)', { error: String(e) }) }
-  } catch (e) { core.common.logger.debug('data-fetchers', 'sessions.list fetch failed (messages)', { error: String(e) }) }
+  } catch (e) {
+    core.common.logger.debug('data-fetchers', 'Messages DB query failed', { error: String(e) })
+  }
 
   return { messages, activePairs, agentErrors, lastActivity, source: 'gateway' }
 }

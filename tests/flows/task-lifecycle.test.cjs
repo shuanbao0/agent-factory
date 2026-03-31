@@ -30,49 +30,55 @@ function makeTask(overrides = {}) {
 describe('TaskStateMachine — lifecycle paths', () => {
   describe('normal completion path', () => {
     it('pending → assigned → in_progress → review → completed', () => {
-      const task = makeTask({ id: 'zzz-test-normal' })
+      const taskId = `zzz-normal-${Date.now()}`
+      const task = makeTask({ id: taskId })
 
-      const r1 = transition(task, 'assigned', { recordHistory: true, actor: 'system' })
+      const r1 = transition(task, 'assigned', { actor: 'system' })
       assert.equal(r1.ok, true)
       assert.equal(task.status, 'assigned')
 
-      const r2 = transition(task, 'in_progress', { recordHistory: true })
+      const r2 = transition(task, 'in_progress')
       assert.equal(r2.ok, true)
       assert.equal(task.status, 'in_progress')
 
-      const r3 = transition(task, 'review', { recordHistory: true })
+      const r3 = transition(task, 'review')
       assert.equal(r3.ok, true)
       assert.equal(task.status, 'review')
 
-      const r4 = transition(task, 'completed', { recordHistory: true })
+      const r4 = transition(task, 'completed')
       assert.equal(r4.ok, true)
       assert.equal(task.status, 'completed')
       assert.ok(task.completedAt, 'completedAt should be set')
-      assert.equal(task._transitions.length, 4)
-      assert.equal(task._transitions[0].from, 'pending')
-      assert.equal(task._transitions[0].to, 'assigned')
+      const { getTaskTransitions } = require('../../core/db/queries/task-queries.cjs')
+      const transitions = getTaskTransitions(taskId)
+      assert.equal(transitions.length, 4)
+      assert.equal(transitions[0].from, 'pending')
+      assert.equal(transitions[0].to, 'assigned')
     })
   })
 
   describe('rework path', () => {
     it('review → rework → in_progress → review → completed', () => {
-      const task = makeTask({ id: 'zzz-test-rework', status: 'review' })
+      const taskId = `zzz-rework-${Date.now()}`
+      const task = makeTask({ id: taskId, status: 'review' })
 
-      const r1 = transition(task, 'rework', { recordHistory: true, reason: 'needs fixes' })
+      const r1 = transition(task, 'rework', { reason: 'needs fixes' })
       assert.equal(r1.ok, true)
       assert.equal(task.status, 'rework')
 
-      const r2 = transition(task, 'in_progress', { recordHistory: true })
+      const r2 = transition(task, 'in_progress')
       assert.equal(r2.ok, true)
 
-      const r3 = transition(task, 'review', { recordHistory: true })
+      const r3 = transition(task, 'review')
       assert.equal(r3.ok, true)
 
-      const r4 = transition(task, 'completed', { recordHistory: true })
+      const r4 = transition(task, 'completed')
       assert.equal(r4.ok, true)
       assert.equal(task.status, 'completed')
-      assert.equal(task._transitions.length, 4)
-      assert.equal(task._transitions[0].reason, 'needs fixes')
+      const { getTaskTransitions } = require('../../core/db/queries/task-queries.cjs')
+      const transitions = getTaskTransitions(taskId)
+      assert.equal(transitions.length, 4)
+      assert.equal(transitions[0].reason, 'needs fixes')
     })
   })
 

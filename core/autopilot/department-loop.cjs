@@ -22,7 +22,6 @@ const { sendToAgent, compactSession, killSession, queryAgentStatus } = require('
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole, extractTaskMemory } = require('../agent/memory.cjs')
 const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, reconcileBudget } = require('../observe/budget.cjs')
-const { trackCost } = require('../observe/cost-tracker.cjs')
 const { createCycleTask, completeCycleTask, createWorkTask, updateTaskStatus } = require('../common/task-bridge.cjs')
 const { parseTaskAssignments, parseTaskCompletions, parseTaskRecoveries } = require('../task/auto-transition.cjs')
 const { missionRepo } = require('../repo/mission.cjs')
@@ -690,13 +689,7 @@ async function runDepartmentCycle(deptId) {
       const actualTokens = result.usage?.totalTokens || result.usage?.total_tokens || ((result.usage?.input || 0) + (result.usage?.output || 0)) || 0
       reconcileBudget(deptId, reservation.reserved, actualTokens)
 
-      // Track cost to JSONL for historical reporting
-      trackCost({
-        model: result.model || result.usage?.model || config.model || 'unknown',
-        usage: { inputTokens: result.usage?.input || result.usage?.inputTokens || 0, outputTokens: result.usage?.output || result.usage?.outputTokens || 0 },
-        source: `dept:${deptId}`,
-        agentId: config.head,
-      })
+      // Cost tracking is handled automatically by gateway-client interceptor
 
       // Compress memory for department head (role-aware)
       try {
@@ -746,6 +739,30 @@ async function runDepartmentCycle(deptId) {
         state.history = state.history.slice(-MAX_HISTORY_ENTRIES)
       }
       deptStateRepo.save(deptId, state)
+
+      // 记录循环到 DB
+      try {
+        const { insertDeptCycle } = require('../db/queries/dept-queries.cjs')
+        insertDeptCycle({
+          deptId,
+          cycleNum: state.cycleCount,
+          startedAt: state.lastCycleAt,
+          completedAt: new Date().toISOString(),
+          elapsedSec: parseFloat(elapsed),
+          result: result.text.slice(0, 300),
+          tokensUsed: actualTokens || 0,
+        })
+      } catch (err) {
+        logger.debug('department-loop', 'Dept cycle DB insert failed (non-fatal)', { deptId, error: err.message })
+      }
+
+      // Track worker (subagent) session tokens
+      try {
+        const { trackWorkerSessions } = require('../observe/worker-tracker.cjs')
+        trackWorkerSessions(deptId, config.agents || [])
+      } catch (err) {
+        logger.debug('department-loop', 'Worker tracking failed (non-fatal)', { deptId, error: err.message })
+      }
 
       // Emit cycle.end (success)
       try {

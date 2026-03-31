@@ -1,18 +1,9 @@
 'use strict'
-const { describe, it, afterEach } = require('node:test')
+const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { existsSync, readFileSync, rmSync, mkdirSync } = require('fs')
-const { join } = require('path')
 const { EventBus } = require('../../../core/observe/event-bus.cjs')
 
-const TEST_DIR = join(__dirname, '..', '_test_event_bus_tmp')
-const TEST_FILE = join(TEST_DIR, 'events.jsonl')
-
 describe('EventBus', () => {
-  afterEach(() => {
-    try { rmSync(TEST_DIR, { recursive: true, force: true }) } catch {}
-  })
-
   it('emits events to listeners', () => {
     const bus = new EventBus()
     const received = []
@@ -35,24 +26,26 @@ describe('EventBus', () => {
     assert.doesNotThrow(() => bus.fire('error.event'))
   })
 
-  it('persists events to JSONL when enabled', () => {
-    mkdirSync(TEST_DIR, { recursive: true })
-    const bus = new EventBus({ persist: true, filePath: TEST_FILE })
+  it('persists events to DB when enabled', () => {
+    const bus = new EventBus({ persist: true })
     bus.fire('persist.test', { value: 42 })
-    bus.fire('persist.test', { value: 43 })
 
-    assert.ok(existsSync(TEST_FILE))
-    const lines = readFileSync(TEST_FILE, 'utf-8').split('\n').filter(Boolean)
-    assert.equal(lines.length, 2)
-    const first = JSON.parse(lines[0])
-    assert.equal(first.type, 'persist.test')
-    assert.equal(first.value, 42)
+    // Verify via DB query
+    const { queryEvents } = require('../../../core/db/queries/event-queries.cjs')
+    const events = queryEvents({ type: 'persist.test' })
+    assert.ok(events.length >= 1, 'should have at least one persisted event')
+    const found = events.find(e => e.value === 42)
+    assert.ok(found, 'should find the persisted event')
   })
 
   it('does not persist when persist=false', () => {
-    const bus = new EventBus({ persist: false, filePath: TEST_FILE })
-    bus.fire('no.persist', { data: 1 })
-    assert.ok(!existsSync(TEST_FILE))
+    const { getDb } = require('../../../core/db/connection.cjs')
+    const db = getDb()
+    const before = db.prepare("SELECT COUNT(*) AS cnt FROM events WHERE type = 'no.persist.test'").get().cnt
+    const bus = new EventBus({ persist: false })
+    bus.fire('no.persist.test', { data: 1 })
+    const after = db.prepare("SELECT COUNT(*) AS cnt FROM events WHERE type = 'no.persist.test'").get().cnt
+    assert.equal(after, before, 'event count should not change')
   })
 
   it('on/off works correctly', () => {
@@ -73,14 +66,6 @@ describe('EventBus', () => {
     bus.on('ts.test', (e) => { event = e })
     bus.fire('ts.test')
     assert.ok(event.ts)
-    // Should be valid ISO date
     assert.ok(!isNaN(new Date(event.ts).getTime()))
-  })
-
-  it('creates directory if it does not exist', () => {
-    const nestedFile = join(TEST_DIR, 'nested', 'deep', 'events.jsonl')
-    const bus = new EventBus({ persist: true, filePath: nestedFile })
-    bus.fire('mkdir.test', { ok: true })
-    assert.ok(existsSync(nestedFile))
   })
 })

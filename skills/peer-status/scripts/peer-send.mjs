@@ -61,6 +61,11 @@ const {
 const getSessionTokenInfo = (agentId, sessionKey) => sessionRepo.getSessionTokenInfo(agentId, sessionKey)
 const readMemorySummary = (agentId) => missionRepo.readMemorySummary(agentId)
 
+// DB tracking modules
+const { insertMessage } = require('./core/db/queries/message-queries.cjs')
+const { calculateCost } = require('./core/observe/cost-tracker.cjs')
+const { insertCostEntry } = require('./core/db/queries/cost-queries.cjs')
+
 // ── Gateway config ───────────────────────────────────────────────
 
 function getGatewayConfig() {
@@ -411,6 +416,33 @@ function main() {
             params: { sessionKey }
           }))
           return
+        }
+
+        // Record messages + cost to DB (fire-and-forget)
+        try {
+          const usage = p.message?.usage || {}
+          const inputTokens = usage.input || usage.inputTokens || 0
+          const outputTokens = usage.output || usage.outputTokens || 0
+          const model = usage.model || 'unknown'
+          const cost = calculateCost(model, { inputTokens, outputTokens })
+          const roundedCost = Math.round(cost * 1_000_000) / 1_000_000
+          const pairId = randomUUID()
+          const source = `peer:${from}->${to}`
+
+          insertMessage({ ts: new Date().toISOString(), agentId: to, sessionKey,
+            messageType: 'peer-message', direction: 'request', channel: 'peer-send',
+            content: message.slice(0, 10240), fromAgent: from, pairId })
+          insertMessage({ ts: new Date().toISOString(), agentId: to, sessionKey,
+            messageType: 'peer-message', direction: 'response', channel: 'peer-send',
+            content: text.slice(0, 10240), ok: 1, model, inputTokens, outputTokens,
+            totalTokens: inputTokens + outputTokens, cost: roundedCost,
+            source, fromAgent: from, pairId })
+          if (inputTokens > 0 || outputTokens > 0) {
+            insertCostEntry({ ts: new Date().toISOString(), date: new Date().toISOString().slice(0, 10),
+              model, inputTokens, outputTokens, cost: roundedCost, source, agentId: to })
+          }
+        } catch (err) {
+          process.stderr.write(`[peer-send] DB write failed: ${err.message}\n`)
         }
 
         clearTimeout(timer)

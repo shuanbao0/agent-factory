@@ -6,7 +6,7 @@
  *
  * 职责：
  * - 提供 fire() 方法发射带时间戳的结构化事件
- * - 可选将事件持久化到 JSONL 文件（config/autopilot-events.jsonl）
+ * - 可选将事件持久化到 SQLite events 表
  * - 错误隔离：监听器错误和持久化错误都会被吞掉，绝不影响主流程
  *
  * 使用方式：
@@ -16,9 +16,6 @@
  * Reactor 通过 bus.on() 注册监听器实现响应式处理
  */
 const { EventEmitter } = require('events')
-const { appendFileSync, existsSync, mkdirSync } = require('fs')
-const { dirname } = require('path')
-const { EVENTS_FILE } = require('../common/paths.cjs')
 
 let _logger
 function getLogger() {
@@ -29,13 +26,11 @@ function getLogger() {
 class EventBus extends EventEmitter {
   /**
    * @param {Object} [opts]
-   * @param {boolean} [opts.persist=false] - 是否将事件写入 JSONL 文件
-   * @param {string} [opts.filePath] - 自定义事件文件路径
+   * @param {boolean} [opts.persist=false] - 是否将事件持久化到 DB
    */
   constructor(opts = {}) {
     super()
     this._persist = opts.persist || false
-    this._filePath = opts.filePath || EVENTS_FILE
   }
 
   /**
@@ -62,12 +57,11 @@ class EventBus extends EventEmitter {
       getLogger().debug('event-bus', 'Listener error', { eventType, error: err.message })
     }
 
-    // 可选：持久化到 JSONL（吞掉错误）
+    // 可选：持久化到 DB（吞掉错误）
     if (this._persist) {
       try {
-        const dir = dirname(this._filePath)
-        if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-        appendFileSync(this._filePath, JSON.stringify(event) + '\n')
+        const { insertEvent } = require('../db/queries/event-queries.cjs')
+        insertEvent(event)
       } catch (err) {
         getLogger().debug('event-bus', 'Event persist failed', { eventType, error: err.message })
       }

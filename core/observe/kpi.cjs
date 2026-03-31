@@ -2,12 +2,12 @@
 /**
  * KPI — 部门 KPI 计算引擎
  *
- * 设计模式：Calculation Engine + JSONL 持久化
+ * 设计模式：Calculation Engine + SQLite 持久化
  */
-const { readFileSync, appendFileSync, existsSync, mkdirSync } = require('fs')
-const { join } = require('path')
+const { existsSync } = require('fs')
 const { DEPARTMENTS_DIR } = require('../common/paths.cjs')
 const logger = require('../common/logger.cjs')
+const { insertKpiSnapshot, readKpiHistoryFromDb } = require('../db/queries/dept-queries.cjs')
 
 // Lazy require to avoid circular deps
 let _deptConfigRepo, _taskRepo
@@ -36,75 +36,69 @@ function calculateDepartmentKPIs(deptId) {
 }
 
 function calculateMetric(deptId, metric, config) {
-  const projects = getTaskRepo().readProjectsWithTasks()
+  const { getDb } = require('../db/connection.cjs')
+  const db = getDb()
   const agentIds = config.agents || []
-  const today = new Date().toISOString().slice(0, 10)
+  if (agentIds.length === 0) return 0
 
-  const isAssignedToAgent = (task) => {
-    return agentIds.includes(task.assignedAgent) || (task.assignees || []).some(a => agentIds.includes(a))
-  }
+  const today = new Date().toISOString().slice(0, 10)
+  const placeholders = agentIds.map(() => '?').join(',')
 
   switch (metric) {
     case 'chapters_per_day':
     case 'tasks_completed_per_day': {
-      let count = 0
-      for (const proj of projects) {
-        for (const task of (proj.tasks || [])) {
-          if (task.status === 'completed' && task.completedAt?.startsWith(today) && isAssignedToAgent(task)) {
-            count++
-          }
-        }
-      }
-      return count
+      const row = db.prepare(`
+        SELECT COUNT(*) AS cnt FROM tasks
+        WHERE assigned_agent IN (${placeholders})
+          AND status = 'completed'
+          AND completed_at >= ? AND completed_at < ?
+      `).get(...agentIds, today + 'T00:00:00', today + 'T23:59:59.999Z')
+      return row?.cnt || 0
     }
     case 'quality_score': {
-      let totalScore = 0, count = 0
-      for (const proj of projects) {
-        for (const task of (proj.tasks || [])) {
-          if (task.quality?.peerReview?.score && isAssignedToAgent(task)) {
-            totalScore += task.quality.peerReview.score
-            count++
-          }
-        }
-      }
-      return count > 0 ? Math.round(totalScore / count) : 0
+      // quality 是 JSON blob，需要用 json_extract
+      const rows = db.prepare(`
+        SELECT json_extract(quality, '$.peerReview.score') AS score
+        FROM tasks
+        WHERE assigned_agent IN (${placeholders})
+          AND quality IS NOT NULL
+          AND json_extract(quality, '$.peerReview.score') IS NOT NULL
+      `).all(...agentIds)
+      if (rows.length === 0) return 0
+      const total = rows.reduce((sum, r) => sum + (r.score || 0), 0)
+      return Math.round(total / rows.length)
     }
     case 'completion_rate': {
-      let total = 0, completed = 0
-      for (const proj of projects) {
-        for (const task of (proj.tasks || [])) {
-          if (isAssignedToAgent(task)) {
-            total++
-            if (task.status === 'completed') completed++
-          }
-        }
-      }
-      return total > 0 ? Math.round((completed / total) * 100) : 0
+      const row = db.prepare(`
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+        FROM tasks
+        WHERE assigned_agent IN (${placeholders})
+      `).get(...agentIds)
+      return row?.total > 0 ? Math.round((row.completed / row.total) * 100) : 0
     }
     default:
       return 0
   }
 }
 
+/**
+ * 保存 KPI 快照到 DB
+ */
 function saveKPISnapshot(deptId, kpis) {
-  const deptDir = join(DEPARTMENTS_DIR, deptId)
-  if (!existsSync(deptDir)) mkdirSync(deptDir, { recursive: true })
-  const historyFile = join(deptDir, 'kpi-history.jsonl')
   try {
-    appendFileSync(historyFile, JSON.stringify({ timestamp: new Date().toISOString(), kpis }) + '\n')
+    insertKpiSnapshot(deptId, kpis)
   } catch (err) {
     logger.debug('kpi', 'failed to save KPI snapshot', { deptId, error: err.message })
   }
 }
 
+/**
+ * 读取 KPI 历史（从 DB）
+ */
 function readKPIHistory(deptId, limit = 100) {
-  const historyFile = join(DEPARTMENTS_DIR, deptId, 'kpi-history.jsonl')
-  if (!existsSync(historyFile)) return []
   try {
-    const lines = readFileSync(historyFile, 'utf-8').trim().split('\n')
-    return lines.slice(-limit).map(line => {
-      try { return JSON.parse(line) } catch { /* skip malformed line */ return null }
-    }).filter(Boolean)
+    return readKpiHistoryFromDb(deptId, limit)
   } catch (err) {
     logger.debug('kpi', 'failed to read KPI history', { deptId, error: err.message })
     return []

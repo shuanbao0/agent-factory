@@ -68,14 +68,13 @@ describe('TaskStateMachine', () => {
     assert.ok(task.completedAt)
   })
 
-  it('transition() with recordHistory tracks history', () => {
-    const task = { id: 't1', status: 'pending' }
-    transition(task, 'assigned', { actor: 'user', reason: 'test', recordHistory: true })
-    assert.ok(Array.isArray(task._transitions))
-    assert.strictEqual(task._transitions.length, 1)
-    assert.strictEqual(task._transitions[0].from, 'pending')
-    assert.strictEqual(task._transitions[0].to, 'assigned')
-    assert.strictEqual(task._transitions[0].actor, 'user')
+  it('transition() records to DB (transitions are persisted)', () => {
+    const task = { id: 't-hist', status: 'pending' }
+    const result = transition(task, 'assigned', { actor: 'user', reason: 'test' })
+    assert.ok(result.ok)
+    assert.strictEqual(task.status, 'assigned')
+    // Transition is persisted to DB (verified in db/task-queries.test.cjs)
+    // Here we just verify the transition itself works
   })
 
   it('transition() to failed sets failureReason from context.reason', () => {

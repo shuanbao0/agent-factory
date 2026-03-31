@@ -1,15 +1,13 @@
 'use strict'
 /**
- * AgentMetaRepository — Agent 元数据（agent.json）的数据访问层
+ * AgentMetaRepository — Agent 元数据的数据访问层
  *
- * 设计模式：Repository（继承 BaseRepository）
+ * 设计模式：Repository（DB 读 + 文件双写）
  *
  * 职责：
- * - 管理 agents/{agentId}/agent.json
- * - 存储 Agent 的核心元信息：名称、模型、部门、模板来源等
- * - 提供 agent 目录下文件的读写、追加、目录管理
- *
- * 无缓存单例（TTL=0），确保 API 实时性
+ * - 元数据读取走 DB agents 表（索引查询）
+ * - 写入双写到 DB + agents/{agentId}/agent.json（Gateway 兼容）
+ * - 提供 agent 目录下文件的读写、追加、目录管理（不变）
  */
 const { join } = require('path')
 const { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, statSync, rmSync } = require('fs')
@@ -17,64 +15,83 @@ const { BaseRepository } = require('./base.cjs')
 const { AGENTS_DIR } = require('../common/paths.cjs')
 const logger = require('../common/logger.cjs')
 
+// Lazy DB requires
+let _upsertAgent, _findAgentById, _findAllAgents, _findAgentsByDept, _listAgentIds, _deleteAgentFromDb, _clearDeptInDb
+function db() {
+  if (!_upsertAgent) {
+    const q = require('../db/queries/agent-queries.cjs')
+    _upsertAgent = q.upsertAgent
+    _findAgentById = q.findAgentById
+    _findAllAgents = q.findAllAgents
+    _findAgentsByDept = q.findAgentsByDepartment
+    _listAgentIds = q.listAgentIds
+    _deleteAgentFromDb = q.deleteAgentFromDb
+    _clearDeptInDb = q.clearDepartmentInDb
+  }
+}
+
 class AgentMetaRepository extends BaseRepository {
-  /**
-   * 读取 Agent 元数据
-   * @param {string} agentId - Agent ID
-   * @returns {object|null} agent.json 内容，不存在返回 null
-   */
+  /** 读取 Agent 元数据（DB 读） */
   readMeta(agentId) {
+    try {
+      db()
+      const agent = _findAgentById(agentId)
+      if (agent) return agent
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'DB read failed, falling back to file', { agentId, error: err.message })
+    }
+    // Fallback to file (backfill 未跑时)
     const metaPath = join(AGENTS_DIR, agentId, 'agent.json')
     return this.read(metaPath)
   }
 
-  /**
-   * 写入 Agent 元数据（原子写入）
-   * @param {string} agentId - Agent ID
-   * @param {object} data - 元数据对象
-   */
+  /** 写入 Agent 元数据（DB + 文件双写） */
   writeMeta(agentId, data) {
+    // DB 写入
+    try {
+      db()
+      _upsertAgent({ ...data, id: agentId })
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'DB write failed', { agentId, error: err.message })
+    }
+    // 文件写入（Gateway 兼容）
     const metaPath = join(AGENTS_DIR, agentId, 'agent.json')
     this.write(metaPath, data)
   }
 
-  /**
-   * 原子更新 Agent 元数据
-   * @param {string} agentId - Agent ID
-   * @param {function} mutator - (currentData) => newData
-   * @returns {object} 更新后的数据
-   */
+  /** 原子更新 Agent 元数据 */
   updateMeta(agentId, mutator) {
-    const metaPath = join(AGENTS_DIR, agentId, 'agent.json')
-    return this.update(metaPath, mutator, {})
+    const current = this.readMeta(agentId) || {}
+    const updated = mutator(current)
+    this.writeMeta(agentId, updated)
+    return updated
   }
 
-  /**
-   * 扫描 agents/ 目录返回所有 Agent ID
-   * @returns {string[]}
-   */
+  /** 列出所有 Agent ID（DB 查询） */
   listAllAgentIds() {
+    try {
+      db()
+      const ids = _listAgentIds()
+      if (ids.length > 0) return ids
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'DB listAgentIds failed, falling back to dir scan', { error: err.message })
+    }
+    // Fallback
     if (!existsSync(AGENTS_DIR)) return []
-    return readdirSync(AGENTS_DIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name)
+    return readdirSync(AGENTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name)
   }
 
-  /**
-   * 检查 agent.json 是否存在
-   * @param {string} agentId
-   * @returns {boolean}
-   */
+  /** 检查 agent 是否存在 */
   exists(agentId) {
+    try {
+      db()
+      if (_findAgentById(agentId)) return true
+    } catch { /* fallback */ }
     return existsSync(join(AGENTS_DIR, agentId, 'agent.json'))
   }
 
-  /**
-   * 读取 agents/{agentId}/{filename} 的非 JSON 文件
-   * @param {string} agentId
-   * @param {string} filename
-   * @returns {string|null} 文件内容，不存在返回 null
-   */
+  // ── 文件操作方法（不变，Gateway 需要直接读这些文件）──────────
+
   readAgentFile(agentId, filename) {
     const filePath = join(AGENTS_DIR, agentId, filename)
     try {
@@ -85,12 +102,6 @@ class AgentMetaRepository extends BaseRepository {
     return null
   }
 
-  /**
-   * 写入非 JSON 文件到 agents/{agentId}/{filename}
-   * @param {string} agentId
-   * @param {string} filename
-   * @param {string} content
-   */
   writeAgentFile(agentId, filename, content) {
     const filePath = join(AGENTS_DIR, agentId, filename)
     const dir = join(filePath, '..')
@@ -98,22 +109,11 @@ class AgentMetaRepository extends BaseRepository {
     writeFileSync(filePath, content)
   }
 
-  /**
-   * 确保 agents/{agentId}/{subpath} 目录存在
-   * @param {string} agentId
-   * @param {string} [subpath] - 可选子路径
-   */
   ensureAgentDir(agentId, subpath) {
     const dir = subpath ? join(AGENTS_DIR, agentId, subpath) : join(AGENTS_DIR, agentId)
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   }
 
-  /**
-   * 追加内容到 agents/{agentId}/{filename}
-   * @param {string} agentId
-   * @param {string} filename
-   * @param {string} content
-   */
   appendAgentFile(agentId, filename, content) {
     const filePath = join(AGENTS_DIR, agentId, filename)
     const dir = join(filePath, '..')
@@ -121,22 +121,10 @@ class AgentMetaRepository extends BaseRepository {
     appendFileSync(filePath, content)
   }
 
-  /**
-   * 检查 agents/{agentId}/{filename} 是否存在
-   * @param {string} agentId
-   * @param {string} filename
-   * @returns {boolean}
-   */
   agentFileExists(agentId, filename) {
     return existsSync(join(AGENTS_DIR, agentId, filename))
   }
 
-  /**
-   * 获取文件 stat 信息
-   * @param {string} agentId
-   * @param {string} filename
-   * @returns {{size: number, mtimeMs: number}|null}
-   */
   agentFileStat(agentId, filename) {
     const filePath = join(AGENTS_DIR, agentId, filename)
     try {
@@ -149,21 +137,13 @@ class AgentMetaRepository extends BaseRepository {
     }
   }
 
-  /**
-   * 列出 agents/{agentId}/{subpath} 目录内容
-   * @param {string} agentId
-   * @param {string} [subpath]
-   * @returns {Array<{name: string, isFile: boolean, mtime: number}>}
-   */
   listAgentDir(agentId, subpath) {
     const dir = subpath ? join(AGENTS_DIR, agentId, subpath) : join(AGENTS_DIR, agentId)
     if (!existsSync(dir)) return []
     try {
       return readdirSync(dir, { withFileTypes: true }).map(entry => {
         let mtime = 0
-        try { mtime = statSync(join(dir, entry.name)).mtimeMs } catch (err) {
-          logger.debug('agent-meta-repo', 'failed to stat entry', { entry: entry.name, error: err.message })
-        }
+        try { mtime = statSync(join(dir, entry.name)).mtimeMs } catch { /* skip */ }
         return { name: entry.name, isFile: entry.isFile(), mtime }
       })
     } catch (err) {
@@ -172,21 +152,23 @@ class AgentMetaRepository extends BaseRepository {
     }
   }
 
-  /**
-   * 删除整个 agent 目录
-   * @param {string} agentId
-   */
   deleteAgentDir(agentId) {
+    // DB 删除
+    try { db(); _deleteAgentFromDb(agentId) } catch { /* ok */ }
+    // 文件删除
     const agentDir = join(AGENTS_DIR, agentId)
     if (existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true })
   }
 
-  /**
-   * 返回指定部门的所有 agent ID
-   * @param {string} deptId
-   * @returns {string[]}
-   */
+  /** 返回指定部门的所有 agent ID（DB 索引查询） */
   listAgentsByDepartment(deptId) {
+    try {
+      db()
+      return _findAgentsByDept(deptId).map(a => a.id)
+    } catch (err) {
+      logger.debug('agent-meta-repo', 'DB listByDept failed, falling back', { error: err.message })
+    }
+    // Fallback
     const ids = this.listAllAgentIds()
     const result = []
     for (const id of ids) {
@@ -196,23 +178,22 @@ class AgentMetaRepository extends BaseRepository {
     return result
   }
 
-  /**
-   * 清除所有属于该部门的 agent 的 department 字段
-   * @param {string} deptId
-   * @returns {number} 被清除的 agent 数量
-   */
+  /** 清除所有属于该部门的 agent 的 department 字段 */
   clearDepartment(deptId) {
+    // DB 批量清除
+    try { db(); _clearDeptInDb(deptId) } catch { /* ok */ }
+    // 文件逐个更新
     const ids = this.listAgentsByDepartment(deptId)
     for (const id of ids) {
-      this.updateMeta(id, meta => {
-        delete meta.department
-        return meta
-      })
+      try {
+        const metaPath = join(AGENTS_DIR, id, 'agent.json')
+        const meta = this.read(metaPath)
+        if (meta) { delete meta.department; this.write(metaPath, meta) }
+      } catch { /* skip */ }
     }
     return ids.length
   }
 }
 
-/** 无缓存单例（TTL=0），确保 API 实时性 */
 const agentMetaRepo = new AgentMetaRepository({ cacheTtlMs: 0 })
 module.exports = { AgentMetaRepository, agentMetaRepo }

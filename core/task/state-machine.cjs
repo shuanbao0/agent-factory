@@ -54,15 +54,18 @@ function transition(task, to, context = {}) {
   // 合并额外字段
   if (context.extras) Object.assign(task, context.extras)
 
-  // 可选：记录转换历史（用于审计和调试）
-  if (context.recordHistory) {
-    if (!task._transitions) task._transitions = []
-    task._transitions.push({
+  // 记录转换历史到 DB
+  try {
+    const { insertTransition } = require('../db/queries/task-queries.cjs')
+    insertTransition({
+      taskId: task.id,
       from, to,
       actor: context.actor || 'system',
       reason: context.reason || '',
       at: task.updatedAt,
     })
+  } catch (err) {
+    logger.debug('state-machine', 'Transition DB insert failed (non-fatal)', { taskId: task.id, error: err.message })
   }
 
   logger.info('state-machine', 'Task transition', { taskId: task.id, from, to, actor: context?.actor, reason: context?.reason })

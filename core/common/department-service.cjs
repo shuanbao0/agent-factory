@@ -165,6 +165,12 @@ function deleteDepartment(id) {
     deptConfigRepo.save(id, config)
   }
 
+  // DB 删除
+  try {
+    const { deleteDeptConfigFromDb } = require('../db/queries/dept-config-queries.cjs')
+    deleteDeptConfigFromDb(id)
+  } catch { /* DB not available */ }
+
   logger.info('dept-service', 'Department deleted', { id, clearedAgents })
   return { ok: true, clearedAgents }
 }

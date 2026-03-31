@@ -299,4 +299,45 @@ export default _core as {
       invalidateCache(): void
     }
   }
+  db: {
+    getDb(): unknown
+    closeDb(): void
+    messageQueries: {
+      insertMessage(entry: Record<string, unknown>): void
+      queryMessages(opts?: {
+        agentId?: string
+        messageType?: string
+        channel?: string
+        direction?: string
+        from?: string
+        to?: string
+        limit?: number
+        offset?: number
+      }): { messages: Array<Record<string, unknown>>; total: number }
+      getAgentMessages(agentId: string, limit?: number): Array<Record<string, unknown>>
+      getMessagePairs(opts?: { agentId?: string; limit?: number }): Array<{ request: Record<string, unknown> | null; response: Record<string, unknown> | null }>
+      getMessageStats(opts?: { from?: string; to?: string }): { byAgent: Array<Record<string, unknown>>; byType: Array<Record<string, unknown>>; totalCost: number; totalMessages: number }
+    }
+    costQueries: {
+      insertCostEntry(entry: Record<string, unknown>): void
+      queryCostEntries(opts?: Record<string, unknown>): { entries: CostEntry[]; totalCost: number; totalInputTokens: number; totalOutputTokens: number }
+      getDailySummaryFromDb(days?: number): DailyCostSummary[]
+    }
+    eventQueries: {
+      insertEvent(event: Record<string, unknown>): void
+      queryEvents(opts?: Record<string, unknown>): Array<Record<string, unknown>>
+    }
+    taskQueries: {
+      upsertTask(task: Record<string, unknown>): void
+      findAllTasksFromDb(opts?: Record<string, unknown>): Task[]
+      findTaskByIdFromDb(taskId: string): Task | null
+      getTaskTransitions(taskId: string): Array<Record<string, unknown>>
+    }
+    deptQueries: {
+      insertDeptCycle(entry: Record<string, unknown>): void
+      queryDeptCycles(deptId: string, limit?: number): Array<Record<string, unknown>>
+      insertKpiSnapshot(deptId: string, kpis: Record<string, unknown>): void
+      readKpiHistoryFromDb(deptId: string, limit?: number): Array<Record<string, unknown>>
+    }
+  }
 }

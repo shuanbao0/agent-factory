@@ -41,6 +41,7 @@ describe('Agent lifecycle — create → update → delete', () => {
     if (existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true })
     const wsDir = join(WORKSPACES_DIR, TEST_ID)
     if (existsSync(wsDir)) rmSync(wsDir, { recursive: true, force: true })
+    try { require('../../core/db/queries/agent-queries.cjs').deleteAgentFromDb(TEST_ID) } catch { /* ok */ }
     // Clean up archived workspaces
     const archivePrefix = join(WORKSPACES_DIR, TEST_ID + '_archived_')
     try {

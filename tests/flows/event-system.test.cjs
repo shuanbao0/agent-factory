@@ -1,27 +1,8 @@
 'use strict'
 
-const { describe, it, afterEach } = require('node:test')
+const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const { join } = require('path')
-const { tmpdir } = require('os')
-const { readFileSync, unlinkSync, existsSync } = require('fs')
-
 const { EventBus } = require('../../core/observe/event-bus.cjs')
-
-/** Generate a unique temp file path for JSONL output */
-function tempJsonlPath() {
-  return join(tmpdir(), `zzz-test-events-${Date.now()}-${Math.random().toString(36).slice(2)}.jsonl`)
-}
-
-/** Track temp files for cleanup */
-const tempFiles = []
-
-afterEach(() => {
-  for (const f of tempFiles) {
-    try { if (existsSync(f)) unlinkSync(f) } catch { /* ignore */ }
-  }
-  tempFiles.length = 0
-})
 
 describe('EventBus', () => {
   describe('multi-listener event propagation', () => {
@@ -62,36 +43,30 @@ describe('EventBus', () => {
     })
   })
 
-  describe('JSONL persistence', () => {
-    it('fire with persist=true writes event to file', () => {
-      const filePath = tempJsonlPath()
-      tempFiles.push(filePath)
-      const bus = new EventBus({ persist: true, filePath })
+  describe('DB persistence', () => {
+    it('fire with persist=true writes event to DB', () => {
+      const bus = new EventBus({ persist: true })
 
-      bus.fire('zzz-test.persist', { key: 'value1' })
-      bus.fire('zzz-test.persist', { key: 'value2' })
+      const uniqueKey = `zzz-persist-${Date.now()}`
+      bus.fire('zzz-test.persist', { key: uniqueKey })
+      bus.fire('zzz-test.persist', { key: uniqueKey + '-2' })
 
-      const content = readFileSync(filePath, 'utf-8')
-      const lines = content.trim().split('\n')
-      assert.equal(lines.length, 2)
-
-      const event1 = JSON.parse(lines[0])
-      assert.equal(event1.type, 'zzz-test.persist')
-      assert.equal(event1.key, 'value1')
-      assert.ok(event1.ts, 'should have timestamp')
-
-      const event2 = JSON.parse(lines[1])
-      assert.equal(event2.key, 'value2')
+      const { queryEvents } = require('../../core/db/queries/event-queries.cjs')
+      const events = queryEvents({ type: 'zzz-test.persist' })
+      const matching = events.filter(e => e.key && e.key.startsWith(uniqueKey))
+      assert.equal(matching.length, 2, 'should have 2 persisted events')
+      assert.ok(matching.find(e => e.key === uniqueKey), 'should find first event')
+      assert.ok(matching.find(e => e.key === uniqueKey + '-2'), 'should find second event')
     })
 
-    it('persist=false does not create file', () => {
-      const filePath = tempJsonlPath()
-      tempFiles.push(filePath)
-      const bus = new EventBus({ persist: false, filePath })
-
+    it('persist=false does not write to DB', () => {
+      const { getDb } = require('../../core/db/connection.cjs')
+      const db = getDb()
+      const before = db.prepare("SELECT COUNT(*) AS cnt FROM events WHERE type = 'zzz-test.nopersist'").get().cnt
+      const bus = new EventBus({ persist: false })
       bus.fire('zzz-test.nopersist', { x: 1 })
-
-      assert.equal(existsSync(filePath), false)
+      const after = db.prepare("SELECT COUNT(*) AS cnt FROM events WHERE type = 'zzz-test.nopersist'").get().cnt
+      assert.equal(after, before)
     })
   })
 

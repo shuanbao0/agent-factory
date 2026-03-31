@@ -38,6 +38,8 @@ describe('AgentService.createAgent', () => {
     if (existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true })
     const wsDir = join(WORKSPACES_DIR, TEST_AGENT_ID)
     if (existsSync(wsDir)) rmSync(wsDir, { recursive: true, force: true })
+    // Clean up DB entry
+    try { require('../../../core/db/queries/agent-queries.cjs').deleteAgentFromDb(TEST_AGENT_ID) } catch { /* ok */ }
   })
 
   it('rejects missing id', async () => {

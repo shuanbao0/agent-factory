@@ -14,6 +14,14 @@ const { randomUUID } = require('crypto')
 const { readFileSync, existsSync } = require('fs')
 const { resolve } = require('path')
 
+// DB tracking modules (fire-and-forget, failures silenced)
+let _insertMessage, _calculateCost, _insertCostEntry
+try {
+  _insertMessage = require('../../core/db/queries/message-queries.cjs').insertMessage
+  _calculateCost = require('../../core/observe/cost-tracker.cjs').calculateCost
+  _insertCostEntry = require('../../core/db/queries/cost-queries.cjs').insertCostEntry
+} catch { /* DB modules not available — skip tracking */ }
+
 const input = JSON.parse(process.env.CHAT_INPUT || '{}')
 const { sessionKey, message } = input
 
@@ -149,6 +157,37 @@ ws.on('message', (data) => {
         ?.filter(b => b.type === 'text')
         ?.map(b => b.text || '')
         ?.join('') || fullText
+
+      // Record to DB (fire-and-forget)
+      if (_insertMessage) {
+        try {
+          const usage = p.usage || p.message?.usage || {}
+          const agentId = sessionKey.split(':')[1] || 'unknown'
+          const inputTokens = usage.input || usage.inputTokens || 0
+          const outputTokens = usage.output || usage.outputTokens || 0
+          const model = usage.model || 'unknown'
+          const cost = _calculateCost ? _calculateCost(model, { inputTokens, outputTokens }) : 0
+          const roundedCost = Math.round(cost * 1_000_000) / 1_000_000
+          const pairId = randomUUID()
+
+          _insertMessage({ ts: new Date().toISOString(), agentId, sessionKey,
+            messageType: 'dashboard-chat', direction: 'request', channel: 'gateway-chat',
+            content: message.slice(0, 10240), pairId })
+          _insertMessage({ ts: new Date().toISOString(), agentId, sessionKey,
+            messageType: 'dashboard-chat', direction: 'response', channel: 'gateway-chat',
+            content: text.slice(0, 10240), ok: 1, model, inputTokens, outputTokens,
+            totalTokens: inputTokens + outputTokens, cost: roundedCost,
+            source: `dashboard:${agentId}`, pairId })
+          if (_insertCostEntry && (inputTokens > 0 || outputTokens > 0)) {
+            _insertCostEntry({ ts: new Date().toISOString(), date: new Date().toISOString().slice(0, 10),
+              model, inputTokens, outputTokens, cost: roundedCost,
+              source: `dashboard:${agentId}`, agentId })
+          }
+        } catch (err) {
+          console.error('[gateway-chat] DB write failed:', err.message)
+        }
+      }
+
       clearTimeout(timer)
       finish('final', { text, usage: p.usage })
     } else if (p.state === 'error') {

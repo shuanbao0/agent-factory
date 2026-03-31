@@ -1,26 +1,9 @@
 'use strict'
 
-const { describe, it, afterEach } = require('node:test')
+const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
-const fs = require('fs')
 
-const { EVENTS_FILE } = require('../../core/common/paths.cjs')
-const { calculateCost, trackCost, queryCosts, getDailySummary, PRICING, COSTS_FILE } = require('../../core/observe/cost-tracker.cjs')
-let originalSize = null
-let originalEventsSize = null
-
-afterEach(() => {
-  // Restore COSTS_FILE to original size if we appended during test
-  if (originalSize !== null && fs.existsSync(COSTS_FILE)) {
-    fs.truncateSync(COSTS_FILE, originalSize)
-    originalSize = null
-  }
-  // Restore EVENTS_FILE too (trackCost fires events via EventBus)
-  if (originalEventsSize !== null && fs.existsSync(EVENTS_FILE)) {
-    fs.truncateSync(EVENTS_FILE, originalEventsSize)
-    originalEventsSize = null
-  }
-})
+const { calculateCost, trackCost, queryCosts, getDailySummary, PRICING } = require('../../core/observe/cost-tracker.cjs')
 
 describe('CostTracker', () => {
   it('PRICING is an object with model keys', () => {
@@ -61,10 +44,6 @@ describe('CostTracker', () => {
   })
 
   it('trackCost + queryCosts integration', () => {
-    // Record file sizes before test
-    originalSize = fs.existsSync(COSTS_FILE) ? fs.statSync(COSTS_FILE).size : 0
-    originalEventsSize = fs.existsSync(EVENTS_FILE) ? fs.statSync(EVENTS_FILE).size : 0
-
     const uniqueSource = `zzz-test-cost-${Date.now()}`
     trackCost({
       model: 'claude-sonnet-4-6',

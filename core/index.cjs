@@ -12,4 +12,5 @@ module.exports = {
   agent: require('./agent/index.cjs'),
   common: require('./common/index.cjs'),
   autopilot: require('./autopilot/index.cjs'),
+  db: require('./db/index.cjs'),
 }

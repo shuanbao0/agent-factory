@@ -38,6 +38,9 @@ const SKILLS_DIR = join(PROJECT_ROOT, 'skills')
 // ── 运行时数据目录（续）─────────────────────────────────────────
 const DEPARTMENTS_DIR = join(DATA_DIR, 'departments')
 
+// ── 数据库文件 ──────────────────────────────────────────────────
+const DB_FILE = join(DATA_DIR, 'agent-factory.db')
+
 // ── 日志目录（纯运行日志）────────────────────────────────────────
 const LOGS_DIR = join(DATA_DIR, 'logs')
 
@@ -78,7 +81,7 @@ module.exports = {
   BUILTIN_AGENT_TEMPLATES_DIR, BUILTIN_DEPT_TEMPLATES_DIR,
   CUSTOM_AGENT_TEMPLATES_DIR, CUSTOM_DEPT_TEMPLATES_DIR, SKILLS_DIR,
   GATEWAY_CONFIG_FILE, MODELS_FILE, TASKS_FILE, STATE_FILE,
-  DEPARTMENTS_FILE, BUDGET_FILE, DEPARTMENTS_DIR,
+  DEPARTMENTS_FILE, BUDGET_FILE, DEPARTMENTS_DIR, DB_FILE,
   COSTS_FILE, EVENTS_FILE, LOGS_DIR, MISSION_FILE, SIGNAL_FILE,
   BASE_RULES_FILE, PROJECT_STANDARDS_FILE, TASK_STANDARDS_FILE, DEPT_STANDARDS_FILE,
   PHASE_DELIVERABLES_FILE, BASE_MISSION_FILE, MISSION_DEFAULT_FILE,
