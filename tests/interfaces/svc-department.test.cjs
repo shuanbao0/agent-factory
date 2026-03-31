@@ -8,6 +8,7 @@ const { existsSync, rmSync, readdirSync, readFileSync, writeFileSync, unlinkSync
 const { DEPARTMENTS_FILE: DEPTS_FILE, DEPARTMENTS_DIR } = require('../../core/common/paths.cjs')
 const { createDepartment, updateDepartment, deleteDepartment } = require('../../core/common/department-service.cjs')
 const { deptRegistryRepo } = require('../../core/repo/dept-registry.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 describe('DepartmentService', () => {
   let backupRaw
@@ -29,6 +30,7 @@ describe('DepartmentService', () => {
       if (existsSync(deptDir)) rmSync(deptDir, { recursive: true, force: true })
     }
     testDeptIds.length = 0
+    cleanTestDataFromDb()
   })
 
   it('createDepartment with valid data returns ok=true', () => {

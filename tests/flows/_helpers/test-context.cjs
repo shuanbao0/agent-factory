@@ -3,6 +3,7 @@ const { mkdirSync, rmSync, existsSync, readdirSync } = require('fs')
 const { join } = require('path')
 
 const { PROJECT_ROOT, AGENTS_DIR, WORKSPACES_DIR, DEPARTMENTS_DIR, PROJECTS_DIR } = require('../../../core/common/paths.cjs')
+const { cleanTestDataFromDb } = require('../../_helpers/db-cleanup.cjs')
 
 function createTestContext(name) {
   const ts = Date.now().toString(36)
@@ -40,6 +41,9 @@ function createTestContext(name) {
 
       // Clean up tmp-test dir if empty
       try { rmSync(join(PROJECT_ROOT, 'tmp-test'), { recursive: true, force: true }) } catch (_) {}
+
+      // Clean up DB test data (dual-write residuals)
+      cleanTestDataFromDb()
     },
   }
 }

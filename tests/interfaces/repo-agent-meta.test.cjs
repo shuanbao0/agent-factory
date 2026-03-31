@@ -7,6 +7,7 @@ const { rmSync, existsSync } = require('fs')
 
 const { AGENTS_DIR } = require('../../core/common/paths.cjs')
 const { AgentMetaRepository } = require('../../core/repo/agent-meta.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 const ts = Date.now()
 const testAgentId = `zzz-test-agentmeta-${ts}`
@@ -19,6 +20,7 @@ describe('AgentMetaRepository', () => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true })
     }
+    cleanTestDataFromDb()
   })
 
   it('exists returns false for non-existent agent', () => {

@@ -8,6 +8,7 @@ const { existsSync, rmSync } = require('fs')
 const { AGENTS_DIR, WORKSPACES_DIR } = require('../../core/common/paths.cjs')
 const { AgentService } = require('../../core/common/agent-service.cjs')
 const { AgentMetaRepository } = require('../../core/repo/agent-meta.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 describe('AgentService', () => {
   const createdAgentIds = []
@@ -37,6 +38,7 @@ describe('AgentService', () => {
       if (existsSync(wsDir)) rmSync(wsDir, { recursive: true, force: true })
     }
     createdAgentIds.length = 0
+    cleanTestDataFromDb()
   })
 
   it('createAgent with valid data returns ok=true and creates files', async () => {

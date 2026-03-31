@@ -7,6 +7,7 @@ const fs = require('fs')
 
 const { PROJECTS_DIR } = require('../../core/common/paths.cjs')
 const { createProject, listProjects } = require('../../core/common/project-service.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 const TEST_DEPT = 'test-dept'
 const testIds = []
@@ -33,6 +34,7 @@ afterEach(() => {
     }
   }
   testDepts.clear()
+  cleanTestDataFromDb()
 })
 
 function makeTestId(dept) {

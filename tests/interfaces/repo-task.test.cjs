@@ -6,6 +6,7 @@ const { existsSync, readFileSync, writeFileSync, unlinkSync } = require('fs')
 
 const { TASKS_FILE } = require('../../core/common/paths.cjs')
 const { TaskRepository, taskRepo } = require('../../core/repo/task.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 describe('TaskRepository', () => {
   let repo
@@ -76,6 +77,7 @@ describe('TaskRepository', () => {
     afterEach(() => {
       if (backupRaw !== null) writeFileSync(TASKS_FILE, backupRaw)
       else if (existsSync(TASKS_FILE)) unlinkSync(TASKS_FILE)
+      cleanTestDataFromDb()
     })
 
     it('readStandaloneTasks returns array', () => {

@@ -7,6 +7,7 @@ const { rmSync, existsSync, readFileSync } = require('fs')
 
 const { PROJECTS_DIR } = require('../../core/common/paths.cjs')
 const { ProjectMetaRepository } = require('../../core/repo/project-meta.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 const ts = Date.now()
 const testProjectId = `zzz-test-projmeta-${ts}`
@@ -19,6 +20,7 @@ describe('ProjectMetaRepository', () => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true })
     }
+    cleanTestDataFromDb()
   })
 
   it('readMeta returns null for non-existent project', () => {

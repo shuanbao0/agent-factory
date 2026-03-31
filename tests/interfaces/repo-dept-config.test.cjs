@@ -7,6 +7,7 @@ const { mkdirSync, rmSync, existsSync } = require('fs')
 
 const { DEPARTMENTS_DIR } = require('../../core/common/paths.cjs')
 const { DeptConfigRepository } = require('../../core/repo/dept-config.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 const ts = Date.now()
 const testDeptId = `zzz-test-deptcfg-${ts}`
@@ -20,6 +21,7 @@ describe('DeptConfigRepository', () => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true })
     }
+    cleanTestDataFromDb()
   })
 
   it('load returns null for non-existent dept', () => {
