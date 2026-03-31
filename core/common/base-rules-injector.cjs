@@ -11,7 +11,7 @@
  */
 const { readFileSync, existsSync } = require('fs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
-const { BASE_RULES_FILE: BASE_RULES_PATH } = require('./paths.cjs')
+const { BASE_RULES_FILE: BASE_RULES_PATH, WORKSPACES_DIR, AGENTS_DIR, PROJECTS_DIR, SOURCE_CONFIG_DIR } = require('./paths.cjs')
 const logger = require('./logger.cjs')
 
 // ── Marker constants ──────────────────────────────────────────
@@ -51,6 +51,28 @@ function parseBaseRules(raw) {
     soulRules: sections['SOUL_RULES'] || '',
     reminder: sections['REMINDER'] || '',
   }
+}
+
+// ── Path placeholder replacement ─────────────────────────────
+
+const PATH_PLACEHOLDERS = {
+  '{WORKSPACES_DIR}': WORKSPACES_DIR,
+  '{AGENTS_DIR}': AGENTS_DIR,
+  '{PROJECTS_DIR}': PROJECTS_DIR,
+  '{SOURCE_CONFIG_DIR}': SOURCE_CONFIG_DIR,
+}
+
+/**
+ * Replace path placeholders with absolute paths.
+ * @param {string} text
+ * @returns {string}
+ */
+function resolvePlaceholders(text) {
+  let result = text
+  for (const [placeholder, absPath] of Object.entries(PATH_PLACEHOLDERS)) {
+    result = result.replaceAll(placeholder, absPath)
+  }
+  return result
 }
 
 // ── Strip / inject helpers ────────────────────────────────────
@@ -149,7 +171,8 @@ function injectBaseRulesForAgent(agentDir) {
   }
 
   const raw = readFileSync(BASE_RULES_PATH, 'utf-8')
-  const rules = parseBaseRules(raw)
+  const resolved = resolvePlaceholders(raw)
+  const rules = parseBaseRules(resolved)
 
   // Extract agentId from path
   const parts = agentDir.split('/')

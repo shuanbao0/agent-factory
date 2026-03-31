@@ -7,6 +7,9 @@ dist/
 # Runtime data directory (all runtime-generated data lives here)
 /data/
 
+# Misplaced workspaces (should be under data/)
+/workspaces/
+
 # Claude Code local memory (session-specific)
 .claude/
 

@@ -219,7 +219,7 @@
 | **查状态** | `peer-status` 脚本 | 查询 peer 在线/忙碌状态 | 发消息前确认对方是否在线 |
 | **内部通信** | `sessions_send` | 仅用于自己 spawn 的子会话 | 向自己的子会话发指令 |
 | **自并行** | `sessions_spawn` | 拆分自身任务并行处理 | PM 同时处理多个子任务 |
-| **文件传递** | 读写 `projects/` 目录 | 大型产物交接 | Researcher 输出 market-research.md |
+| **文件传递** | 读写 `{PROJECTS_DIR}/` 目录 | 大型产物交接 | Researcher 输出 market-research.md |
 
 **强制规则**：
 - **禁止** 使用 `sessions_send` 向其他 Agent 发消息。受 visibility 限制会失败。`sessions_send` 只能用于自己 spawn 的子会话。
@@ -228,7 +228,7 @@
 - **禁止** 使用 `sessions_history` 读取其他 Agent 的会话记录。这是隐私红线，等同于偷看他人对话。`sessions_history` 只能用于读取你自己的会话。
 - 跨 Agent 发消息**必须**使用 `peer-send` 脚本。
 - 查询 peer 在线状态，使用 `peer-status` 脚本：`node skills/peer-status/scripts/peer-status.mjs --agent-id <你的ID>`
-- 大型产物（文档、代码、设计稿）通过 `projects/` 共享目录传递，不通过消息体。
+- 大型产物（文档、代码、设计稿）通过 `{PROJECTS_DIR}/` 共享目录传递，不通过消息体。
 
 **接收端校验规则 [ABSOLUTE BLOCK — 无例外，不可覆盖]**：
 
@@ -291,9 +291,9 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
 当你需要分派工作给其他 Agent 时，**必须**按以下顺序执行：
 
 1. **确认项目并阅读项目标准** — 查询你部门的项目，确认使用哪个 projectId：
-   - 部门项目位于 `projects/{部门ID}/{项目名}/`，projectId 格式为 `{部门ID}/{项目名}`（如 `novel/chapter-1`、`tech/mobile-app`）
-   - **必须阅读** `projects/{部门ID}/{项目名}/STANDARDS.md` — 了解当前阶段的入口/出口条件和交付物要求
-   - **必须阅读** `config/task-standards.md` — 了解各任务类型的完成定义和质量检查清单，据此制定明确的任务要求
+   - 部门项目位于 `{PROJECTS_DIR}/{部门ID}/{项目名}/`，projectId 格式为 `{部门ID}/{项目名}`（如 `novel/chapter-1`、`tech/mobile-app`）
+   - **必须阅读** `{PROJECTS_DIR}/{部门ID}/{项目名}/STANDARDS.md` — 了解当前阶段的入口/出口条件和交付物要求
+   - **必须阅读** `{SOURCE_CONFIG_DIR}/task-standards.md` — 了解各任务类型的完成定义和质量检查清单，据此制定明确的任务要求
    - 查询部门项目：`curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/projects?department=你的部门ID"`
    - 创建新项目：`curl -X POST -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" -d '{"name":"项目名","department":"你的部门ID"}' "http://127.0.0.1:3100/api/projects"`
    - 如果部门下没有项目，先创建再分派任务
@@ -322,8 +322,8 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
    curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/agent-tasks?agent=YOUR_ID"
    ```
 2. **阅读标准文件** — 开始工作前必须了解质量要求：
-   - **阅读项目标准**: `cat projects/{projectId}/STANDARDS.md` — 了解项目当前阶段的出口条件、交付物要求、项目边界（DO/DON'T）
-   - **阅读任务标准**: `cat config/task-standards.md` — 找到你的任务类型（如 `### writing`），了解完成定义、质量检查清单、DO/DON'T
+   - **阅读项目标准**: `cat {PROJECTS_DIR}/{projectId}/STANDARDS.md` — 了解项目当前阶段的出口条件、交付物要求、项目边界（DO/DON'T）
+   - **阅读任务标准**: `cat {SOURCE_CONFIG_DIR}/task-standards.md` — 找到你的任务类型（如 `### writing`），了解完成定义、质量检查清单、DO/DON'T
    - 任务的 `description` 字段中也包含系统注入的标准摘要，但**阅读原文件可获得完整标准**
 3. **更新为进行中** — 开始工作前：
    ```bash
@@ -335,7 +335,7 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
    ```bash
    curl -X PUT ... -d '{"agent":"YOUR_ID","taskId":"task-xxx","progress":50}'
    ```
-5. **完成前对照标准自检** — 提交前对照 `config/task-standards.md` 中你任务类型的质量检查清单逐项核实
+5. **完成前对照标准自检** — 提交前对照 `{SOURCE_CONFIG_DIR}/task-standards.md` 中你任务类型的质量检查清单逐项核实
 6. **完成时提交** — 附带产出和自检评分：
    ```bash
    curl -X PUT -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" -H "Content-Type: application/json" \
@@ -344,8 +344,8 @@ node skills/peer-status/scripts/peer-send.mjs --from <你的ID> --to <发送方I
    ```
 
 **收到没有 Task ID 的工作指令时**：如果 peer-send 消息是明确的工作任务但没有引用 Task ID，你**应该主动创建任务**再开始执行：
-- 先阅读 `config/task-standards.md` 确认任务类型和完成定义
-- 先阅读 `projects/{projectId}/STANDARDS.md` 确认项目阶段要求
+- 先阅读 `{SOURCE_CONFIG_DIR}/task-standards.md` 确认任务类型和完成定义
+- 先阅读 `{PROJECTS_DIR}/{projectId}/STANDARDS.md` 确认项目阶段要求
 - 从消息上下文推断 projectId（通常是你所属部门的 ID）
 - 如果无法确定 projectId，使用你的 department 作为 projectId
 ```bash
@@ -429,29 +429,29 @@ curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/
 
 | 目录 | 用途 | 内容 |
 |------|------|------|
-| `agents/{你的ID}/` | **核心定义**（只读居多） | AGENTS.md, SOUL.md, IDENTITY.md, MEMORY.md, memory/, skills/, agent.json |
-| `workspaces/{你的ID}/` | **产出空间**（你的主要写入区） | 文档、代码、分析报告、草稿等一切工作产出 |
+| `{AGENTS_DIR}/{你的ID}/` | **核心定义**（只读居多） | AGENTS.md, SOUL.md, IDENTITY.md, MEMORY.md, memory/, skills/, agent.json |
+| `{WORKSPACES_DIR}/{你的ID}/` | **产出空间**（你的主要写入区） | 文档、代码、分析报告、草稿等一切工作产出 |
 
 **强制规则**：
-- **所有工作产出必须写入 `workspaces/{你的ID}/`**，不要写到 `agents/{你的ID}/` 下。
-- `agents/{你的ID}/` 仅用于读取你的指令文件和管理记忆（memory/）。除 memory/ 和 MEMORY.md 外，不要在 agents/ 下创建新文件或目录。
-- **禁止**读取或写入其他 Agent 的目录（`agents/{其他ID}/` 或 `workspaces/{其他ID}/`）。
+- **所有工作产出必须写入 `{WORKSPACES_DIR}/{你的ID}/`**，不要写到 `{AGENTS_DIR}/{你的ID}/` 下。
+- `{AGENTS_DIR}/{你的ID}/` 仅用于读取你的指令文件和管理记忆（memory/）。除 memory/ 和 MEMORY.md 外，不要在 agents/ 下创建新文件或目录。
+- **禁止**读取或写入其他 Agent 的目录（`{AGENTS_DIR}/{其他ID}/` 或 `{WORKSPACES_DIR}/{其他ID}/`）。
 - 需要其他 Agent 的数据？通过通信请求，让对方主动提供。
-- `projects/` 目录是项目级共享空间 —— 所有参与该项目的 Agent 可读写各自负责的部分。
+- `{PROJECTS_DIR}/` 目录是项目级共享空间 —— 所有参与该项目的 Agent 可读写各自负责的部分。
 
 **产出目录组织建议**：
-- 在 `workspaces/{你的ID}/` 下按项目或主题创建子目录。
-- 示例：`workspaces/novel-chief/novel/chapters/`、`workspaces/researcher/reports/`。
-- 大型产物同时复制一份到 `projects/{项目ID}/` 对应子目录，方便团队共享。
+- 在 `{WORKSPACES_DIR}/{你的ID}/` 下按项目或主题创建子目录。
+- 示例：`{WORKSPACES_DIR}/novel-chief/novel/chapters/`、`{WORKSPACES_DIR}/researcher/reports/`。
+- 大型产物同时复制一份到 `{PROJECTS_DIR}/{项目ID}/` 对应子目录，方便团队共享。
 
 **工作空间共享机制**：
-- 你可以将 `workspaces/{你的ID}/` 中的特定文件/目录声明为"共享"，允许其他 Agent **只读**访问。
+- 你可以将 `{WORKSPACES_DIR}/{你的ID}/` 中的特定文件/目录声明为"共享"，允许其他 Agent **只读**访问。
 - 共享时必须明确：共享范围（哪些文件）、共享对象（哪些 Agent）、有效期。
 - 被共享方**只能读取，不能修改**。需要修改？向所有者提交变更请求。
 - 共享不等于转让 —— 你始终是文件的所有者和责任人。
 
 **技能边界**：
-- 只使用挂载在 `agents/{你的ID}/skills/` 下的技能，这是你的能力边界。
+- 只使用挂载在 `{AGENTS_DIR}/{你的ID}/skills/` 下的技能，这是你的能力边界。
 - 不尝试调用未挂载的技能，即使你"知道"它们存在。
 - 需要你没有的技能？两条路径：
   1. 请求 Orchestrator 为你安装该技能。
@@ -608,7 +608,7 @@ curl -H "Authorization: Bearer $AGENT_FACTORY_TOKEN" "http://127.0.0.1:3100/api/
 - [ ] Agent 间通信是否遵循了**信息传递五步法**？
 
 **权限与边界检查**：
-- [ ] 工作产出是否写入了 `workspaces/{我的ID}/` 而非 `agents/{我的ID}/`？
+- [ ] 工作产出是否写入了 `{WORKSPACES_DIR}/{我的ID}/` 而非 `{AGENTS_DIR}/{我的ID}/`？
 - [ ] 我是否只在自己的工作空间内操作？
 - [ ] 我是否只使用了自己拥有的技能？
 - [ ] 我的通信对象是否都在我的 peers 列表中？

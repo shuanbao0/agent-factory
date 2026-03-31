@@ -15,7 +15,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import paths from '../../core/common/paths.mjs'
 
-const { PROJECT_ROOT: ROOT, AGENTS_DIR, BASE_RULES_FILE: BASE_RULES } = paths
+const { PROJECT_ROOT: ROOT, AGENTS_DIR, WORKSPACES_DIR, PROJECTS_DIR, SOURCE_CONFIG_DIR, BASE_RULES_FILE: BASE_RULES } = paths
 
 const DRY_RUN = process.argv.includes('--dry-run')
 const targetId = process.argv.slice(2).find(a => !a.startsWith('--'))
@@ -91,7 +91,22 @@ if (!existsSync(BASE_RULES)) {
   process.exit(1)
 }
 
-const rules = parseRules(readFileSync(BASE_RULES, 'utf-8'))
+const PATH_PLACEHOLDERS = {
+  '{WORKSPACES_DIR}': WORKSPACES_DIR,
+  '{AGENTS_DIR}': AGENTS_DIR,
+  '{PROJECTS_DIR}': PROJECTS_DIR,
+  '{SOURCE_CONFIG_DIR}': SOURCE_CONFIG_DIR,
+}
+
+function resolvePlaceholders(text) {
+  let result = text
+  for (const [ph, abs] of Object.entries(PATH_PLACEHOLDERS)) {
+    result = result.replaceAll(ph, abs)
+  }
+  return result
+}
+
+const rules = parseRules(resolvePlaceholders(readFileSync(BASE_RULES, 'utf-8')))
 
 const agentIds = targetId
   ? [targetId]
