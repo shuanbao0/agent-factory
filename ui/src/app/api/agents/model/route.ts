@@ -7,6 +7,12 @@ export async function GET(req: NextRequest) {
   const agentId = req.nextUrl.searchParams.get('id')
   if (!agentId) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
+  // DB-first, fallback to filesystem
+  try {
+    const agent = core.db.agentQueries.findAgentById(agentId)
+    if (agent) return NextResponse.json({ model: (agent as Record<string, unknown>).model || null })
+  } catch { /* DB unavailable */ }
+
   const meta = core.repo.agentMetaRepo.readMeta(agentId)
   return NextResponse.json({ model: meta?.model || null })
 }

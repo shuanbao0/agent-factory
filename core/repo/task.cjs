@@ -126,12 +126,8 @@ class TaskRepository extends BaseRepository {
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, 'utf-8'))
-            // Tasks from DB instead of file
-            const dbTasks = findAllTasksFromDb({ projectId: dir.name })
-            meta.tasks = dbTasks.length > 0 ? dbTasks : (meta.tasks || []).map(t => {
-              if (t.status === 'running') t.status = 'in_progress'
-              return t
-            })
+            // Tasks from DB (single source of truth, dual-write ensures consistency)
+            meta.tasks = findAllTasksFromDb({ projectId: dir.name })
             results.push({ id: dir.name, ...meta })
           } catch (err) {
             logger.warn('task-repo', 'failed to parse project meta', { project: dir.name, error: err.message })
@@ -147,11 +143,8 @@ class TaskRepository extends BaseRepository {
               try {
                 const subId = `${dir.name}/${sd.name}`
                 const meta = JSON.parse(readFileSync(subMetaPath, 'utf-8'))
-                const dbTasks = findAllTasksFromDb({ projectId: subId })
-                meta.tasks = dbTasks.length > 0 ? dbTasks : (meta.tasks || []).map(t => {
-                  if (t.status === 'running') t.status = 'in_progress'
-                  return t
-                })
+                // Tasks from DB (single source of truth, dual-write ensures consistency)
+                meta.tasks = findAllTasksFromDb({ projectId: subId })
                 results.push({ id: subId, ...meta })
               } catch (err) {
                 logger.warn('task-repo', 'failed to parse sub-project meta', { error: err.message })

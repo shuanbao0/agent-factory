@@ -106,4 +106,46 @@ function getDailySummaryFromDb(days = 7) {
   `).all(from)
 }
 
-module.exports = { insertCostEntry, queryCostEntries, getDailySummaryFromDb }
+/**
+ * 按天+Agent 聚合用量（供 Dashboard Usage 面板）
+ *
+ * 替代 Gateway sessions.usage + JSONL 合并逻辑，
+ * 单次 SQL 查询完成 daily 和 byAgent 两种维度聚合。
+ *
+ * @param {number} [days=30] - 回溯天数
+ * @returns {{ daily: Array, byAgent: Array, totals: Object }}
+ */
+function getUsageAggregatesFromDb(days = 30) {
+  const db = getDb()
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const from = cutoff.toISOString().slice(0, 10)
+
+  const daily = db.prepare(`
+    SELECT date,
+           SUM(input_tokens) + SUM(output_tokens) AS tokens,
+           ROUND(SUM(cost), 6) AS cost,
+           COUNT(*) AS calls
+    FROM cost_entries WHERE date >= ?
+    GROUP BY date ORDER BY date
+  `).all(from)
+
+  const byAgent = db.prepare(`
+    SELECT agent_id AS agentId,
+           SUM(input_tokens) + SUM(output_tokens) AS totalTokens,
+           ROUND(SUM(cost), 6) AS totalCost,
+           COUNT(*) AS calls
+    FROM cost_entries WHERE date >= ? AND agent_id IS NOT NULL
+    GROUP BY agent_id ORDER BY totalCost DESC
+  `).all(from)
+
+  const totals = db.prepare(`
+    SELECT COALESCE(SUM(cost), 0) AS totalCost,
+           COALESCE(SUM(input_tokens) + SUM(output_tokens), 0) AS totalTokens
+    FROM cost_entries WHERE date >= ?
+  `).get(from)
+
+  return { daily, byAgent, totals }
+}
+
+module.exports = { insertCostEntry, queryCostEntries, getDailySummaryFromDb, getUsageAggregatesFromDb }

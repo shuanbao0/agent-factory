@@ -19,8 +19,17 @@ export async function GET(
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   }
 
-  const config = (core.repo.agentMetaRepo.readMeta(id) || {}) as AgentConfig
-  const enabledSlugs = new Set(config.skills || [])
+  // DB-first for agent metadata, fallback to filesystem
+  let agentSkills: string[] = []
+  try {
+    const dbAgent = core.db.agentQueries.findAgentById(id)
+    if (dbAgent) agentSkills = (dbAgent as AgentConfig).skills || []
+  } catch { /* DB unavailable */ }
+  if (agentSkills.length === 0) {
+    const config = (core.repo.agentMetaRepo.readMeta(id) || {}) as AgentConfig
+    agentSkills = config.skills || []
+  }
+  const enabledSlugs = new Set(agentSkills)
   const allSkills = await core.common.skillSymlinks.listAllSkills()
   const skills = allSkills.map(s => ({
     slug: s.slug,

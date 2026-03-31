@@ -322,6 +322,11 @@ export default _core as {
       insertCostEntry(entry: Record<string, unknown>): void
       queryCostEntries(opts?: Record<string, unknown>): { entries: CostEntry[]; totalCost: number; totalInputTokens: number; totalOutputTokens: number }
       getDailySummaryFromDb(days?: number): DailyCostSummary[]
+      getUsageAggregatesFromDb(days?: number): {
+        daily: Array<{ date: string; tokens: number; cost: number; calls: number }>
+        byAgent: Array<{ agentId: string; totalTokens: number; totalCost: number; calls: number }>
+        totals: { totalCost: number; totalTokens: number }
+      }
     }
     eventQueries: {
       insertEvent(event: Record<string, unknown>): void
@@ -338,6 +343,33 @@ export default _core as {
       queryDeptCycles(deptId: string, limit?: number): Array<Record<string, unknown>>
       insertKpiSnapshot(deptId: string, kpis: Record<string, unknown>): void
       readKpiHistoryFromDb(deptId: string, limit?: number): Array<Record<string, unknown>>
+    }
+    agentQueries: {
+      findAllAgents(opts?: { department?: string }): Array<{
+        id: string; templateId?: string; name: string; role?: string
+        description?: string; model?: string; department?: string
+        skills?: string[]; peers?: string[]
+        createdAt?: string; updatedAt?: string
+      }>
+      findAgentById(id: string): {
+        id: string; templateId?: string; name: string; role?: string
+        description?: string; model?: string; department?: string
+        skills?: string[]; peers?: string[]
+      } | null
+      listAgentIds(): string[]
+    }
+    projectQueries: {
+      findAllProjects(opts?: { department?: string; status?: string }): Array<{
+        id: string; name: string; description?: string; status: string
+        currentPhase: number; totalPhases: number; phases?: unknown
+        department?: string; assignedAgents: string[]
+        createdAt: string; updatedAt: string
+      }>
+      findProjectById(id: string): Record<string, unknown> | null
+    }
+    deptConfigQueries: {
+      findAllDeptConfigs(): Array<Record<string, unknown>>
+      findDeptConfigById(id: string): Record<string, unknown> | null
     }
   }
 }

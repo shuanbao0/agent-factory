@@ -12,8 +12,20 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   try {
     const permissions: Record<string, string[]> = {}
-    const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
 
+    // DB-first: single SQL query instead of N+1 file reads
+    try {
+      const agents = core.db.agentQueries.findAllAgents()
+      if (agents.length > 0) {
+        for (const a of agents) {
+          permissions[a.id] = (a.peers as string[]) || []
+        }
+        return NextResponse.json({ permissions })
+      }
+    } catch { /* DB unavailable, fall through */ }
+
+    // Fallback: filesystem repo
+    const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
     for (const id of agentIds) {
       const meta = core.repo.agentMetaRepo.readMeta(id)
       permissions[id] = (meta?.peers as string[]) || []

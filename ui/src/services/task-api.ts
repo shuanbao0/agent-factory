@@ -58,6 +58,33 @@ export interface DeleteTaskResult {
 // ── listTasks ────────────────────────────────────────────────────
 
 export function listTasks(filters: TaskFilters): ListTasksResult {
+  // DB-first: SQL WHERE filters replace in-memory filtering
+  try {
+    const dbOpts: Record<string, unknown> = {}
+    if (filters.status) dbOpts.status = filters.status
+    if (filters.projectId && filters.projectId !== 'standalone') dbOpts.projectId = filters.projectId
+    if (filters.assignee) dbOpts.assignee = filters.assignee
+    if (filters.type) dbOpts.type = filters.type
+
+    let tasks = core.db.taskQueries.findAllTasksFromDb(dbOpts) as Task[]
+    // Handle 'standalone' special value (tasks with no project)
+    if (filters.projectId === 'standalone') {
+      tasks = tasks.filter(t => !t.projectId)
+    }
+
+    // Sort: by priority (P0 first), then updatedAt desc
+    const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2 }
+    tasks.sort((a, b) => {
+      const pd = (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1)
+      if (pd !== 0) return pd
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    })
+
+    return { tasks, source: 'filesystem' }
+  } catch {
+    // Fallback: filesystem repo (readProjectTasks/readStandaloneTasks internally use DB too)
+  }
+
   let tasks = [...readProjectTasks(), ...readStandaloneTasks()]
 
   if (filters.projectId) {
@@ -77,7 +104,6 @@ export function listTasks(filters: TaskFilters): ListTasksResult {
     tasks = tasks.filter(t => t.type === tp)
   }
 
-  // Sort: by priority (P0 first), then updatedAt desc
   const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2 }
   tasks.sort((a, b) => {
     const pd = (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1)

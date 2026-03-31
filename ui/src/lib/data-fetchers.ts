@@ -6,9 +6,7 @@
 import { gwCallAsync } from '@/lib/gateway-client'
 import core from '@/lib/core-bridge'
 import type { Task } from '@entity/task'
-import type { AgentMeta } from '@entity/agent'
 import type { CostEntry, CompanyBudget } from '@entity/observe'
-import type { AgentConfigEntry } from '@entity/agent'
 
 const BUSY_THRESHOLD_MS = 300_000
 
@@ -47,12 +45,32 @@ export interface AgentsResult {
 }
 
 export async function fetchAgentsData(): Promise<AgentsResult> {
-  const result = await gwCallAsync('agents.list') as {
-    agents: { id: string }[]
-    defaultId: string
+  // 1. Agent list: DB-first, fallback to filesystem repo
+  type AgentRow = { id: string; templateId?: string; name: string; role?: string; description?: string; department?: string }
+  let agentList: AgentRow[] = []
+  let defaultAgentId = ''
+  try {
+    agentList = core.db.agentQueries.findAllAgents()
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Agent DB query failed', { error: String(e) }) }
+
+  if (agentList.length === 0) {
+    // Fallback: filesystem repo (N+1 reads)
+    try {
+      const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
+      for (const id of agentIds) {
+        const meta = core.repo.agentMetaRepo.readMeta(id)
+        if (meta) agentList.push({ ...(meta as AgentRow), id })
+      }
+    } catch (e) { core.common.logger.debug('data-fetchers', 'Agent metadata read failed', { error: String(e) }) }
   }
 
-  // Fetch sessions to determine busy agents
+  // Read defaultAgent from config
+  try {
+    const cfg = core.repo.configRepo.getConfig()
+    defaultAgentId = (cfg as Record<string, unknown>).defaultAgent as string || ''
+  } catch { /* ignore */ }
+
+  // 2. Busy status: still needs Gateway sessions (best-effort)
   const busyAgentIds = new Set<string>()
   try {
     const sessResult = await gwCallAsync('sessions.list', { limit: 50 }) as {
@@ -76,48 +94,22 @@ export async function fetchAgentsData(): Promise<AgentsResult> {
     if (ap.status === 'cycling') busyAgentIds.add('ceo')
   } catch (e) { core.common.logger.debug('data-fetchers', 'Autopilot state read failed', { error: String(e) }) }
 
-  // Read agent instance metadata via repo
-  const agentInstances = new Map<string, AgentMeta>()
-  try {
-    const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
-    for (const id of agentIds) {
-      const meta = core.repo.agentMetaRepo.readMeta(id)
-      if (meta) agentInstances.set(id, meta as AgentMeta)
-    }
-  } catch (e) { core.common.logger.debug('data-fetchers', 'Agent metadata read failed', { error: String(e) }) }
-
-  const agents: AgentItem[] = result.agents.map(a => {
-    const instance = agentInstances.get(a.id)
-    return {
-      id: a.id,
-      templateId: instance?.templateId || null,
-      role: instance?.role || a.id,
-      name: instance?.name || a.id,
-      description: instance?.description || `OpenClaw agent: ${a.id}`,
-      status: (busyAgentIds.has(a.id) ? 'busy' : 'online') as 'busy' | 'online',
-      isDefault: a.id === result.defaultId,
-      department: instance?.department || undefined,
-    }
-  })
+  // 3. Build result
+  const agents: AgentItem[] = agentList.map(a => ({
+    id: a.id,
+    templateId: a.templateId || null,
+    role: a.role || a.id,
+    name: a.name || a.id,
+    description: a.description || `Agent: ${a.id}`,
+    status: (busyAgentIds.has(a.id) ? 'busy' : 'online') as 'busy' | 'online',
+    isDefault: a.id === defaultAgentId,
+    department: a.department || undefined,
+  }))
 
   return { agents, source: 'gateway' }
 }
 
 // ── Logs ─────────────────────────────────────────────────────────
-
-interface GatewaySession {
-  key: string
-  kind: string
-  displayName?: string
-  channel?: string
-  label?: string
-  updatedAt?: number
-  inputTokens?: number
-  outputTokens?: number
-  totalTokens?: number
-  model?: string
-  modelProvider?: string
-}
 
 export interface LogItem {
   id: string
@@ -133,23 +125,26 @@ export interface LogsResult {
   source: 'gateway'
 }
 
-function parseSessionKey(key: string): { agentId: string; isSubagent: boolean; name: string } {
-  const parts = key.split(':')
-  if (parts[0] === 'agent' && parts.length >= 3) {
-    return {
-      agentId: parts[1],
-      isSubagent: parts[2] === 'subagent',
-      name: parts.slice(2).join(':'),
-    }
-  }
-  return { agentId: '', isSubagent: false, name: key }
-}
-
 export async function fetchLogsData(): Promise<LogsResult> {
   const entries: LogItem[] = []
   let idx = 0
 
-  // 1. Gateway system logs from logs.tail
+  // 1. Agent activity from DB messages table (replaces sessions.list)
+  try {
+    const result = core.db.messageQueries.queryMessages({ limit: 100 })
+    for (const row of result.messages) {
+      const tokens = ((row.inputTokens as number) || 0) + ((row.outputTokens as number) || 0)
+      entries.push({
+        id: `activity-${idx++}`,
+        timestamp: String(row.ts),
+        level: row.ok === 0 ? 'error' as const : 'info' as const,
+        agent: String(row.agentId || 'system'),
+        message: `${row.messageType || 'chat'} [${row.direction}] — ${tokens} tokens`,
+      })
+    }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Messages DB query failed (logs)', { error: String(e) }) }
+
+  // 2. Gateway system logs (best-effort, only available when Gateway is running)
   try {
     const raw = await gwCallAsync('logs.tail', undefined, 20000) as Record<string, unknown>
     const rawLines = (raw.lines || []) as string[]
@@ -188,47 +183,6 @@ export async function fetchLogsData(): Promise<LogsResult> {
     }
   } catch (e) { core.common.logger.debug('data-fetchers', 'logs.tail fetch failed', { error: String(e) }) }
 
-  // 2. Agent activity from sessions.list
-  try {
-    const sessionsResult = await gwCallAsync('sessions.list', { limit: 100 }, 20000) as {
-      sessions?: GatewaySession[]
-    }
-    const sessions = sessionsResult.sessions || []
-
-    for (const session of sessions) {
-      const { agentId, isSubagent, name } = parseSessionKey(session.key)
-      if (!agentId) continue
-
-      const ts = session.updatedAt
-        ? new Date(session.updatedAt).toISOString()
-        : new Date().toISOString()
-
-      if (isSubagent) {
-        const tokens = session.totalTokens || 0
-        const model = session.model || 'default'
-        entries.push({
-          id: `activity-${idx++}`,
-          timestamp: ts,
-          level: 'info',
-          agent: agentId,
-          message: `Subagent session active — ${tokens} tokens, model: ${model}`,
-          details: session.label || undefined,
-        })
-      } else {
-        if (!session.outputTokens && !session.inputTokens) continue
-        const tokens = session.totalTokens || 0
-        const model = session.model || 'default'
-        entries.push({
-          id: `activity-${idx++}`,
-          timestamp: ts,
-          level: 'info',
-          agent: agentId,
-          message: `Session "${name}" — ${tokens} tokens (in: ${session.inputTokens || 0}, out: ${session.outputTokens || 0}), model: ${model}`,
-        })
-      }
-    }
-  } catch { /* sessions.list not available */ }
-
   // Sort by timestamp descending
   entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
@@ -255,6 +209,38 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
     return _usageCache.data
   }
 
+  // DB-first: aggregate from cost_entries table (replaces Gateway + JSONL merge)
+  if (!hasParams) {
+    try {
+      const agg = core.db.costQueries.getUsageAggregatesFromDb(30)
+      if (agg.daily.length > 0) {
+        const data: UsageResult = {
+          source: 'gateway',
+          aggregates: {
+            daily: agg.daily.map((d: { date: string; tokens: number; cost: number; calls: number }) => ({
+              date: d.date,
+              tokens: d.tokens || 0,
+              cost: d.cost || 0,
+              messages: d.calls || 0,
+              toolCalls: 0,
+              errors: 0,
+            })),
+            byAgent: agg.byAgent.map((a: { agentId: string; totalTokens: number; totalCost: number }) => ({
+              agentId: a.agentId,
+              totals: { totalTokens: a.totalTokens || 0, totalCost: a.totalCost || 0 },
+            })),
+          },
+          totals: { totalCost: agg.totals.totalCost || 0, totalTokens: agg.totals.totalTokens || 0 },
+        }
+        _usageCache = { data, ts: Date.now() }
+        return data
+      }
+    } catch (e) {
+      core.common.logger.debug('data-fetchers', 'Usage DB query failed, falling back to gateway', { error: String(e) })
+    }
+  }
+
+  // Fallback: Gateway sessions.usage (for fresh installs with empty DB)
   const result = await gwCallAsync(
     'sessions.usage',
     hasParams ? params : undefined,
@@ -262,73 +248,7 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
   ) as Record<string, unknown>
   const data = { ...result, source: 'gateway' as const }
 
-  // Merge historical cost data from autopilot-costs.jsonl into daily aggregates
-  // Gateway only returns data for active sessions; historical sessions that were
-  // cleaned up would be missing. The JSONL file preserves all historical costs.
   if (!hasParams) {
-    try {
-      const today = new Date().toISOString().slice(0, 10)
-      const costResult = core.observe.queryCosts({ from: _last30dDate() })
-      if (costResult.entries.length > 0) {
-        // Aggregate JSONL entries by date
-        const costByDate: Record<string, { tokens: number; cost: number }> = {}
-        for (const e of costResult.entries) {
-          if (!e.date) continue
-          if (!costByDate[e.date]) costByDate[e.date] = { tokens: 0, cost: 0 }
-          costByDate[e.date].tokens += (e.inputTokens || 0) + (e.outputTokens || 0)
-          costByDate[e.date].cost += e.cost || 0
-        }
-
-        // Build gateway daily map (today's data from gateway is most accurate)
-        const gwDaily = ((data as Record<string, unknown>).aggregates as Record<string, unknown>)?.daily as Array<{
-          date: string; tokens: number; cost: number; messages: number; toolCalls: number; errors: number
-        }> || []
-        const gwDailyMap = new Map<string, typeof gwDaily[0]>()
-        for (const d of gwDaily) gwDailyMap.set(d.date, d)
-
-        // Merge: use gateway data for today, JSONL data for past days
-        const mergedDaily: Array<{ date: string; tokens: number; cost: number; messages: number; toolCalls: number; errors: number }> = []
-        const allDates = new Set(Object.keys(costByDate).concat(Array.from(gwDailyMap.keys())))
-        const sortedDates = Array.from(allDates).sort()
-        for (const date of sortedDates) {
-          const gw = gwDailyMap.get(date)
-          if (date === today && gw) {
-            // Today: prefer gateway (real-time), but take the higher value
-            mergedDaily.push({
-              ...gw,
-              tokens: Math.max(gw.tokens || 0, costByDate[date]?.tokens || 0),
-              cost: Math.max(gw.cost || 0, costByDate[date]?.cost || 0),
-            })
-          } else if (gw && !costByDate[date]) {
-            mergedDaily.push(gw)
-          } else {
-            // Past days or days only in JSONL: use JSONL data
-            const c = costByDate[date]
-            if (c) {
-              mergedDaily.push({
-                date,
-                tokens: c.tokens,
-                cost: Math.round(c.cost * 1_000_000) / 1_000_000,
-                messages: gw?.messages || 0,
-                toolCalls: gw?.toolCalls || 0,
-                errors: gw?.errors || 0,
-              })
-            }
-          }
-        }
-
-        // Patch aggregates.daily
-        const agg = (data as Record<string, unknown>).aggregates as Record<string, unknown> | undefined
-        if (agg) {
-          agg.daily = mergedDaily
-        } else {
-          ;(data as Record<string, unknown>).aggregates = { daily: mergedDaily, byAgent: [] }
-        }
-      }
-    } catch (e) {
-      core.common.logger.debug('data-fetchers', 'Historical cost merge failed', { error: String(e) })
-    }
-
     _usageCache = { data, ts: Date.now() }
   }
 
@@ -386,34 +306,29 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
   const activePairs: Array<{ from: string; to: string; type: 'spawn' | 'send' }> = []
 
   try {
-    const result = core.db.messageQueries.queryMessages({ limit: 200 }) as {
-      messages: Array<{
-        ts: string; agentId: string; messageType: string; direction: string
-        channel: string; fromAgent: string | null; ok: number | null
-        inputTokens: number; outputTokens: number; cost: number; content: string | null
-      }>
-    }
+    const result = core.db.messageQueries.queryMessages({ limit: 200 })
 
     const recentThreshold = Date.now() - 300_000 // 5 minutes
 
     for (const row of result.messages) {
       const fromAgent = row.direction === 'request'
-        ? (row.fromAgent || 'system')
-        : row.agentId
+        ? (row.fromAgent || 'system') as string
+        : row.agentId as string
       const toAgent = row.direction === 'request'
-        ? row.agentId
-        : (row.fromAgent || 'system')
+        ? row.agentId as string
+        : (row.fromAgent || 'system') as string
 
-      const ts = new Date(row.ts).getTime()
+      const agentId = row.agentId as string
+      const ts = new Date(row.ts as string).getTime()
 
       // Track last activity
-      if (ts > (lastActivity[row.agentId] || 0)) {
-        lastActivity[row.agentId] = ts
+      if (ts > (lastActivity[agentId] || 0)) {
+        lastActivity[agentId] = ts
       }
 
       // Track errors
-      if (row.ok === 0 && ts > (agentErrors[row.agentId] || 0)) {
-        agentErrors[row.agentId] = ts
+      if (row.ok === 0 && ts > (agentErrors[agentId] || 0)) {
+        agentErrors[agentId] = ts
       }
 
       // Active pairs from recent responses
@@ -422,16 +337,16 @@ export async function fetchMessagesData(): Promise<MessagesResult> {
       }
 
       messages.push({
-        timestamp: row.ts,
+        timestamp: row.ts as string,
         fromAgent,
         toAgent,
         type: row.ok === 0 ? 'error' : 'send',
-        messageType: row.messageType,
-        direction: row.direction,
-        channel: row.channel,
-        inputTokens: row.inputTokens,
-        outputTokens: row.outputTokens,
-        cost: row.cost,
+        messageType: row.messageType as string,
+        direction: row.direction as string,
+        channel: row.channel as string,
+        inputTokens: row.inputTokens as number,
+        outputTokens: row.outputTokens as number,
+        cost: row.cost as number,
       })
     }
   } catch (e) {
@@ -450,22 +365,35 @@ export interface CostsResult {
 }
 
 export async function fetchCostsData(): Promise<CostsResult & { summary?: unknown; totalInputTokens?: number; totalOutputTokens?: number }> {
+  // DB-first: direct SQL queries (cost_entries table)
   try {
-    const result = core.observe.queryCosts()
-    // Return only the last 200 entries for consistency
+    const result = core.db.costQueries.queryCostEntries({ from: _last30dDate() })
     const entries = result.entries.slice(-200)
-    const totalCost = entries.reduce((sum, e) => sum + (e.cost || 0), 0)
-    // Include daily summary for SSE consumers (store expects data.summary)
-    const summary = core.observe.getDailySummary(30)
+    const summary = core.db.costQueries.getDailySummaryFromDb(30)
     return {
       entries,
-      totalCost,
+      totalCost: result.totalCost,
       summary,
       totalInputTokens: result.totalInputTokens || 0,
       totalOutputTokens: result.totalOutputTokens || 0,
       source: 'filesystem',
     }
-  } catch (e) { core.common.logger.debug('data-fetchers', 'Costs data read failed', { error: String(e) }) }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Costs DB query failed, fallback', { error: String(e) }) }
+
+  // Fallback: observe layer (which also delegates to DB, but has its own error handling)
+  try {
+    const result = core.observe.queryCosts()
+    const entries = result.entries.slice(-200)
+    const summary = core.observe.getDailySummary(30)
+    return {
+      entries,
+      totalCost: result.totalCost,
+      summary,
+      totalInputTokens: result.totalInputTokens || 0,
+      totalOutputTokens: result.totalOutputTokens || 0,
+      source: 'filesystem',
+    }
+  } catch (e) { core.common.logger.debug('data-fetchers', 'Costs fallback read failed', { error: String(e) }) }
   return { entries: [], totalCost: 0, source: 'filesystem' }
 }
 
