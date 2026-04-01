@@ -125,7 +125,7 @@ function findOpenClawDist() {
   return null
 }
 
-// --- Read plugin metadata from dist file ---
+// --- Read plugin metadata from dist/extensions/ ---
 
 function readBundledMetadata() {
   const distDir = findOpenClawDist()
@@ -134,43 +134,50 @@ function readBundledMetadata() {
     return []
   }
 
-  // Find manifest-registry-*.js
-  let registryFile = null
+  const extensionsDir = join(distDir, 'extensions')
+  if (!existsSync(extensionsDir)) {
+    logger.warn('plugin-catalog', 'openclaw dist/extensions dir not found')
+    return []
+  }
+
+  let dirs
   try {
-    const files = readdirSync(distDir)
-    registryFile = files.find(f => f.startsWith('manifest-registry-') && f.endsWith('.js'))
+    dirs = readdirSync(extensionsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
   } catch {
-    logger.warn('plugin-catalog', 'Failed to scan openclaw dist dir')
+    logger.warn('plugin-catalog', 'Failed to scan openclaw dist/extensions dir')
     return []
   }
 
-  if (!registryFile) {
-    logger.warn('plugin-catalog', 'manifest-registry file not found in openclaw dist')
-    return []
+  const entries = []
+  for (const dirName of dirs) {
+    const pluginDir = join(extensionsDir, dirName)
+    const manifestPath = join(pluginDir, 'openclaw.plugin.json')
+    const pkgPath = join(pluginDir, 'package.json')
+    if (!existsSync(manifestPath)) continue
+
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      let pkg = {}
+      if (existsSync(pkgPath)) {
+        pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      }
+      entries.push({
+        dirName,
+        idHint: dirName,
+        packageName: pkg.name || '',
+        packageVersion: pkg.version || '',
+        packageDescription: pkg.description || '',
+        packageManifest: pkg.openclaw || {},
+        manifest,
+      })
+    } catch (err) {
+      logger.debug('plugin-catalog', `Failed to read plugin ${dirName}`, { error: err.message })
+    }
   }
 
-  let content
-  try {
-    content = readFileSync(join(distDir, registryFile), 'utf-8')
-  } catch (err) {
-    logger.warn('plugin-catalog', 'Failed to read manifest registry', { error: err.message })
-    return []
-  }
-
-  // Extract BUNDLED_PLUGIN_METADATA array
-  const match = content.match(/BUNDLED_PLUGIN_METADATA\s*=\s*(\[[\s\S]*?\n\]);/)
-  if (!match) {
-    logger.warn('plugin-catalog', 'Failed to extract BUNDLED_PLUGIN_METADATA from registry file')
-    return []
-  }
-
-  try {
-    const fn = new Function('return ' + match[1])
-    return fn()
-  } catch (err) {
-    logger.warn('plugin-catalog', 'Failed to parse BUNDLED_PLUGIN_METADATA', { error: err.message })
-    return []
-  }
+  return entries
 }
 
 // --- Map raw metadata to plugin info ---
