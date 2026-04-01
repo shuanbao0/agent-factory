@@ -89,6 +89,8 @@ export default function PluginsTab() {
   const [defaultModel, setDefaultModelState] = useState('')
   // Add model form: pluginId → { alias, modelId }
   const [addingModel, setAddingModel] = useState<Record<string, { alias: string; modelId: string }>>({})
+  // Which providers are in custom model input mode
+  const [customModelMode, setCustomModelMode] = useState<Set<string>>(new Set())
   // Which provider auth panels are open
   const [editingAuth, setEditingAuth] = useState<Set<string>>(new Set())
   // Base URL edits per provider
@@ -780,10 +782,13 @@ export default function PluginsTab() {
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-medium text-muted-foreground">{t('settings.pluginModels')}</span>
                                   <button
-                                    onClick={() => setAddingModel(prev => prev[plugin.id]
-                                      ? (() => { const n = { ...prev }; delete n[plugin.id]; return n })()
-                                      : { ...prev, [plugin.id]: { alias: '', modelId: '' } }
-                                    )}
+                                    onClick={() => {
+                                      setAddingModel(prev => prev[plugin.id]
+                                        ? (() => { const n = { ...prev }; delete n[plugin.id]; return n })()
+                                        : { ...prev, [plugin.id]: { alias: '', modelId: '' } }
+                                      )
+                                      setCustomModelMode(prev => { const n = new Set(prev); n.delete(plugin.id); return n })
+                                    }}
                                     className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
                                   >
                                     {isAdding ? <X className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
@@ -841,7 +846,7 @@ export default function PluginsTab() {
                                   const existingAliases = new Set(Object.keys(models))
                                   const available = catalog.filter(m => !existingAliases.has(m.alias))
                                   const form = addingModel[plugin.id]
-                                  const isCustom = form?.alias === '__custom__'
+                                  const isCustom = customModelMode.has(plugin.id)
 
                                   return (
                                     <div className="space-y-2 pt-1">
@@ -889,7 +894,7 @@ export default function PluginsTab() {
                                           <div className="flex-1">
                                             <input
                                               type="text"
-                                              value={isCustom ? '' : (form?.alias || '')}
+                                              value={form?.alias || ''}
                                               onChange={e => setAddingModel(prev => ({ ...prev, [plugin.id]: { alias: e.target.value, modelId: prev[plugin.id]?.modelId || '' } }))}
                                               placeholder={t('settings.pluginModelAlias')}
                                               className="w-full px-2.5 py-1.5 text-xs bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
@@ -906,7 +911,7 @@ export default function PluginsTab() {
                                           </div>
                                           <button
                                             onClick={() => addModel(plugin.id)}
-                                            disabled={!form?.alias?.trim() || form?.alias === '__custom__' || !form?.modelId?.trim() || saving === plugin.id + '-model'}
+                                            disabled={!form?.alias?.trim() || !form?.modelId?.trim() || saving === plugin.id + '-model'}
                                             className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 shrink-0"
                                           >
                                             {saving === plugin.id + '-model' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('common.add')}
@@ -916,10 +921,14 @@ export default function PluginsTab() {
                                       {/* Toggle to custom input */}
                                       {available.length > 0 && (
                                         <button
-                                          onClick={() => setAddingModel(prev => ({
-                                            ...prev,
-                                            [plugin.id]: isCustom ? { alias: '', modelId: '' } : { alias: '__custom__', modelId: '' }
-                                          }))}
+                                          onClick={() => {
+                                            setCustomModelMode(prev => {
+                                              const n = new Set(prev)
+                                              isCustom ? n.delete(plugin.id) : n.add(plugin.id)
+                                              return n
+                                            })
+                                            setAddingModel(prev => ({ ...prev, [plugin.id]: { alias: '', modelId: '' } }))
+                                          }}
                                           className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                                         >
                                           {isCustom ? t('settings.pluginSelectFromCatalog') : t('settings.pluginCustomModel')}
