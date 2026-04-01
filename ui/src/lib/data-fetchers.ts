@@ -209,44 +209,26 @@ export async function fetchUsageData(params?: Record<string, unknown>): Promise<
     return _usageCache.data
   }
 
-  // DB-first: aggregate from cost_entries table (replaces Gateway + JSONL merge)
-  if (!hasParams) {
-    try {
-      const agg = core.db.costQueries.getUsageAggregatesFromDb(30)
-      if (agg.daily.length > 0) {
-        const data: UsageResult = {
-          source: 'gateway',
-          aggregates: {
-            daily: agg.daily.map((d: { date: string; tokens: number; cost: number; calls: number }) => ({
-              date: d.date,
-              tokens: d.tokens || 0,
-              cost: d.cost || 0,
-              messages: d.calls || 0,
-              toolCalls: 0,
-              errors: 0,
-            })),
-            byAgent: agg.byAgent.map((a: { agentId: string; totalTokens: number; totalCost: number }) => ({
-              agentId: a.agentId,
-              totals: { totalTokens: a.totalTokens || 0, totalCost: a.totalCost || 0 },
-            })),
-          },
-          totals: { totalCost: agg.totals.totalCost || 0, totalTokens: agg.totals.totalTokens || 0 },
-        }
-        _usageCache = { data, ts: Date.now() }
-        return data
-      }
-    } catch (e) {
-      core.common.logger.debug('data-fetchers', 'Usage DB query failed, falling back to gateway', { error: String(e) })
-    }
+  // DB-only: aggregate from cost_entries table
+  const agg = core.db.costQueries.getUsageAggregatesFromDb(30)
+  const data: UsageResult = {
+    source: 'gateway',
+    aggregates: {
+      daily: agg.daily.map((d: { date: string; tokens: number; cost: number; calls: number }) => ({
+        date: d.date,
+        tokens: d.tokens || 0,
+        cost: d.cost || 0,
+        messages: d.calls || 0,
+        toolCalls: 0,
+        errors: 0,
+      })),
+      byAgent: agg.byAgent.map((a: { agentId: string; totalTokens: number; totalCost: number }) => ({
+        agentId: a.agentId,
+        totals: { totalTokens: a.totalTokens || 0, totalCost: a.totalCost || 0 },
+      })),
+    },
+    totals: { totalCost: agg.totals.totalCost || 0, totalTokens: agg.totals.totalTokens || 0 },
   }
-
-  // Fallback: Gateway sessions.usage (for fresh installs with empty DB)
-  const result = await gwCallAsync(
-    'sessions.usage',
-    hasParams ? params : undefined,
-    30000,
-  ) as Record<string, unknown>
-  const data = { ...result, source: 'gateway' as const }
 
   if (!hasParams) {
     _usageCache = { data, ts: Date.now() }
