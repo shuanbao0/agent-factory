@@ -24,7 +24,14 @@ export async function DELETE(req: Request) {
     if (!sessionKey) {
       return NextResponse.json({ error: 'sessionKey required' }, { status: 400 })
     }
-    const result = await gwCallAsync('sessions.kill', { sessionKey })
+    let result
+    try {
+      // OpenClaw >= 2026: explicit delete API
+      result = await gwCallAsync('sessions.delete', { key: sessionKey })
+    } catch {
+      // Backward compatibility for older gateways (reset only)
+      result = await gwCallAsync('sessions.reset', { key: sessionKey })
+    }
     return NextResponse.json({ ...(result as object), ok: true })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 502 })

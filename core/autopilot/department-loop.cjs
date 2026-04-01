@@ -18,7 +18,7 @@ const { deptStateRepo } = require('../repo/dept-state.cjs')
 const { sessionRepo } = require('../repo/session.cjs')
 const { taskRepo } = require('../repo/task.cjs')
 const { agentMetaRepo } = require('../repo/agent-meta.cjs')
-const { sendToAgent, compactSession, killSession, queryAgentStatus } = require('./gateway-client.cjs')
+const { sendToAgent, compactSession, killSession, deleteSession, queryAgentStatus } = require('./gateway-client.cjs')
 const { buildDepartmentDirective } = require('./dept-directive.cjs')
 const { compressMemoryByRole, extractTaskMemory } = require('../agent/memory.cjs')
 const { checkBudget, trackTokenUsage, estimateTokensPerCycle, reserveBudget, reconcileBudget } = require('../observe/budget.cjs')
@@ -61,7 +61,7 @@ function getQualityGate() {
       readAgentActivity: () => sessionRepo.readAgentActivity(),
       loadDeptConfig: (deptId) => deptConfigRepo.load(deptId),
       readTaskOutput: (task) => taskRepo.readTaskOutput(task),
-      killSessionFn: killSession,
+      killSessionFn: deleteSession,
       logger,
     })
   }

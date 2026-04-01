@@ -8,6 +8,16 @@ interface SessionItem {
   updatedAt?: number
 }
 
+async function deleteOrResetSession(key: string) {
+  try {
+    // OpenClaw >= 2026: explicit delete API
+    return await gwCallAsync('sessions.delete', { key })
+  } catch {
+    // Backward compatibility for older gateways (reset only)
+    return await gwCallAsync('sessions.reset', { key })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { maxAgeDays = 7 } = await req.json().catch(() => ({}))
@@ -26,7 +36,7 @@ export async function POST(req: Request) {
     for (let i = 0; i < toKill.length; i += BATCH) {
       const batch = toKill.slice(i, i + BATCH)
       const results = await Promise.allSettled(
-        batch.map(s => gwCallAsync('sessions.kill', { sessionKey: s.key }))
+        batch.map(s => deleteOrResetSession(s.key))
       )
       for (let j = 0; j < results.length; j++) {
         if (results[j].status === 'fulfilled') cleaned++

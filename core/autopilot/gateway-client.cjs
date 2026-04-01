@@ -136,10 +136,24 @@ function compactSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
 }
 
 /**
- * Kill (reset) a session via Gateway.
+ * Reset a session via Gateway (keep session entry, clear context).
+ */
+function resetSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
+  return getPool().sendCommand('sessions.reset', { key: sessionKey }, timeoutMs)
+}
+
+/**
+ * Delete a session via Gateway (remove session entry).
+ */
+function deleteSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
+  return getPool().sendCommand('sessions.delete', { key: sessionKey, deleteTranscript: false }, timeoutMs)
+}
+
+/**
+ * Backward compatibility: existing callers expect killSession to reset context.
  */
 function killSession(sessionKey, timeoutMs = DEFAULT_COMPACT_TIMEOUT_MS) {
-  return getPool().sendCommand('sessions.reset', { key: sessionKey }, timeoutMs)
+  return resetSession(sessionKey, timeoutMs)
 }
 
 /**
@@ -180,4 +194,14 @@ function closePool() {
   }
 }
 
-module.exports = { sendToAgent, sendToCeo, compactSession, killSession, parseStatusResponse, queryAgentStatus, closePool }
+module.exports = {
+  sendToAgent,
+  sendToCeo,
+  compactSession,
+  resetSession,
+  deleteSession,
+  killSession,
+  parseStatusResponse,
+  queryAgentStatus,
+  closePool,
+}
