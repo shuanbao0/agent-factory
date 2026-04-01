@@ -40,6 +40,7 @@ type PluginsConfig = {
 type ProviderModels = {
   models: Record<string, string>  // alias → modelId
   hasApiKey: boolean
+  baseUrl?: string
   authMode?: 'setup-token' | 'oauth' | 'env-var' | 'config' | 'none'
   authDetail?: string
   hasSetupToken?: boolean
@@ -90,6 +91,9 @@ export default function PluginsTab() {
   const [addingModel, setAddingModel] = useState<Record<string, { alias: string; modelId: string }>>({})
   // Which provider auth panels are open
   const [editingAuth, setEditingAuth] = useState<Set<string>>(new Set())
+  // Base URL edits per provider
+  const [baseUrlEdits, setBaseUrlEdits] = useState<Record<string, string>>({})
+  const [baseUrlSaving, setBaseUrlSaving] = useState<string | null>(null)
 
   const fetchPlugins = useCallback(async () => {
     try {
@@ -251,6 +255,22 @@ export default function PluginsTab() {
       await fetchModels()
     } catch { /* ignore */ }
     finally { setSaving(null) }
+  }
+
+  async function saveBaseUrl(provider: string) {
+    const baseUrl = baseUrlEdits[provider]?.trim() || ''
+    setBaseUrlSaving(provider)
+    try {
+      await fetch('/api/models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'setBaseUrl', provider, baseUrl: baseUrl || null }),
+      })
+      setBaseUrlEdits(prev => { const n = { ...prev }; delete n[provider]; return n })
+      setDirty(true)
+      await fetchModels()
+    } catch { /* ignore */ }
+    finally { setBaseUrlSaving(null) }
   }
 
   async function setDefaultModel(ref: string) {
@@ -770,6 +790,26 @@ export default function PluginsTab() {
                                     {isAdding ? t('common.cancel') : t('settings.pluginAddModel')}
                                   </button>
                                 </div>
+                                {/* Base URL */}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] text-muted-foreground shrink-0 w-16">{t('settings.baseUrl')}</span>
+                                  <input
+                                    type="text"
+                                    value={baseUrlEdits[plugin.id] ?? pm?.baseUrl ?? ''}
+                                    onChange={e => setBaseUrlEdits(prev => ({ ...prev, [plugin.id]: e.target.value }))}
+                                    placeholder={PROVIDERS.find(p => p.id === plugin.id)?.baseUrl || t('settings.providerBaseUrlPlaceholder')}
+                                    className="flex-1 px-2 py-1 text-xs font-mono bg-muted border border-border rounded-md focus:ring-2 focus:ring-primary/50 focus:outline-none"
+                                  />
+                                  {baseUrlEdits[plugin.id] !== undefined && (
+                                    <button
+                                      onClick={() => saveBaseUrl(plugin.id)}
+                                      disabled={baseUrlSaving === plugin.id}
+                                      className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 shrink-0"
+                                    >
+                                      {baseUrlSaving === plugin.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                    </button>
+                                  )}
+                                </div>
                                 {modelEntries.map(([alias, modelId]) => {
                                   const ref = `${plugin.id}/${alias}`
                                   const isDefault = ref === defaultModel
@@ -819,7 +859,7 @@ export default function PluginsTab() {
                                                     await fetch('/api/models', {
                                                       method: 'PUT',
                                                       headers: { 'Content-Type': 'application/json' },
-                                                      body: JSON.stringify({ action: 'addModel', provider: plugin.id, alias: cm.alias, modelId: cm.id }),
+                                                      body: JSON.stringify({ action: 'addModel', provider: plugin.id, alias: cm.alias, modelId: cm.id, baseUrl: provDef?.baseUrl, api: provDef?.api }),
                                                     })
                                                     setDirty(true)
                                                     await fetchModels()

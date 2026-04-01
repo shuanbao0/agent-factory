@@ -64,7 +64,7 @@ function syncOpenClawConfig(modelsConfig, providerDefs) {
       // 1. Sync models.providers → openclaw.json models.providers
       for (const [providerName, providerConfig] of Object.entries(modelsConfig.providers)) {
         const providerDef = findProviderDef(providerName)
-        if (providerDef && providerDef.builtin) continue
+        if (providerDef && providerDef.builtin && !providerConfig.baseUrl) continue
 
         const existing = existingProviders[providerName] || {}
         const ocProvider = {}
@@ -283,11 +283,26 @@ function applyMutation(config, body) {
       }
     }
   } else if (body.action === 'addModel') {
-    const { provider, alias, modelId } = body
+    const { provider, alias, modelId, baseUrl, api } = body
+    if (!config.providers[provider]) {
+      config.providers[provider] = {
+        apiKey: `\${${provider.toUpperCase()}_API_KEY}`,
+        ...(baseUrl ? { baseUrl } : {}),
+        ...(api ? { api } : {}),
+        models: {},
+      }
+    }
+    config.providers[provider].models[alias] = modelId
+  } else if (body.action === 'setBaseUrl') {
+    const { provider, baseUrl } = body
     if (!config.providers[provider]) {
       config.providers[provider] = { apiKey: `\${${provider.toUpperCase()}_API_KEY}`, models: {} }
     }
-    config.providers[provider].models[alias] = modelId
+    if (baseUrl) {
+      config.providers[provider].baseUrl = baseUrl
+    } else {
+      delete config.providers[provider].baseUrl
+    }
   } else if (body.action === 'deleteModel') {
     const { provider, alias } = body
     if (config.providers[provider]) {

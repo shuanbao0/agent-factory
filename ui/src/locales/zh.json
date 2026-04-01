@@ -309,6 +309,7 @@
     "credentials": "凭证",
     "setupToken": "Setup Token",
     "baseUrl": "服务地址",
+    "providerBaseUrlPlaceholder": "使用默认地址",
     "selectProvider": "选择 Provider...",
     "comingSoon": "即将支持 — 请先使用 API Key",
     "language": "语言",

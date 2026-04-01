@@ -309,6 +309,7 @@
     "credentials": "Credentials",
     "setupToken": "Setup Token",
     "baseUrl": "Base URL",
+    "providerBaseUrlPlaceholder": "Use default URL",
     "selectProvider": "Select a provider...",
     "comingSoon": "Coming soon — use API Key for now",
     "language": "Language",
