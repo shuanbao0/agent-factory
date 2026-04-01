@@ -45,24 +45,13 @@ export interface AgentsResult {
 }
 
 export async function fetchAgentsData(): Promise<AgentsResult> {
-  // 1. Agent list: DB-first, fallback to filesystem repo
+  // 1. Agent list from DB
   type AgentRow = { id: string; templateId?: string; name: string; role?: string; description?: string; department?: string }
   let agentList: AgentRow[] = []
   let defaultAgentId = ''
   try {
     agentList = core.db.agentQueries.findAllAgents()
   } catch (e) { core.common.logger.debug('data-fetchers', 'Agent DB query failed', { error: String(e) }) }
-
-  if (agentList.length === 0) {
-    // Fallback: filesystem repo (N+1 reads)
-    try {
-      const agentIds = core.repo.agentMetaRepo.listAllAgentIds()
-      for (const id of agentIds) {
-        const meta = core.repo.agentMetaRepo.readMeta(id)
-        if (meta) agentList.push({ ...(meta as AgentRow), id })
-      }
-    } catch (e) { core.common.logger.debug('data-fetchers', 'Agent metadata read failed', { error: String(e) }) }
-  }
 
   // Read defaultAgent from config
   try {
@@ -347,36 +336,17 @@ export interface CostsResult {
 }
 
 export async function fetchCostsData(): Promise<CostsResult & { summary?: unknown; totalInputTokens?: number; totalOutputTokens?: number }> {
-  // DB-first: direct SQL queries (cost_entries table)
-  try {
-    const result = core.db.costQueries.queryCostEntries({ from: _last30dDate() })
-    const entries = result.entries.slice(-200)
-    const summary = core.db.costQueries.getDailySummaryFromDb(30)
-    return {
-      entries,
-      totalCost: result.totalCost,
-      summary,
-      totalInputTokens: result.totalInputTokens || 0,
-      totalOutputTokens: result.totalOutputTokens || 0,
-      source: 'filesystem',
-    }
-  } catch (e) { core.common.logger.debug('data-fetchers', 'Costs DB query failed, fallback', { error: String(e) }) }
-
-  // Fallback: observe layer (which also delegates to DB, but has its own error handling)
-  try {
-    const result = core.observe.queryCosts()
-    const entries = result.entries.slice(-200)
-    const summary = core.observe.getDailySummary(30)
-    return {
-      entries,
-      totalCost: result.totalCost,
-      summary,
-      totalInputTokens: result.totalInputTokens || 0,
-      totalOutputTokens: result.totalOutputTokens || 0,
-      source: 'filesystem',
-    }
-  } catch (e) { core.common.logger.debug('data-fetchers', 'Costs fallback read failed', { error: String(e) }) }
-  return { entries: [], totalCost: 0, source: 'filesystem' }
+  const result = core.db.costQueries.queryCostEntries({ from: _last30dDate() })
+  const entries = result.entries.slice(-200)
+  const summary = core.db.costQueries.getDailySummaryFromDb(30)
+  return {
+    entries,
+    totalCost: result.totalCost,
+    summary,
+    totalInputTokens: result.totalInputTokens || 0,
+    totalOutputTokens: result.totalOutputTokens || 0,
+    source: 'filesystem',
+  }
 }
 
 // ── Alerts ──────────────────────────────────────────────────────

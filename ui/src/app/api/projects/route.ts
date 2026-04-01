@@ -7,23 +7,8 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   try {
     const dept = req.nextUrl.searchParams.get('department')
-
-    // DB-first: indexed query
-    try {
-      const projects = core.db.projectQueries.findAllProjects(dept ? { department: dept } : {})
-      if (projects.length > 0) {
-        return NextResponse.json({ projects, source: 'db' })
-      }
-    } catch { /* DB unavailable, fall through */ }
-
-    // Fallback: filesystem directory scan
-    let projects = core.common.projectService.listProjects()
-    if (dept) {
-      projects = projects.filter((p: Record<string, unknown>) =>
-        p.department === dept || (p.id as string)?.startsWith(dept + '/')
-      )
-    }
-    return NextResponse.json({ projects, source: 'filesystem' })
+    const projects = core.db.projectQueries.findAllProjects(dept ? { department: dept } : {})
+    return NextResponse.json({ projects, source: 'db' })
   } catch (e) {
     return NextResponse.json({ error: String(e), projects: [], source: 'error' }, { status: 500 })
   }
