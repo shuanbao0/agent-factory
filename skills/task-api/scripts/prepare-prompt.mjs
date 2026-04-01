@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * prepare-prompt.mjs — 为 Claude Code 执行生成 PROMPT.md
+ * prepare-prompt.mjs — 为 Codex 执行生成 PROMPT.md
  *
  * 从任务系统读取任务信息，加载任务标准、部门标准、项目标准，
- * 生成标准化的 PROMPT.md 供 Claude Code 使用。
+ * 生成标准化的 PROMPT.md 供 Codex 使用。
  *
  * Usage:
- *   node skills/claude-code/scripts/prepare-prompt.mjs --task <taskId> --workdir <path>
- *   node skills/claude-code/scripts/prepare-prompt.mjs --goal "描述" --workdir <path>
- *   node skills/claude-code/scripts/prepare-prompt.mjs --goal "描述" --dept apple-dev --workdir <path>
+ *   node skills/task-api/scripts/prepare-prompt.mjs --task <taskId> --workdir <path>
+ *   node skills/task-api/scripts/prepare-prompt.mjs --goal "描述" --workdir <path>
+ *   node skills/task-api/scripts/prepare-prompt.mjs --goal "描述" --dept apple-dev --workdir <path>
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'

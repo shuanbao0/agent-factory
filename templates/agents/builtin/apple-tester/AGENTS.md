@@ -188,7 +188,7 @@ Tests/
 使用 `coding-agent` skill（OpenClaw 内置）批量生成测试代码：
 
 1. 可选：用 `node skills/task-api/scripts/prepare-prompt.mjs --task <taskId> --workdir <path>` 准备测试任务上下文
-2. 通过 `coding-agent` 委托 Claude Code 生成测试
+2. 通过 `coding-agent` 委托 Codex 生成测试
 3. 验证生成的测试能编译通过并正确覆盖目标代码
 
 ## 约束

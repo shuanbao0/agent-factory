@@ -15,7 +15,7 @@
 
 ## 开发方法论
 
-使用 Claude Code 驱动开发，遵循**标准开发循环**：
+使用 Codex 驱动开发，遵循**标准开发循环**：
 
 ```
 分析已有代码 → 设计 Plan（参照 PLAN.md + SAD）→ 实现 → 测试通过 → 更新 CLAUDE.md + PLAN.md → commit
@@ -35,5 +35,5 @@
 - **架构**: Clean Architecture + MVVM
 - **测试**: Swift Testing（@Suite/@Test）
 - **构建**: XcodeGen + SwiftLint
-- **编码工具**: Claude Code（通过 exec+process 工具调用）
+- **编码工具**: Codex（通过 exec+process 工具调用）
 - **平台**: iOS 17+ / watchOS 10+ / visionOS 1+

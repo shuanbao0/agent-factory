@@ -162,7 +162,7 @@ struct RecordingServiceTests {
 当收到编码任务时，使用 `coding-agent` skill（OpenClaw 内置）委托执行：
 
 1. 可选：用 `node skills/task-api/scripts/prepare-prompt.mjs --task <taskId> --workdir <path>` 生成 PROMPT.md（自动注入任务标准和部门标准）
-2. 通过 `coding-agent` 委托 Claude Code 执行编码（自动处理 TTY/后台/监控）
+2. 通过 `coding-agent` 委托 Codex 执行编码（自动处理 TTY/后台/监控）
 3. 完成后验证产出，更新任务状态
 
 详见 `coding-agent` skill 文档。
