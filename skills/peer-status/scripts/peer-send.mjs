@@ -223,6 +223,8 @@ function main() {
 
   const sessionKey = `agent:${to}:main`
   let idempotencyKey = randomUUID()
+  const source = `peer:${from}->${to}`
+  const pairId = randomUUID()
 
   // ── Layer 1 & 2: Analyze session context (local file read, < 1ms) ──
   const { action, reason } = analyzeSessionContext(to, sessionKey)
@@ -247,6 +249,28 @@ function main() {
   let resolved = false
   let pendingAction = action  // Track what we need to do after connect
   let retried = false         // Track if we already retried after empty response
+  let requestLogged = false   // Ensure request row is written once per peer-send invocation
+
+  function recordRequestMessage() {
+    if (requestLogged) return
+    requestLogged = true
+    try {
+      insertMessage({
+        ts: new Date().toISOString(),
+        agentId: to,
+        sessionKey,
+        messageType: 'peer-message',
+        direction: 'request',
+        channel: 'peer-send',
+        content: message.slice(0, 10240),
+        source,
+        fromAgent: from,
+        pairId,
+      })
+    } catch (err) {
+      process.stderr.write(`[peer-send] Request DB write failed: ${err.message}\n`)
+    }
+  }
 
   const finish = (output, exitCode = 0) => {
     if (resolved) return
@@ -379,6 +403,8 @@ function main() {
         finish(JSON.stringify({ ok: false, error: `chat.send failed: ${f.error?.message}` }), 1)
         return
       }
+      // Record outbound peer message once chat.send is accepted.
+      recordRequestMessage()
 
       // In no-wait mode, confirm and exit
       if (noWait) {
@@ -426,12 +452,8 @@ function main() {
           const model = usage.model || 'unknown'
           const cost = calculateCost(model, { inputTokens, outputTokens })
           const roundedCost = Math.round(cost * 1_000_000) / 1_000_000
-          const pairId = randomUUID()
-          const source = `peer:${from}->${to}`
-
-          insertMessage({ ts: new Date().toISOString(), agentId: to, sessionKey,
-            messageType: 'peer-message', direction: 'request', channel: 'peer-send',
-            content: message.slice(0, 10240), fromAgent: from, pairId })
+          // In case chat.send ack was dropped but final arrives, backfill request row.
+          recordRequestMessage()
           insertMessage({ ts: new Date().toISOString(), agentId: to, sessionKey,
             messageType: 'peer-message', direction: 'response', channel: 'peer-send',
             content: text.slice(0, 10240), ok: 1, model, inputTokens, outputTokens,

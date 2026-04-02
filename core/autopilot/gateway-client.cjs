@@ -42,6 +42,86 @@ function getCalcCost() {
 }
 
 const { deriveMessageType, deriveSource } = require('../db/queries/message-queries.cjs')
+const USAGE_FALLBACK_TIMEOUT_MS = 15000
+const SESSIONS_LIST_LIMIT = 200
+
+function _toNumber(value) {
+  return (typeof value === 'number' && Number.isFinite(value)) ? value : 0
+}
+
+function _normalizeUsage(rawUsage, modelHint) {
+  const usage = (rawUsage && typeof rawUsage === 'object') ? rawUsage : {}
+  const inputTokens = _toNumber(usage.input ?? usage.inputTokens ?? usage.input_tokens)
+  const outputTokens = _toNumber(usage.output ?? usage.outputTokens ?? usage.output_tokens)
+  const cacheRead = _toNumber(usage.cacheRead ?? usage.cache_read ?? usage.cache_read_input_tokens)
+  const cacheWrite = _toNumber(usage.cacheWrite ?? usage.cache_write ?? usage.cache_creation_input_tokens)
+  const totalFromPayload = _toNumber(usage.totalTokens ?? usage.total ?? usage.total_tokens)
+  const totalTokens = totalFromPayload || (inputTokens + outputTokens + cacheRead + cacheWrite)
+  const model = (typeof usage.model === 'string' && usage.model.trim()) ? usage.model : (modelHint || 'unknown')
+  const nestedCost = (usage.cost && typeof usage.cost === 'object')
+    ? _toNumber(usage.cost.total ?? usage.cost.usd ?? usage.cost.value)
+    : 0
+  const flatCost = _toNumber(usage.cost)
+  const costUsd = nestedCost || flatCost
+  const hasUsage = totalTokens > 0 || inputTokens > 0 || outputTokens > 0 || costUsd > 0
+
+  return { inputTokens, outputTokens, totalTokens, model, costUsd, hasUsage }
+}
+
+function _extractUsageFromSessionMessages(messages) {
+  if (!Array.isArray(messages)) return null
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (!msg || msg.role !== 'assistant') continue
+    const normalized = _normalizeUsage(msg.usage, msg.model)
+    if (normalized.hasUsage) return normalized
+  }
+  return null
+}
+
+async function _fetchUsageFromSessionsGet(sessionKey) {
+  try {
+    const res = await getPool().sendCommand('sessions.get', { key: sessionKey }, USAGE_FALLBACK_TIMEOUT_MS)
+    if (!res.ok) return null
+    return _extractUsageFromSessionMessages(res.payload?.messages)
+  } catch (err) {
+    logger.debug('gateway-client', 'sessions.get usage fallback failed', { sessionKey, error: err.message })
+    return null
+  }
+}
+
+async function _fetchUsageFromSessionsList(sessionKey) {
+  try {
+    const res = await getPool().sendCommand('sessions.list', { limit: SESSIONS_LIST_LIMIT }, USAGE_FALLBACK_TIMEOUT_MS)
+    if (!res.ok) return null
+    const sessions = Array.isArray(res.payload?.sessions) ? res.payload.sessions : []
+    const session = sessions.find(s => s && s.key === sessionKey)
+    if (!session) return null
+    const inputTokens = _toNumber(session.inputTokens)
+    const outputTokens = _toNumber(session.outputTokens)
+    const totalTokens = _toNumber(session.totalTokens) || (inputTokens + outputTokens)
+    const costUsd = _toNumber(session.estimatedCostUsd)
+    if (totalTokens <= 0 && inputTokens <= 0 && outputTokens <= 0 && costUsd <= 0) return null
+    const model = (typeof session.model === 'string' && session.model.trim()) ? session.model : 'unknown'
+    return { inputTokens, outputTokens, totalTokens, model, costUsd, hasUsage: true }
+  } catch (err) {
+    logger.debug('gateway-client', 'sessions.list usage fallback failed', { sessionKey, error: err.message })
+    return null
+  }
+}
+
+async function _resolveUsage(result, sessionKey) {
+  const direct = _normalizeUsage(result.usage, result.model)
+  if (direct.hasUsage || !result.ok) return direct
+
+  const fromSession = await _fetchUsageFromSessionsGet(sessionKey)
+  if (fromSession) return fromSession
+
+  const fromList = await _fetchUsageFromSessionsList(sessionKey)
+  if (fromList) return fromList
+
+  return direct
+}
 
 /**
  * Send a message to any agent via the connection pool.
@@ -73,49 +153,53 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
 
   // 调用实际 pool 方法，返回后记录 response + cost
   return getPool().sendToAgent(agentId, sessionKey, message, timeoutMs).then(result => {
-    try {
-      const usage = result.usage || {}
-      const inputTokens = usage.input || usage.inputTokens || 0
-      const outputTokens = usage.output || usage.outputTokens || 0
-      const model = result.model || usage.model || 'unknown'
-      const cost = getCalcCost()(model, { inputTokens, outputTokens })
-      const roundedCost = Math.round(cost * 1_000_000) / 1_000_000
-      const source = deriveSource(agentId, sessionKey)
+    // Keep DB/cost tracking off the critical path.
+    Promise.resolve().then(async () => {
+      try {
+        const usage = await _resolveUsage(result, sessionKey)
+        const inputTokens = usage.inputTokens
+        const outputTokens = usage.outputTokens
+        const model = result.model || usage.model || 'unknown'
+        const computedCost = getCalcCost()(model, { inputTokens, outputTokens })
+        const rawCost = usage.costUsd > 0 ? usage.costUsd : computedCost
+        const roundedCost = Math.round(rawCost * 1_000_000) / 1_000_000
+        const source = deriveSource(agentId, sessionKey)
 
-      // 记录 response 消息
-      getMessageInsert()({
-        ts: new Date().toISOString(),
-        agentId, sessionKey, messageType,
-        direction: 'response',
-        channel: 'gateway-pool',
-        content: (result.text || result.error || '').slice(0, 10240),
-        ok: result.ok ? 1 : 0,
-        error: result.error || null,
-        model, inputTokens, outputTokens,
-        totalTokens: usage.totalTokens || (inputTokens + outputTokens),
-        cost: roundedCost,
-        source, pairId,
-      })
-
-      // 记录 cost（替代各处的 trackCost 调用）
-      if (inputTokens > 0 || outputTokens > 0) {
-        getCostInsert()({
+        // 记录 response 消息
+        getMessageInsert()({
           ts: new Date().toISOString(),
-          date: new Date().toISOString().slice(0, 10),
+          agentId, sessionKey, messageType,
+          direction: 'response',
+          channel: 'gateway-pool',
+          content: (result.text || result.error || '').slice(0, 10240),
+          ok: result.ok ? 1 : 0,
+          error: result.error || null,
           model, inputTokens, outputTokens,
+          totalTokens: usage.totalTokens || (inputTokens + outputTokens),
           cost: roundedCost,
-          source, agentId,
+          source, pairId,
         })
 
-        // 发射 cost.tracked 事件
-        try {
-          const { eventBus } = require('../observe/event-bus.cjs')
-          eventBus.fire('cost.tracked', { model, cost: roundedCost, source })
-        } catch { /* event bus not available */ }
+        // 记录 cost（替代各处的 trackCost 调用）
+        if (inputTokens > 0 || outputTokens > 0) {
+          getCostInsert()({
+            ts: new Date().toISOString(),
+            date: new Date().toISOString().slice(0, 10),
+            model, inputTokens, outputTokens,
+            cost: roundedCost,
+            source, agentId,
+          })
+
+          // 发射 cost.tracked 事件
+          try {
+            const { eventBus } = require('../observe/event-bus.cjs')
+            eventBus.fire('cost.tracked', { model, cost: roundedCost, source })
+          } catch { /* event bus not available */ }
+        }
+      } catch (err) {
+        logger.debug('gateway-client', 'Message/cost insert (response) failed', { error: err.message })
       }
-    } catch (err) {
-      logger.debug('gateway-client', 'Message/cost insert (response) failed', { error: err.message })
-    }
+    })
 
     return result  // 原样返回，不影响主流程
   })

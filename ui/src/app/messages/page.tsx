@@ -207,8 +207,8 @@ export default function MessagesPage() {
     // 2. Direct pair channels from messages
     const pairMap = new Map<string, { agents: [string, string]; msgs: AgentMessage[] }>()
     for (const m of messages) {
-      if (m.fromAgent === 'user' || m.fromAgent === 'gateway' || m.fromAgent === 'system') continue
-      if (m.toAgent === 'user' || m.toAgent === 'gateway' || m.toAgent === 'system') continue
+      if (m.fromAgent === 'user' || m.fromAgent === 'gateway') continue
+      if (m.toAgent === 'user' || m.toAgent === 'gateway') continue
       const pairKey = [m.fromAgent, m.toAgent].sort().join(':')
       if (!pairMap.has(pairKey)) {
         pairMap.set(pairKey, {
