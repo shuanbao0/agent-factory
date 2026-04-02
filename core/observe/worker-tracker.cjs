@@ -122,7 +122,7 @@ function trackWorkerSessions(deptId, agentIds) {
         })
 
         // Cost entry
-        if (totalTokens > 0) {
+        if (totalTokens > 0 || cost > 0) {
           getInsertCostEntry()({
             ts,
             date: ts.slice(0, 10),

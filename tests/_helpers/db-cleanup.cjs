@@ -21,6 +21,7 @@ function cleanTestDataFromDb() {
       db.prepare("DELETE FROM agents WHERE id LIKE 'zzz-test-%'").run()
       db.prepare("DELETE FROM dept_config WHERE id LIKE 'zzz-test-%'").run()
       db.prepare("DELETE FROM cost_entries WHERE agent_id LIKE 'zzz-test-%'").run()
+      db.prepare("DELETE FROM cost_entries WHERE source LIKE 'zzz-test-%'").run()
       db.prepare("DELETE FROM messages WHERE agent_id LIKE 'zzz-test-%'").run()
       db.prepare("DELETE FROM dept_cycles WHERE dept_id LIKE 'zzz-test-%'").run()
       db.prepare("DELETE FROM kpi_snapshots WHERE dept_id LIKE 'zzz-test-%'").run()

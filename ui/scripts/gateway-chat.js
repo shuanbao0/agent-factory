@@ -62,6 +62,11 @@ const config = getConfig()
 let runId = randomUUID()
 let fullText = ''
 let resolved = false
+let reqSeq = 0
+const pendingReq = new Map()
+
+const USAGE_FALLBACK_TIMEOUT_MS = 3000
+const SESSIONS_LIST_LIMIT = 200
 
 const finish = (event, data) => {
   if (resolved) return
@@ -91,9 +96,152 @@ const ws = new WebSocket(`ws://127.0.0.1:${config.port}`, {
   headers: { Origin: `http://127.0.0.1:${config.port}` }
 })
 
+function _toNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value)
+    if (Number.isFinite(n)) return n
+  }
+  return 0
+}
+
+function _normalizeUsage(rawUsage, modelHint) {
+  const usage = (rawUsage && typeof rawUsage === 'object') ? rawUsage : {}
+  const inputTokens = _toNumber(usage.input ?? usage.inputTokens ?? usage.input_tokens)
+  const outputTokens = _toNumber(usage.output ?? usage.outputTokens ?? usage.output_tokens)
+  const cacheRead = _toNumber(usage.cacheRead ?? usage.cache_read ?? usage.cache_read_input_tokens)
+  const cacheWrite = _toNumber(usage.cacheWrite ?? usage.cache_write ?? usage.cache_creation_input_tokens)
+  const totalFromPayload = _toNumber(usage.totalTokens ?? usage.total ?? usage.total_tokens)
+  const totalTokens = totalFromPayload || (inputTokens + outputTokens + cacheRead + cacheWrite)
+  const model = (typeof usage.model === 'string' && usage.model.trim()) ? usage.model : (modelHint || 'unknown')
+  const nestedCost = (usage.cost && typeof usage.cost === 'object')
+    ? _toNumber(usage.cost.total ?? usage.cost.usd ?? usage.cost.value)
+    : 0
+  const flatCost = _toNumber(usage.cost)
+  const costUsd = nestedCost || flatCost
+  const hasUsage = totalTokens > 0 || inputTokens > 0 || outputTokens > 0 || costUsd > 0
+
+  return { inputTokens, outputTokens, totalTokens, model, costUsd, hasUsage }
+}
+
+function _extractUsageFromSessionMessages(messages) {
+  if (!Array.isArray(messages)) return null
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (!msg || msg.role !== 'assistant') continue
+    const normalized = _normalizeUsage(msg.usage, msg.model)
+    if (normalized.hasUsage) return normalized
+  }
+  return null
+}
+
+function _sendCommand(method, params, timeoutMs = USAGE_FALLBACK_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    if (ws.readyState !== WebSocket.OPEN) {
+      reject(new Error('gateway websocket not open'))
+      return
+    }
+
+    const id = `r${++reqSeq}`
+    const timeout = setTimeout(() => {
+      pendingReq.delete(id)
+      reject(new Error(`${method} timeout`))
+    }, timeoutMs)
+
+    pendingReq.set(id, { resolve, reject, timeout })
+
+    try {
+      ws.send(JSON.stringify({ type: 'req', id, method, params }))
+    } catch (err) {
+      clearTimeout(timeout)
+      pendingReq.delete(id)
+      reject(err)
+    }
+  })
+}
+
+async function _resolveUsage(payload) {
+  const direct = _normalizeUsage(payload?.usage || payload?.message?.usage, payload?.message?.model || payload?.model || 'unknown')
+  if (direct.hasUsage) return direct
+
+  try {
+    const res = await _sendCommand('sessions.get', { key: sessionKey })
+    if (res.ok) {
+      const fromSession = _extractUsageFromSessionMessages(res.payload?.messages)
+      if (fromSession) return fromSession
+    }
+  } catch (err) {
+    console.error('[chat-debug] sessions.get fallback failed:', err.message)
+  }
+
+  try {
+    const res = await _sendCommand('sessions.list', { limit: SESSIONS_LIST_LIMIT })
+    if (res.ok) {
+      const sessions = Array.isArray(res.payload?.sessions) ? res.payload.sessions : []
+      const session = sessions.find(s => s && s.key === sessionKey)
+      if (session) {
+        const inputTokens = _toNumber(session.inputTokens)
+        const outputTokens = _toNumber(session.outputTokens)
+        const totalTokens = _toNumber(session.totalTokens) || (inputTokens + outputTokens)
+        const costUsd = _toNumber(session.estimatedCostUsd)
+        if (totalTokens > 0 || inputTokens > 0 || outputTokens > 0 || costUsd > 0) {
+          const model = (typeof session.model === 'string' && session.model.trim()) ? session.model : 'unknown'
+          return { inputTokens, outputTokens, totalTokens, model, costUsd, hasUsage: true }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[chat-debug] sessions.list fallback failed:', err.message)
+  }
+
+  return direct
+}
+
+async function _trackChatToDb(payload, text) {
+  if (!_insertMessage) return
+
+  try {
+    const usage = await _resolveUsage(payload)
+    const agentId = sessionKey.split(':')[1] || 'unknown'
+    const inputTokens = usage.inputTokens || 0
+    const outputTokens = usage.outputTokens || 0
+    const model = usage.model || 'unknown'
+    const computedCost = _calculateCost ? _calculateCost(model, { inputTokens, outputTokens }) : 0
+    const rawCost = usage.costUsd > 0 ? usage.costUsd : computedCost
+    const roundedCost = Math.round(rawCost * 1_000_000) / 1_000_000
+    const pairId = randomUUID()
+    const source = `dashboard:${agentId}`
+
+    _insertMessage({ ts: new Date().toISOString(), agentId, sessionKey,
+      messageType: 'dashboard-chat', direction: 'request', channel: 'gateway-chat',
+      content: message.slice(0, 10240), pairId })
+    _insertMessage({ ts: new Date().toISOString(), agentId, sessionKey,
+      messageType: 'dashboard-chat', direction: 'response', channel: 'gateway-chat',
+      content: text.slice(0, 10240), ok: 1, model, inputTokens, outputTokens,
+      totalTokens: usage.totalTokens || (inputTokens + outputTokens), cost: roundedCost,
+      source, pairId })
+
+    if (_insertCostEntry && (inputTokens > 0 || outputTokens > 0 || roundedCost > 0)) {
+      _insertCostEntry({ ts: new Date().toISOString(), date: new Date().toISOString().slice(0, 10),
+        model, inputTokens, outputTokens, cost: roundedCost,
+        source, agentId })
+    }
+  } catch (err) {
+    console.error('[gateway-chat] DB write failed:', err.message)
+  }
+}
+
 ws.on('message', (data) => {
   let f
   try { f = JSON.parse(data.toString()) } catch { return }
+
+  if (f.type === 'res' && pendingReq.has(f.id)) {
+    const p = pendingReq.get(f.id)
+    pendingReq.delete(f.id)
+    clearTimeout(p.timeout)
+    p.resolve(f)
+    return
+  }
 
   // Gateway 发起握手，收到 challenge 后才发送 connect
   if (f.type === 'event' && f.event === 'connect.challenge') {
@@ -158,38 +306,13 @@ ws.on('message', (data) => {
         ?.map(b => b.text || '')
         ?.join('') || fullText
 
-      // Record to DB (fire-and-forget)
-      if (_insertMessage) {
-        try {
-          const usage = p.usage || p.message?.usage || {}
-          const agentId = sessionKey.split(':')[1] || 'unknown'
-          const inputTokens = usage.input || usage.inputTokens || 0
-          const outputTokens = usage.output || usage.outputTokens || 0
-          const model = usage.model || 'unknown'
-          const cost = _calculateCost ? _calculateCost(model, { inputTokens, outputTokens }) : 0
-          const roundedCost = Math.round(cost * 1_000_000) / 1_000_000
-          const pairId = randomUUID()
-
-          _insertMessage({ ts: new Date().toISOString(), agentId, sessionKey,
-            messageType: 'dashboard-chat', direction: 'request', channel: 'gateway-chat',
-            content: message.slice(0, 10240), pairId })
-          _insertMessage({ ts: new Date().toISOString(), agentId, sessionKey,
-            messageType: 'dashboard-chat', direction: 'response', channel: 'gateway-chat',
-            content: text.slice(0, 10240), ok: 1, model, inputTokens, outputTokens,
-            totalTokens: inputTokens + outputTokens, cost: roundedCost,
-            source: `dashboard:${agentId}`, pairId })
-          if (_insertCostEntry && (inputTokens > 0 || outputTokens > 0)) {
-            _insertCostEntry({ ts: new Date().toISOString(), date: new Date().toISOString().slice(0, 10),
-              model, inputTokens, outputTokens, cost: roundedCost,
-              source: `dashboard:${agentId}`, agentId })
-          }
-        } catch (err) {
-          console.error('[gateway-chat] DB write failed:', err.message)
-        }
-      }
-
-      clearTimeout(timer)
-      finish('final', { text, usage: p.usage })
+      // Keep ws alive briefly for usage fallback queries, then emit final.
+      Promise.resolve()
+        .then(() => _trackChatToDb(p, text))
+        .finally(() => {
+          clearTimeout(timer)
+          finish('final', { text, usage: p.usage })
+        })
     } else if (p.state === 'error') {
       clearTimeout(timer)
       finish('error', { error: p.errorMessage || 'Agent error' })

@@ -1,11 +1,16 @@
 'use strict'
 
-const { describe, it } = require('node:test')
+const { describe, it, afterEach } = require('node:test')
 const assert = require('node:assert/strict')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 const { calculateCost, trackCost, queryCosts, getDailySummary, PRICING } = require('../../core/observe/cost-tracker.cjs')
 
 describe('CostTracker', () => {
+  afterEach(() => {
+    cleanTestDataFromDb()
+  })
+
   it('PRICING is an object with model keys', () => {
     assert.equal(typeof PRICING, 'object')
     assert.ok(PRICING !== null)
@@ -49,6 +54,7 @@ describe('CostTracker', () => {
       model: 'claude-sonnet-4-6',
       usage: { inputTokens: 100, outputTokens: 50 },
       source: uniqueSource,
+      agentId: `zzz-test-agent-${Date.now()}`,
     })
 
     const result = queryCosts({ source: uniqueSource })

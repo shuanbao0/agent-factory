@@ -181,7 +181,7 @@ function sendToAgent(agentId, sessionKey, message, timeoutMs = DEFAULT_AGENT_TIM
         })
 
         // 记录 cost（替代各处的 trackCost 调用）
-        if (inputTokens > 0 || outputTokens > 0) {
+        if (inputTokens > 0 || outputTokens > 0 || roundedCost > 0) {
           getCostInsert()({
             ts: new Date().toISOString(),
             date: new Date().toISOString().slice(0, 10),

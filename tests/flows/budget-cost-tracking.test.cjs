@@ -8,6 +8,7 @@ const { calculateCost, trackCost, queryCosts } = require('../../core/observe/cos
 const { shouldResetDaily, loadCompanyBudget, saveCompanyBudget } = require('../../core/observe/budget.cjs')
 const { deptConfigRepo } = require('../../core/repo/dept-config.cjs')
 const { deptStateRepo } = require('../../core/repo/dept-state.cjs')
+const { cleanTestDataFromDb } = require('../_helpers/db-cleanup.cjs')
 
 const TEST_DEPT_ID = 'zzz-test-budget-' + process.pid
 const TEST_SOURCE = 'zzz-test-cost-' + process.pid + '-' + Date.now()
@@ -31,6 +32,8 @@ describe('Cost tracking and budget', () => {
     // Clean up test department directory
     const testDeptDir = join(DEPTS_DIR, TEST_DEPT_ID)
     if (existsSync(testDeptDir)) rmSync(testDeptDir, { recursive: true, force: true })
+
+    cleanTestDataFromDb()
   })
 
   describe('calculateCost', () => {
