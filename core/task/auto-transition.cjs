@@ -16,6 +16,13 @@ const logger = require('../common/logger.cjs')
  * @param {string} text
  * @returns {Array<{agentId: string, summary: string, projectId?: string}>}
  */
+// Matches phrases chief uses to signal "no new task for this agent". Kept as a
+// single regex so additions go in one place. The patterns are intentionally
+// broad because chief prose varies a lot; false negatives are much worse than
+// false positives here (a skipped line just means no task is created, while a
+// missed filter creates a zombie task that pollutes the project).
+const NO_ASSIGNMENT_RE = /无需分配|不需要分配|不需要|跳过|不分配|不新增|不新建|不加并发|不增加|本轮(?:不|无)|暂不|暂无|维持(?:现状|低并发|冻结|不)|冻结新分配|继续(?:收口|执行|冻结)|先完成|无新(?:任务|增)|引用现有任务|当前忙碌|当前🔴|当前🔵|🔴\s*busy|已有\s*\d+\s*个进行中/
+
 function parseTaskAssignments(text) {
   if (!text) return []
   const match = text.match(/[\[【]任务分配[\]】]\s*\n([\s\S]*?)(?=\n[\[【]|$)/)
@@ -27,13 +34,18 @@ function parseTaskAssignments(text) {
     const m = line.match(/^(?:[-*]|\d+[.)]\s*)\s*(\S+?)[:\uff1a]\s*(.+?)(?:\s*[\(\uff08].*[\)\uff09])?\s*$/)
     if (!m) continue
     const [, agentId, rawSummary] = m
-    if (/无需分配|不需要|跳过/.test(rawSummary)) continue
+    if (NO_ASSIGNMENT_RE.test(rawSummary)) continue
     if (/task-[a-z0-9]/.test(line)) continue
 
     // Extract optional [project: xxx]
     const projMatch = rawSummary.match(/\[project:\s*([^\]]+)\]/)
     const projectId = projMatch ? projMatch[1].trim() : undefined
     const summary = rawSummary.replace(/\[project:\s*[^\]]+\]\s*/, '').trim()
+
+    // Reject if the cleaned summary looks like a status sentence rather than a
+    // concrete task directive. A real assignment has an action verb (分配/
+    // 创建/产出/写/review 等); status sentences don't.
+    if (!/分配|创建|产出|写|实现|撰|制作|修复|修正|调试|补齐|生成|设计|开发|实施|执行|交付|补充|补交|新增|新建|research|review|test|implement|write|build|create|fix|add|update|refactor/i.test(summary)) continue
 
     const entry = { agentId, summary }
     if (projectId) entry.projectId = projectId

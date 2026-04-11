@@ -213,20 +213,52 @@ class TaskRepository extends BaseRepository {
   }
 
   /**
-   * Read the content of a task's output file
-   * @param {object} task - Task with optional output path
-   * @returns {string|null} file content or null if not available
+   * Read the content of a task's output file(s).
+   *
+   * task.output can be:
+   *   - a single file path: "projects/foo/docs/report.md"
+   *   - comma/newline-separated paths: "a.md, b.md, c.md"
+   *   - an array of paths: ["a.md", "b.md"]
+   *   - inline content (legacy): a string that isn't a path
+   *
+   * Returns concatenated content from all existing files (each prefixed with
+   * a "# <path>" header), or null if no paths resolve to readable files.
+   * For inline-content task.output (no path-like tokens), returns it as-is.
+   *
+   * @param {object} task
+   * @returns {string|null}
    */
   readTaskOutput(task) {
     if (!task || !task.output) return null
-    const outputPath = resolve(PROJECT_ROOT, task.output)
-    try {
-      if (!existsSync(outputPath)) return null
-      return readFileSync(outputPath, 'utf-8')
-    } catch (err) {
-      logger.debug('task-repo', 'failed to read task output', { outputPath, error: err.message })
-      return null
+
+    const raw = task.output
+    const tokens = Array.isArray(raw)
+      ? raw
+      : String(raw).split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
+
+    if (tokens.length === 0) return null
+
+    const contents = []
+    let sawPathLike = false
+    for (const token of tokens) {
+      // Skip tokens that don't look like file paths (no slash, no .ext) —
+      // those are likely inline text, not a path.
+      if (!/[\\/]/.test(token) && !/\.[a-z0-9]{1,8}$/i.test(token)) continue
+      sawPathLike = true
+      const abs = resolve(PROJECT_ROOT, token)
+      try {
+        if (!existsSync(abs)) continue
+        const body = readFileSync(abs, 'utf-8')
+        contents.push(tokens.length > 1 ? `# ${token}\n\n${body}` : body)
+      } catch (err) {
+        logger.debug('task-repo', 'failed to read task output path', { path: abs, error: err.message })
+      }
     }
+
+    if (contents.length > 0) return contents.join('\n\n---\n\n')
+    // No path-like tokens at all → treat original as inline content (legacy).
+    if (!sawPathLike && typeof raw === 'string') return raw
+    return null
   }
 
   /** Update a task in-place via DB + sync to file if project task */

@@ -187,6 +187,28 @@ class QualityOrchestrator {
   }
 
   /**
+   * @private
+   * Given a task.output value (string or array), return the subset of
+   * path-like tokens that do not resolve to an existing file. Used for
+   * clearer self-check failure messages when multi-path outputs are in play.
+   */
+  _listMissingOutputPaths(output) {
+    if (!output) return []
+    const { existsSync } = require('fs')
+    const { resolve } = require('path')
+    const { PROJECT_ROOT } = require('../common/paths.cjs')
+    const tokens = Array.isArray(output)
+      ? output
+      : String(output).split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
+    const missing = []
+    for (const token of tokens) {
+      if (!/[\\/]/.test(token) && !/\.[a-z0-9]{1,8}$/i.test(token)) continue
+      if (!existsSync(resolve(PROJECT_ROOT, token))) missing.push(token)
+    }
+    return missing
+  }
+
+  /**
    * Select a peer reviewer from the department.
    */
   selectReviewer(deptId, task, config) {
@@ -252,25 +274,29 @@ class QualityOrchestrator {
   async _requestSelfCheck(agentId, task, deptId) {
     if (!agentId) return { passed: false, score: 0, checklist: ['无执行者'], at: new Date().toISOString() }
 
-    // Hard validation: check output content via injected readTaskOutput
-    if (task.output) {
-      const content = this._readTaskOutput(task)
-      if (!content) {
-        return { passed: false, score: 0, checklist: ['产出文件不存在: ' + task.output], at: new Date().toISOString() }
-      }
-      if (content.length < 500) {
-        return { passed: false, score: 0, checklist: [`产出仅 ${content.length} 字符，最低要求 500`], at: new Date().toISOString() }
-      }
-      if (/\$\{[^}]+\}/.test(content.slice(0, 5000))) {
-        return { passed: false, score: 0, checklist: ['含未渲染模板变量 ${...}'], at: new Date().toISOString() }
-      }
+    // Hard validation: empty output is an automatic fail. A task that reaches
+    // self-check without any output field means nothing was produced —
+    // previously the `if (task.output)` guard would silently skip validation
+    // and let the LLM grade a phantom task, which is how empty rework chains
+    // kept scoring high without ever writing anything.
+    if (!task.output) {
+      return { passed: false, score: 0, checklist: ['产出为空：task.output 字段未设置'], at: new Date().toISOString() }
+    }
+    const content = this._readTaskOutput(task)
+    if (!content) {
+      const missing = this._listMissingOutputPaths(task.output)
+      const detail = missing.length > 0 ? missing.join(', ') : String(task.output)
+      return { passed: false, score: 0, checklist: ['产出文件不存在: ' + detail], at: new Date().toISOString() }
+    }
+    if (content.length < 500) {
+      return { passed: false, score: 0, checklist: [`产出仅 ${content.length} 字符，最低要求 500`], at: new Date().toISOString() }
+    }
+    if (/\$\{[^}]+\}/.test(content.slice(0, 5000))) {
+      return { passed: false, score: 0, checklist: ['含未渲染模板变量 ${...}'], at: new Date().toISOString() }
     }
 
-    let outputContent = ''
-    if (task.output) {
-      const raw = this._readTaskOutput(task)
-      outputContent = raw ? raw.slice(0, 5000) : `(无法读取: ${task.output})`
-    }
+    // `content` was already read during hard validation above
+    const outputContent = content.slice(0, 5000)
 
     // Build checklist: prefer type-specific from task-standards.md, fallback to generic
     let checklistItems

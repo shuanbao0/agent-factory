@@ -227,6 +227,36 @@ describe('AutoTransition', () => {
       assert.equal(result[1].summary, '写第二章')
       assert.equal(result[1].projectId, undefined)
     })
+
+    it('filters chief prose that signals "no assignment" (regression: fake task pollution)', () => {
+      // Real chief responses observed in production death-spiral cycles.
+      // Each of these previously produced a zombie task named after the prose.
+      const cases = [
+        '[任务分配]\n- apple-tester: 本轮不新增分配，继续执行先收口、后扩张',
+        '[任务分配]\n- apple-release: 当前无新增紧急待办且历史无响应风险仍在，维持低并发不分配新任务',
+        '[任务分配]\n- ios-developer: 无需分配（遵循先完成再开始）',
+        '[任务分配]\n- apple-designer: 无需分配（🔵 工作中，且已有 2 个进行中任务，严格不加并发）',
+        '[任务分配]\n- apple-tester: 继续收口 hot-topics 需求分析链路中的待确认项，引用现有任务，不新建',
+      ]
+      for (const text of cases) {
+        const result = parseTaskAssignments(text)
+        assert.equal(result.length, 0, `should skip prose: ${text.split('\n')[1]}`)
+      }
+    })
+
+    it('still accepts real assignments with action verbs', () => {
+      const cases = [
+        ['[任务分配]\n- apple-designer: 分配需求文档体验补强包 [project: apple-dev/hot-topics]', '分配需求文档体验补强包'],
+        ['[任务分配]\n- ios-developer: 实现登录页面', '实现登录页面'],
+        ['[任务分配]\n- apple-tester: 编写 CI 测试用例', '编写 CI 测试用例'],
+        ['[任务分配]\n- apple-release: review 发布检查清单', 'review 发布检查清单'],
+      ]
+      for (const [text, expectedSummary] of cases) {
+        const result = parseTaskAssignments(text)
+        assert.equal(result.length, 1, `should parse: ${text}`)
+        assert.equal(result[0].summary, expectedSummary)
+      }
+    })
   })
 
   describe('parseTaskRecoveries', () => {

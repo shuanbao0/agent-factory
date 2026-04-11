@@ -43,4 +43,55 @@ describe('QualityOrchestrator', () => {
     const result = await orch.process('unknown', { id: 't1' })
     assert.equal(result.passed, true)
   })
+
+  describe('_requestSelfCheck hard validation', () => {
+    function makeOrch({ sendFn, readTaskOutput } = {}) {
+      return new QualityOrchestrator({
+        sendFn: sendFn || (async () => ({ ok: true, text: 'SCORE: 85\nPASSED: true\nISSUES: none' })),
+        readAgentActivity: () => ({}),
+        loadDeptConfig: () => ({ id: 'test-dept', head: 'chief', agents: ['writer-a'] }),
+        readTaskOutput: readTaskOutput || (() => 'x'.repeat(1000)),
+        logger: { info: () => {}, warn: () => {}, debug: () => {}, error: () => {} },
+      })
+    }
+
+    it('empty task.output fails self-check (regression: phantom tasks could pass)', async () => {
+      // Previously: empty `output` skipped hard validation entirely, so LLM
+      // would grade a task with no product and often gave high scores.
+      const orch = makeOrch()
+      const result = await orch._requestSelfCheck('writer-a', { id: 't1', name: 'phantom', output: '' }, 'test-dept')
+      assert.equal(result.passed, false)
+      assert.equal(result.score, 0)
+      assert.match(String(result.checklist[0]), /产出为空/)
+    })
+
+    it('missing file path still fails with clear message', async () => {
+      const orch = makeOrch({ readTaskOutput: () => null })
+      const result = await orch._requestSelfCheck('writer-a',
+        { id: 't1', name: 'test', output: '/nope/missing.md' }, 'test-dept')
+      assert.equal(result.passed, false)
+      assert.equal(result.score, 0)
+      assert.match(String(result.checklist[0]), /产出文件不存在/)
+    })
+
+    it('short output fails with length message', async () => {
+      const orch = makeOrch({ readTaskOutput: () => 'short' })
+      const result = await orch._requestSelfCheck('writer-a',
+        { id: 't1', name: 'test', output: '/some/file.md' }, 'test-dept')
+      assert.equal(result.passed, false)
+      assert.equal(result.score, 0)
+      assert.match(String(result.checklist[0]), /仅\s*5\s*字符/)
+    })
+
+    it('valid multi-path output with good content proceeds to LLM self-check', async () => {
+      const orch = makeOrch({
+        readTaskOutput: () => 'A'.repeat(800),
+        sendFn: async () => ({ ok: true, text: 'SCORE: 92\nPASSED: true\nISSUES: none' }),
+      })
+      const result = await orch._requestSelfCheck('writer-a',
+        { id: 't1', name: 'test', type: 'writing', output: '/a.md, /b.md' }, 'test-dept')
+      assert.equal(result.passed, true)
+      assert.equal(result.score, 92)
+    })
+  })
 })

@@ -232,6 +232,12 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
     const idleMins = activity
       ? activity.idleMins
       : Math.floor((Date.now() - new Date(task.updatedAt || task.createdAt).getTime()) / 60000)
+    // Separate "agent idle" vs "task idle". Agent idle is reset every time the
+    // dept-loop queries the agent's :main for status, so for a task in review
+    // that's what we've been measuring wrong: the task can sit for an hour in
+    // review while the agent is trivially reactive to our own pings. Use the
+    // task's own updatedAt for the review-pickup decision.
+    const taskIdleMins = Math.floor((Date.now() - new Date(task.updatedAt || task.createdAt).getTime()) / 60000)
 
     if (task.status === 'assigned') {
       if (idleMins < 5) {
@@ -242,11 +248,20 @@ async function autoTransitionTasks(deptId, config, chiefResponseText, options = 
         logger.warn('dept-loop', `Assigned task ${task.id} never started, marked failed (agent ${assignee} idle ${idleMins}m)`)
       }
     } else if (task.status === 'review') {
-      // Collect review tasks for parallel quality gate processing
-      if (idleMins >= IDLE_COMPLETE_MINS) {
+      // Use taskIdleMins not agent idleMins — dept-loop pings reset agent idle.
+      if (taskIdleMins >= IDLE_COMPLETE_MINS) {
         reviewItems.push({ task, assignee })
       }
     } else if (task.status === 'in_progress' || task.status === 'rework') {
+      // Hard ceiling on dual-session: if the task's own updatedAt shows it has
+      // been stuck for more than STALE_TASK_MINS * 2, move it on regardless of
+      // what the agent reports. Without this, agents that keep replying
+      // "working" on a ghost task can stall the same task for hours.
+      if (taskIdleMins >= STALE_TASK_MINS * 2) {
+        transition(task, assignee, task.status, 'failed', `task 停滞 ${taskIdleMins}m，超过硬上限`)
+        logger.warn('dept-loop', `Hard ceiling: ${task.id} stuck ${taskIdleMins}m regardless of agent status → failed`)
+        continue
+      }
       if (dualEnabled && statusQueryResults) {
         // Dual-session path: use explicit status query instead of idle guessing
         const status = statusQueryResults[assignee]
